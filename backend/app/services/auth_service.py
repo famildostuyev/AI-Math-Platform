@@ -70,6 +70,10 @@ class AccountInactiveError(AuthServiceError):
     """Raised when a user account is inactive."""
 
 
+class AccountUnverifiedError(AuthServiceError):
+    """Raised when a user account has not completed verification."""
+
+
 class AccountLockedError(AuthServiceError):
     """Raised when a user account is temporarily locked."""
 
@@ -585,6 +589,16 @@ class AuthService:
 
             raise AccountInactiveError(
                 "User account is inactive."
+            )
+
+        if not (
+            user.is_email_verified
+            or user.is_phone_verified
+        ):
+            self.db.rollback()
+
+            raise AccountUnverifiedError(
+                "User account has not been verified."
             )
 
         if replacement_hash is not None:

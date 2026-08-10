@@ -30,6 +30,7 @@ from app.schemas.token import TokenResponse
 from app.services.auth_service import (
     AccountInactiveError,
     AccountLockedError,
+    AccountUnverifiedError,
     AuthenticationSessionError,
     InvalidCredentialsError,
     InvalidRefreshTokenError,
@@ -235,6 +236,12 @@ def login(
                 "message": str(exc),
                 "locked_until": exc.locked_until.isoformat(),
             },
+        ) from exc
+
+    except AccountUnverifiedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
         ) from exc
 
     except AccountInactiveError as exc:
