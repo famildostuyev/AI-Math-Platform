@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
@@ -9,20 +9,20 @@ from app.database.base_model import BaseModel
 
 if TYPE_CHECKING:
     from app.models.role_permission import RolePermission
-    from app.models.user_role import UserRole
 
 
-class Role(BaseModel):
-    __tablename__ = "roles"
+class Permission(BaseModel):
+    __tablename__ = "permissions"
 
     name: Mapped[str] = mapped_column(
-        String(50),
+        String(100),
         unique=True,
         nullable=False,
+        index=True,
     )
 
     display_name: Mapped[str] = mapped_column(
-        String(100),
+        String(150),
         nullable=False,
     )
 
@@ -45,14 +45,8 @@ class Role(BaseModel):
         nullable=False,
     )
 
-    user_roles: Mapped[list["UserRole"]] = relationship(
-        "UserRole",
-        back_populates="role",
-        cascade="all, delete-orphan",
-    )
-
     role_permissions: Mapped[list["RolePermission"]] = relationship(
         "RolePermission",
-        back_populates="role",
+        back_populates="permission",
         cascade="all, delete-orphan",
     )

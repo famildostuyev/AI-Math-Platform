@@ -3,33 +3,20 @@
 
 class TokenResponse(BaseModel):
     """
-    Authentication token response.
+    Authentication token pair.
+
+    The access token is a short-lived JWT.
+    The refresh token is an opaque, rotating secret.
     """
 
     access_token: str = Field(
         ...,
-        description="JWT access token.",
+        description="Short-lived JWT access token.",
     )
 
     refresh_token: str = Field(
         ...,
-        description="JWT refresh token.",
-    )
-
-    token_type: str = Field(
-        default="Bearer",
-        description="Authentication scheme.",
-    )
-
-
-class AccessTokenResponse(BaseModel):
-    """
-    Access token response.
-    """
-
-    access_token: str = Field(
-        ...,
-        description="JWT access token.",
+        description="Opaque refresh token.",
     )
 
     token_type: str = Field(

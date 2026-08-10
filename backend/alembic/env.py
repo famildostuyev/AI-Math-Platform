@@ -1,34 +1,56 @@
+from __future__ import annotations
+
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from alembic import context
+from sqlalchemy import Connection
 
-import backend.app.models  # noqa: F401
-from backend.app.database.base import Base
-from backend.app.database.config import DATABASE_URL
-from backend.app.database.session import engine
+# `app` paketinin həm layihə kökündən, həm də backend qovluğundan
+# başladılan Alembic əmrlərində tapılmasını təmin edir.
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
-# Alembic konfiqurasiya obyekti
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+import app.models  # noqa: E402, F401
+from app.core.config import settings  # noqa: E402
+from app.database.base import Base  # noqa: E402
+from app.database.session import engine  # noqa: E402
+
+
 config = context.config
 
-# Alembic log sistemini aktivləşdirir
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Migration yaradılarkən SQLAlchemy modellərinin metadata-sı istifadə olunur
 target_metadata = Base.metadata
+
+
+def configure_context_for_connection(connection: Connection) -> None:
+    """
+    Alembic migration contextini aktiv database connection üçün qurur.
+    """
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
+    )
 
 
 def run_migrations_offline() -> None:
     """
-    Verilənlər bazasına birbaşa qoşulmadan
-    SQL migration skriptləri yaratmaq üçün istifadə olunur.
+    Database-ə qoşulmadan SQL migration skripti yaradır.
     """
     context.configure(
-        url=DATABASE_URL,
+        url=settings.DATABASE_URL,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        compare_server_default=True,
     )
 
     with context.begin_transaction():
@@ -37,14 +59,10 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """
-    Verilənlər bazasına qoşularaq migration-ları icra edir.
+    Database bağlantısı üzərindən migration əməliyyatlarını icra edir.
     """
     with engine.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            compare_type=True,
-        )
+        configure_context_for_connection(connection)
 
         with context.begin_transaction():
             context.run_migrations()
