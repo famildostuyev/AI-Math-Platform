@@ -1,5 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import './App.css'
+import LoginScreen from './components/LoginScreen'
+import type { TokenResponse } from './api/auth'
 
 import {
   Archive,
@@ -5008,6 +5010,11 @@ function TestBuilder({
 function App() {
   const [screen, setScreen] = useState<Screen>('dashboard')
   const [startInOnlineMode, setStartInOnlineMode] = useState(false)
+  const [tokens, setTokens] = useState<TokenResponse | null>(null)
+
+  if (tokens === null) {
+    return <LoginScreen onLoginSuccess={setTokens} />
+  }
 
   const openDashboard = () => {
     setStartInOnlineMode(false)
