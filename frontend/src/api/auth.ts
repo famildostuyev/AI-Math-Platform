@@ -6,6 +6,11 @@ export type LoginRequest = {
   device_name?: string
 }
 
+export type RefreshTokenRequest = {
+  refresh_token: string
+  device_name?: string
+}
+
 export type TokenResponse = {
   access_token: string
   refresh_token: string
@@ -58,5 +63,19 @@ export function logout(accessToken: string): Promise<LogoutResponse> {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
+  })
+}
+
+export function refreshTokens(refreshToken: string): Promise<TokenResponse> {
+  const request: RefreshTokenRequest = {
+    refresh_token: refreshToken,
+  }
+
+  return requestJson<TokenResponse>('/api/v1/auth/refresh', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
   })
 }
