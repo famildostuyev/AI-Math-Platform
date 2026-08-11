@@ -4,8 +4,12 @@ import LoginScreen from './components/LoginScreen'
 import { getCurrentUser, logout, refreshTokens } from './api/auth'
 import type { CurrentUserResponse, TokenResponse } from './api/auth'
 import { ApiError } from './api/client'
-import { getGrades } from './api/catalog'
-import type { GradeCatalogResponse } from './api/catalog'
+import { getGrades, getPurposes } from './api/catalog'
+import type {
+  GradeCatalogResponse,
+  PurposeCatalogResponse,
+} from './api/catalog'
+import type { LucideIcon } from 'lucide-react'
 
 import {
   Archive,
@@ -35,7 +39,6 @@ import {
   Puzzle,
   HelpCircle,
   Home,
-  Landmark,
   Moon,
   Send,
   Settings,
@@ -89,17 +92,27 @@ const suggestions = [
   'Qarışıq mövzulardan çətinlik dərəcəsinə görə test hazırla',
 ]
 
-const purposes = [
-  { id: 'ksq', title: 'KSQ', description: 'Kiçik summativ qiymətləndirmə üçün test tərtib edin.', icon: BookOpenCheck, tone: 'violet', enabled: true },
-  { id: 'bsq', title: 'BSQ', description: 'Böyük summativ qiymətləndirmə üçün test tərtib edin.', icon: GraduationCap, tone: 'blue', enabled: false },
-  { id: 'diagnostic', title: 'Diaqnostik qiymətləndirmə', description: 'Diaqnostik qiymətləndirmə üçün test tərtib edin.', icon: BarChart3, tone: 'cyan', enabled: false },
-  { id: 'dim', title: 'DİM', description: 'Buraxılış və blok imtahanları üçün test tərtib edin.', icon: Landmark, tone: 'green', enabled: false },
-  { id: 'lyceum', title: 'Liseylərə qəbul', description: 'Lisey qəbul imtahanları üçün test tərtib edin.', icon: GraduationCap, tone: 'orange', enabled: false },
-  { id: 'olympiad', title: 'Olimpiadalar', description: 'RFM və RFO istiqamətləri üzrə testlər hazırlayın.', icon: Trophy, tone: 'pink', enabled: false },
-  { id: 'miq', title: 'MİQ', description: 'MİQ hazırlığı üçün sınaq və testlər tərtib edin.', icon: Target, tone: 'cyan', enabled: false },
-  { id: 'certification', title: 'Sertifikasiya', description: 'Sertifikasiya hazırlığı üçün testlər tərtib edin.', icon: BadgeCheck, tone: 'violet', enabled: false },
-  { id: 'other', title: 'Digər', description: 'İstədiyiniz qaydada sərbəst test tərtib edin.', icon: FilePlus2, tone: 'orange', enabled: false },
-]
+type PurposePresentation = {
+  description: string
+  icon: LucideIcon
+  tone: string
+  enabled: boolean
+}
+
+const purposePresentationByName: Record<string, PurposePresentation> = {
+  ksq: { description: 'Kiçik summativ qiymətləndirmə üçün test tərtib edin.', icon: BookOpenCheck, tone: 'violet', enabled: true },
+  bsq: { description: 'Böyük summativ qiymətləndirmə üçün test tərtib edin.', icon: GraduationCap, tone: 'blue', enabled: false },
+  lisey_qebul: { description: 'Lisey qəbul imtahanları üçün test tərtib edin.', icon: GraduationCap, tone: 'orange', enabled: false },
+  miq: { description: 'MİQ hazırlığı üçün sınaq və testlər tərtib edin.', icon: Target, tone: 'cyan', enabled: false },
+  sertifikatlasdirma: { description: 'Sertifikasiya hazırlığı üçün testlər tərtib edin.', icon: BadgeCheck, tone: 'violet', enabled: false },
+}
+
+const fallbackPurposePresentation: PurposePresentation = {
+  description: '',
+  icon: FilePlus2,
+  tone: 'violet',
+  enabled: false,
+}
 
 const temporarySections = ['Bölmə 1', 'Bölmə 2', 'Bölmə 3', 'Bölmə 4', 'Bölmə 5']
 const temporaryTopics = ['Mövzu 1', 'Mövzu 2', 'Mövzu 3', 'Mövzu 4', 'Mövzu 5', 'Mövzu 6']
@@ -1131,6 +1144,10 @@ function ClockIcon() {
 function TestBuilder({
   onBack,
   onOpenOnlineTests,
+  purposes,
+  purposesLoading,
+  purposesError,
+  onRetryPurposes,
   grades,
   gradesLoading,
   gradesError,
@@ -1139,6 +1156,10 @@ function TestBuilder({
 }: {
   onBack: () => void
   onOpenOnlineTests: () => void
+  purposes: PurposeCatalogResponse[]
+  purposesLoading: boolean
+  purposesError: string | null
+  onRetryPurposes: () => void
   grades: GradeCatalogResponse[]
   gradesLoading: boolean
   gradesError: string | null
@@ -1148,7 +1169,10 @@ function TestBuilder({
   const [builderStep, setBuilderStep] = useState<BuilderStep>('purpose')
   const [preparationStage, setPreparationStage] =
     useState<PreparationStage>('review')
-  const [selectedPurpose, setSelectedPurpose] = useState<string | null>(null)
+  const [selectedPurposeId, setSelectedPurposeId] = useState<string | null>(null)
+  const [selectedPurposeName, setSelectedPurposeName] = useState<string | null>(null)
+  const [selectedPurposeDisplayName, setSelectedPurposeDisplayName] =
+    useState<string | null>(null)
   const [selectedGradeId, setSelectedGradeId] = useState<string | null>(null)
   const [selectedClass, setSelectedClass] = useState<string | null>(null)
   const [selectedSection, setSelectedSection] = useState<string | null>(null)
@@ -1288,12 +1312,14 @@ function TestBuilder({
     resetParameters()
   }
 
-  const selectPurpose = (purposeId: string) => {
-    if (selectedPurpose !== purposeId) {
+  const selectPurpose = (purpose: PurposeCatalogResponse) => {
+    if (selectedPurposeId !== purpose.id) {
       resetAfterPurpose()
     }
-    setSelectedPurpose(purposeId)
-    if (purposeId === 'ksq') setBuilderStep('class')
+    setSelectedPurposeId(purpose.id)
+    setSelectedPurposeName(purpose.name)
+    setSelectedPurposeDisplayName(purpose.display_name)
+    if (purpose.name === 'ksq') setBuilderStep('class')
   }
 
   const selectClass = (grade: GradeCatalogResponse) => {
@@ -1531,14 +1557,14 @@ function TestBuilder({
       return
     }
 
-    if (step === 'class' && selectedPurpose === 'ksq') {
+    if (step === 'class' && selectedPurposeName === 'ksq') {
       setBuilderStep('class')
       return
     }
 
     if (
       step === 'section' &&
-      selectedPurpose === 'ksq' &&
+      selectedPurposeName === 'ksq' &&
       selectedClass !== null
     ) {
       setBuilderStep('section')
@@ -1547,7 +1573,7 @@ function TestBuilder({
 
     if (
       step === 'topics' &&
-      selectedPurpose === 'ksq' &&
+      selectedPurposeName === 'ksq' &&
       selectedClass !== null &&
       selectedSection !== null
     ) {
@@ -1557,7 +1583,7 @@ function TestBuilder({
 
     if (
       step === 'parameters' &&
-      selectedPurpose === 'ksq' &&
+      selectedPurposeName === 'ksq' &&
       selectedClass !== null &&
       selectedSection !== null &&
       topicsReady
@@ -1569,7 +1595,7 @@ function TestBuilder({
 
     if (
       step === 'review' &&
-      selectedPurpose === 'ksq' &&
+      selectedPurposeName === 'ksq' &&
       selectedClass !== null &&
       selectedSection !== null &&
       topicsReady &&
@@ -1731,8 +1757,7 @@ function TestBuilder({
     return `${day}.${month}.${year}`
   })()
 
-  const onlinePurposeLabel =
-    purposes.find((purpose) => purpose.id === selectedPurpose)?.title ?? 'KSQ'
+  const onlinePurposeLabel = selectedPurposeDisplayName ?? 'KSQ'
 
   const onlineClassTopicLabel = [
     selectedClass,
@@ -2100,13 +2125,17 @@ function TestBuilder({
     window.print()
   }
 
+  const topLevelPurposes = purposes.filter(
+    (purpose) => purpose.parent_id === null,
+  )
+
   return (
     <main className="workspace builder-workspace">
       <div className="builder-content refined-builder">
         {!(builderStep === 'review' && preparationStage !== 'review') && (
           <StepIndicator
             currentStep={builderStep}
-            selectedPurpose={selectedPurpose}
+            selectedPurpose={selectedPurposeName}
             selectedClass={selectedClass}
             selectedSection={selectedSection}
             topicsReady={topicsReady}
@@ -2118,25 +2147,45 @@ function TestBuilder({
         {builderStep === 'purpose' && (
           <section className="builder-panel simplified-panel">
             <div className="purpose-grid">
-              {purposes.map((purpose) => {
-                const Icon = purpose.icon
-                const selected = selectedPurpose === purpose.id
+              {purposesLoading && <p>Təyinatlar yüklənir...</p>}
+
+              {!purposesLoading && purposesError && (
+                <div>
+                  <p>{purposesError}</p>
+                  <button className="secondary-action" type="button" onClick={onRetryPurposes}>
+                    Yenidən cəhd et
+                  </button>
+                </div>
+              )}
+
+              {!purposesLoading && !purposesError && topLevelPurposes.length === 0 && (
+                <p>Seçim üçün aktiv təyinat tapılmadı.</p>
+              )}
+
+              {!purposesLoading && !purposesError && topLevelPurposes.map((purpose) => {
+                const presentation =
+                  purposePresentationByName[purpose.name]
+                  ?? fallbackPurposePresentation
+                const Icon = presentation.icon
+                const selected = selectedPurposeId === purpose.id
+                const description =
+                  purpose.description ?? presentation.description
 
                 return (
                   <button
                     key={purpose.id}
                     type="button"
-                    className={`purpose-card ${purpose.tone} ${selected ? 'selected' : ''} ${purpose.enabled ? '' : 'coming-soon'}`}
+                    className={`purpose-card ${presentation.tone} ${selected ? 'selected' : ''} ${presentation.enabled ? '' : 'coming-soon'}`}
                     onClick={() => {
-                      if (purpose.enabled) selectPurpose(purpose.id)
+                      if (presentation.enabled) selectPurpose(purpose)
                     }}
                   >
                     <div className="purpose-card__icon"><Icon size={28} /></div>
                     <div>
-                      <strong>{purpose.title}</strong>
-                      <p>{purpose.description}</p>
+                      <strong>{purpose.display_name}</strong>
+                      {description && <p>{description}</p>}
                     </div>
-                    {purpose.enabled
+                    {presentation.enabled
                       ? <ChevronRight className="purpose-card__arrow" size={21} />
                       : <span className="purpose-card__status">Sonra</span>}
                   </button>
@@ -5077,6 +5126,10 @@ function App() {
   const [tokens, setTokens] = useState<TokenResponse | null>(null)
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null)
   const [isLogoutPending, setIsLogoutPending] = useState(false)
+  const [purposes, setPurposes] = useState<PurposeCatalogResponse[]>([])
+  const [purposesLoading, setPurposesLoading] = useState(false)
+  const [purposesLoaded, setPurposesLoaded] = useState(false)
+  const [purposesError, setPurposesError] = useState<string | null>(null)
   const [grades, setGrades] = useState<GradeCatalogResponse[]>([])
   const [gradesLoading, setGradesLoading] = useState(false)
   const [gradesLoaded, setGradesLoaded] = useState(false)
@@ -5085,11 +5138,18 @@ function App() {
   const refreshPromiseRef = useRef<Promise<TokenResponse> | null>(null)
   const gradeLoadPromiseRef =
     useRef<Promise<GradeCatalogResponse[]> | null>(null)
+  const purposeLoadPromiseRef =
+    useRef<Promise<PurposeCatalogResponse[]> | null>(null)
   const authSessionVersionRef = useRef(0)
 
-  const invalidateGradeCatalog = () => {
+  const invalidateCatalogs = () => {
     authSessionVersionRef.current += 1
     gradeLoadPromiseRef.current = null
+    purposeLoadPromiseRef.current = null
+    setPurposes([])
+    setPurposesLoading(false)
+    setPurposesLoaded(false)
+    setPurposesError(null)
     setGrades([])
     setGradesLoading(false)
     setGradesLoaded(false)
@@ -5120,7 +5180,7 @@ function App() {
       .catch((error: unknown) => {
         if (refreshPromiseRef.current === refreshPromise) {
           latestTokensRef.current = null
-          invalidateGradeCatalog()
+          invalidateCatalogs()
           setTokens(null)
           setCurrentUser(null)
         }
@@ -5161,14 +5221,14 @@ function App() {
   const handleLoginSuccess = async (loginTokens: TokenResponse) => {
     try {
       const authenticatedUser = await getCurrentUser(loginTokens.access_token)
-      invalidateGradeCatalog()
+      invalidateCatalogs()
       latestTokensRef.current = loginTokens
       setTokens(loginTokens)
       setCurrentUser(authenticatedUser)
     } catch (error) {
       latestTokensRef.current = null
       refreshPromiseRef.current = null
-      invalidateGradeCatalog()
+      invalidateCatalogs()
       setTokens(null)
       setCurrentUser(null)
       throw error
@@ -5179,7 +5239,7 @@ function App() {
     if (tokens === null || isLogoutPending) return
 
     setIsLogoutPending(true)
-    invalidateGradeCatalog()
+    invalidateCatalogs()
 
     try {
       await authenticatedRequest((accessToken) => logout(accessToken))
@@ -5239,6 +5299,51 @@ function App() {
     }
   }
 
+  const loadPurposes = async () => {
+    const existingPromise = purposeLoadPromiseRef.current
+
+    if (existingPromise !== null) {
+      try {
+        await existingPromise
+      } catch {
+        // The caller that created the request owns the shared error state.
+      }
+      return
+    }
+
+    setPurposesLoading(true)
+    setPurposesError(null)
+
+    const sessionVersion = authSessionVersionRef.current
+    const purposeLoadPromise = authenticatedRequest((accessToken) =>
+      getPurposes(accessToken),
+    )
+    purposeLoadPromiseRef.current = purposeLoadPromise
+
+    try {
+      const catalogPurposes = await purposeLoadPromise
+
+      if (authSessionVersionRef.current !== sessionVersion) return
+
+      setPurposes(catalogPurposes)
+      setPurposesLoaded(true)
+    } catch {
+      if (authSessionVersionRef.current !== sessionVersion) return
+
+      setPurposes([])
+      setPurposesLoaded(false)
+      setPurposesError('Təyinat siyahısını yükləmək mümkün olmadı.')
+    } finally {
+      if (purposeLoadPromiseRef.current === purposeLoadPromise) {
+        purposeLoadPromiseRef.current = null
+
+        if (authSessionVersionRef.current === sessionVersion) {
+          setPurposesLoading(false)
+        }
+      }
+    }
+  }
+
   if (tokens === null || currentUser === null) {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />
   }
@@ -5251,6 +5356,7 @@ function App() {
   const openTestBuilder = () => {
     setStartInOnlineMode(false)
     setScreen('test-builder')
+    if (!purposesLoaded && !purposesLoading) void loadPurposes()
     if (!gradesLoaded && !gradesLoading) void loadGrades()
   }
 
@@ -5262,6 +5368,7 @@ function App() {
   const createOnlineTest = () => {
     setStartInOnlineMode(true)
     setScreen('test-builder')
+    if (!purposesLoaded && !purposesLoading) void loadPurposes()
     if (!gradesLoaded && !gradesLoading) void loadGrades()
   }
 
@@ -5305,6 +5412,10 @@ function App() {
         <TestBuilder
           onBack={openDashboard}
           onOpenOnlineTests={openOnlineTests}
+          purposes={purposes}
+          purposesLoading={purposesLoading}
+          purposesError={purposesError}
+          onRetryPurposes={() => void loadPurposes()}
           grades={grades}
           gradesLoading={gradesLoading}
           gradesError={gradesError}
