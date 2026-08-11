@@ -145,7 +145,7 @@ PURPOSES = [
     },
     {
         "name": "sertifikatlasdirma",
-        "display_name": "Sertifikatlaşdırma imtahanı",
+        "display_name": "Sertifikasiya",
         "sort_order": 90,
         "children": [],
     },
