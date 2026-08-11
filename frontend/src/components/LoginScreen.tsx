@@ -7,7 +7,7 @@ import { ApiError } from '../api/client'
 
 
 type LoginScreenProps = {
-  onLoginSuccess: (tokens: TokenResponse) => void
+  onLoginSuccess: (tokens: TokenResponse) => void | Promise<void>
 }
 
 function loginErrorMessage(error: unknown): string {
@@ -44,7 +44,7 @@ export default function LoginScreen({
 
     try {
       const tokens = await login({ identifier, password })
-      onLoginSuccess(tokens)
+      await onLoginSuccess(tokens)
     } catch (error) {
       setErrorMessage(loginErrorMessage(error))
     } finally {

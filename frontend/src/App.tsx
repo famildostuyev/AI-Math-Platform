@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import './App.css'
 import LoginScreen from './components/LoginScreen'
-import type { TokenResponse } from './api/auth'
+import { getCurrentUser } from './api/auth'
+import type { CurrentUserResponse, TokenResponse } from './api/auth'
 
 import {
   Archive,
@@ -5011,9 +5012,22 @@ function App() {
   const [screen, setScreen] = useState<Screen>('dashboard')
   const [startInOnlineMode, setStartInOnlineMode] = useState(false)
   const [tokens, setTokens] = useState<TokenResponse | null>(null)
+  const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null)
 
-  if (tokens === null) {
-    return <LoginScreen onLoginSuccess={setTokens} />
+  const handleLoginSuccess = async (loginTokens: TokenResponse) => {
+    try {
+      const authenticatedUser = await getCurrentUser(loginTokens.access_token)
+      setTokens(loginTokens)
+      setCurrentUser(authenticatedUser)
+    } catch (error) {
+      setTokens(null)
+      setCurrentUser(null)
+      throw error
+    }
+  }
+
+  if (tokens === null || currentUser === null) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />
   }
 
   const openDashboard = () => {
