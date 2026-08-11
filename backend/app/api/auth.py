@@ -5,6 +5,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.api.deps import (
     AuthServiceDependency,
@@ -16,7 +18,12 @@ from app.core.security import (
     TokenValidationError,
     decode_access_token,
 )
+from app.database.session import get_db
+from app.models.role import Role
+from app.models.user_role import UserRole
 from app.schemas.auth import (
+    ActiveRoleResponse,
+    CurrentUserResponse,
     LoginRequest,
     LogoutAllResponse,
     LogoutResponse,
@@ -44,6 +51,57 @@ router = APIRouter(
     prefix="/auth",
     tags=["Authentication"],
 )
+
+
+@router.get(
+    "/me",
+    response_model=CurrentUserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get the current authenticated user",
+)
+def get_current_user_profile(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> CurrentUserResponse:
+    """Return the authenticated user's identity and validated active role."""
+
+    if current_user.last_active_role_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No active role is selected.",
+        )
+
+    active_role = db.scalar(
+        select(Role)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .where(
+            UserRole.user_id == current_user.id,
+            UserRole.role_id == current_user.last_active_role_id,
+            UserRole.is_active.is_(True),
+            UserRole.deleted_at.is_(None),
+            Role.is_active.is_(True),
+            Role.deleted_at.is_(None),
+        )
+    )
+
+    if active_role is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The selected role is unavailable.",
+        )
+
+    return CurrentUserResponse(
+        id=current_user.id,
+        first_name=current_user.first_name,
+        last_name=current_user.last_name,
+        email=current_user.email,
+        phone=current_user.phone,
+        active_role=ActiveRoleResponse(
+            id=active_role.id,
+            name=active_role.name,
+            display_name=active_role.display_name,
+        ),
+    )
 
 
 def _client_ip(request: Request) -> str | None:

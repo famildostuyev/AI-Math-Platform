@@ -385,3 +385,22 @@ class VerifyResponse(BaseModel):
 
     success: bool
     message: str
+
+
+class ActiveRoleResponse(BaseModel):
+    """Authenticated user's validated active role."""
+
+    id: uuid.UUID
+    name: str
+    display_name: str
+
+
+class CurrentUserResponse(BaseModel):
+    """Authenticated user identity and active role."""
+
+    id: uuid.UUID
+    first_name: str
+    last_name: str
+    email: str | None
+    phone: str | None
+    active_role: ActiveRoleResponse
