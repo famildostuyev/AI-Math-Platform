@@ -12,6 +12,21 @@ export type TokenResponse = {
   token_type: string
 }
 
+export type ActiveRoleResponse = {
+  id: string
+  name: string
+  display_name: string
+}
+
+export type CurrentUserResponse = {
+  id: string
+  first_name: string
+  last_name: string
+  email: string | null
+  phone: string | null
+  active_role: ActiveRoleResponse
+}
+
 export function login(credentials: LoginRequest): Promise<TokenResponse> {
   return requestJson<TokenResponse>('/api/v1/auth/login', {
     method: 'POST',
@@ -19,5 +34,16 @@ export function login(credentials: LoginRequest): Promise<TokenResponse> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(credentials),
+  })
+}
+
+export function getCurrentUser(
+  accessToken: string,
+): Promise<CurrentUserResponse> {
+  return requestJson<CurrentUserResponse>('/api/v1/auth/me', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
   })
 }
