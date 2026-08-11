@@ -24,6 +24,7 @@ from app.models.user import User
 from app.models.user_role import UserRole
 from app.services.auth_service import (
     AccountInactiveError,
+    AccountUnverifiedError,
     AuthService,
     AuthenticationSessionError,
 )
@@ -127,6 +128,12 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive.",
+        ) from exc
+
+    except AccountUnverifiedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account has not been verified.",
         ) from exc
 
 

@@ -355,6 +355,12 @@ def refresh(
             detail=str(exc),
         ) from exc
 
+    except AccountUnverifiedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+
 
 @router.post(
     "/logout",

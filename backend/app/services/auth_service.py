@@ -697,6 +697,22 @@ class AuthService:
                     "User account is inactive."
                 )
 
+            if not (
+                user.is_email_verified
+                or user.is_phone_verified
+            ):
+                revoke_token_family(
+                    self.db,
+                    family_id=replacement.session.family_id,
+                    reason=REVOCATION_REASON_SECURITY,
+                )
+
+                self.db.commit()
+
+                raise AccountUnverifiedError(
+                    "User account has not been verified."
+                )
+
             tokens = self._build_token_response(
                 user_id=user.id,
                 session_id=replacement.session.id,
@@ -731,6 +747,7 @@ class AuthService:
         except (
             InvalidRefreshTokenError,
             AccountInactiveError,
+            AccountUnverifiedError,
         ):
             raise
 
@@ -835,6 +852,14 @@ class AuthService:
         if not user.is_active:
             raise AccountInactiveError(
                 "User account is inactive."
+            )
+
+        if not (
+            user.is_email_verified
+            or user.is_phone_verified
+        ):
+            raise AccountUnverifiedError(
+                "User account has not been verified."
             )
 
         return user
