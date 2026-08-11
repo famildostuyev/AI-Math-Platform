@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import './App.css'
 import LoginScreen from './components/LoginScreen'
-import { getCurrentUser } from './api/auth'
+import { getCurrentUser, logout } from './api/auth'
 import type { CurrentUserResponse, TokenResponse } from './api/auth'
 
 import {
@@ -282,6 +282,8 @@ function Sidebar({
   firstName,
   lastName,
   roleDisplayName,
+  onLogout,
+  isLogoutPending,
 }: {
   screen: Screen
   onHome: () => void
@@ -289,6 +291,8 @@ function Sidebar({
   firstName: string
   lastName: string
   roleDisplayName: string
+  onLogout: () => void
+  isLogoutPending: boolean
 }) {
   const normalizedFirstName = firstName.trim()
   const normalizedLastName = lastName.trim()
@@ -350,6 +354,15 @@ function Sidebar({
           <div className="avatar">{avatarInitials || '?'}</div>
           <div><strong>{displayName || 'User'}</strong><span>{roleDisplayName}</span><small><i />Online</small></div>
           <ChevronRight size={18} />
+        </button>
+
+        <button
+          className="nav-item"
+          type="button"
+          onClick={onLogout}
+          disabled={isLogoutPending}
+        >
+          <span>{isLogoutPending ? 'Çıxış edilir…' : 'Çıxış'}</span>
         </button>
 
         <div className="theme-row">
@@ -5035,6 +5048,7 @@ function App() {
   const [startInOnlineMode, setStartInOnlineMode] = useState(false)
   const [tokens, setTokens] = useState<TokenResponse | null>(null)
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null)
+  const [isLogoutPending, setIsLogoutPending] = useState(false)
 
   const handleLoginSuccess = async (loginTokens: TokenResponse) => {
     try {
@@ -5045,6 +5059,22 @@ function App() {
       setTokens(null)
       setCurrentUser(null)
       throw error
+    }
+  }
+
+  const handleLogout = async () => {
+    if (tokens === null || isLogoutPending) return
+
+    setIsLogoutPending(true)
+
+    try {
+      await logout(tokens.access_token)
+    } catch {
+      // Local logout must complete even if server revocation fails.
+    } finally {
+      setTokens(null)
+      setCurrentUser(null)
+      setIsLogoutPending(false)
     }
   }
 
@@ -5084,6 +5114,8 @@ function App() {
         firstName={currentUser.first_name}
         lastName={currentUser.last_name}
         roleDisplayName={currentUser.active_role.display_name}
+        onLogout={handleLogout}
+        isLogoutPending={isLogoutPending}
       />
 
       {screen === 'dashboard' && (

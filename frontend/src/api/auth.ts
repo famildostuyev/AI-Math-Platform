@@ -12,6 +12,10 @@ export type TokenResponse = {
   token_type: string
 }
 
+export type LogoutResponse = {
+  revoked: boolean
+}
+
 export type ActiveRoleResponse = {
   id: string
   name: string
@@ -42,6 +46,15 @@ export function getCurrentUser(
 ): Promise<CurrentUserResponse> {
   return requestJson<CurrentUserResponse>('/api/v1/auth/me', {
     method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+}
+
+export function logout(accessToken: string): Promise<LogoutResponse> {
+  return requestJson<LogoutResponse>('/api/v1/auth/logout', {
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
