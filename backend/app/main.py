@@ -1,6 +1,7 @@
 ﻿from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
+from app.api.catalog import router as catalog_router
 from app.api.teacher import router as teacher_router
 
 
@@ -16,6 +17,11 @@ app.include_router(
 
 app.include_router(
     teacher_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    catalog_router,
     prefix="/api/v1",
 )
 
