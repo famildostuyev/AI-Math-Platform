@@ -361,7 +361,15 @@ function Sidebar({
   )
 }
 
-function Dashboard({ onOpenTestBuilder }: { onOpenTestBuilder: () => void }) {
+function Dashboard({
+  onOpenTestBuilder,
+  firstName,
+  roleDisplayName,
+}: {
+  onOpenTestBuilder: () => void
+  firstName: string
+  roleDisplayName: string
+}) {
   return (
     <main className="workspace">
       <div className="content">
@@ -377,7 +385,7 @@ function Dashboard({ onOpenTestBuilder }: { onOpenTestBuilder: () => void }) {
 
           <div className="ai-hero__content">
             <div className="ai-hero__topline">
-              <div><h1>Salam, Elvin müəllim 👋</h1><p>Bu gün sizə necə kömək edə bilərəm?</p></div>
+              <div><h1>Salam, {firstName} {roleDisplayName} 👋</h1><p>Bu gün sizə necə kömək edə bilərəm?</p></div>
               <span className="online-pill">● Online</span>
             </div>
             <div className="ai-input">
@@ -5083,7 +5091,11 @@ function App() {
       />
 
       {screen === 'dashboard' && (
-        <Dashboard onOpenTestBuilder={openTestBuilder} />
+        <Dashboard
+          onOpenTestBuilder={openTestBuilder}
+          firstName={currentUser.first_name}
+          roleDisplayName={currentUser.active_role.display_name}
+        />
       )}
 
       {screen === 'online-tests' && (
