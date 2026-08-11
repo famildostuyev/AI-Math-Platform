@@ -1,8 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import './App.css'
 import LoginScreen from './components/LoginScreen'
-import { getCurrentUser, logout } from './api/auth'
+import { getCurrentUser, logout, refreshTokens } from './api/auth'
 import type { CurrentUserResponse, TokenResponse } from './api/auth'
+import { ApiError } from './api/client'
 
 import {
   Archive,
@@ -5049,13 +5050,79 @@ function App() {
   const [tokens, setTokens] = useState<TokenResponse | null>(null)
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null)
   const [isLogoutPending, setIsLogoutPending] = useState(false)
+  const latestTokensRef = useRef<TokenResponse | null>(null)
+  const refreshPromiseRef = useRef<Promise<TokenResponse> | null>(null)
+
+  const refreshAccessToken = (): Promise<TokenResponse> => {
+    if (refreshPromiseRef.current !== null) {
+      return refreshPromiseRef.current
+    }
+
+    const latestTokens = latestTokensRef.current
+
+    if (latestTokens === null) {
+      return Promise.reject(new Error('Authentication is unavailable.'))
+    }
+
+    const refreshPromise = refreshTokens(latestTokens.refresh_token)
+      .then((rotatedTokens) => {
+        if (refreshPromiseRef.current !== refreshPromise) {
+          throw new Error('Authentication changed during token refresh.')
+        }
+
+        latestTokensRef.current = rotatedTokens
+        setTokens(rotatedTokens)
+        return rotatedTokens
+      })
+      .catch((error: unknown) => {
+        if (refreshPromiseRef.current === refreshPromise) {
+          latestTokensRef.current = null
+          setTokens(null)
+          setCurrentUser(null)
+        }
+
+        throw error
+      })
+      .finally(() => {
+        if (refreshPromiseRef.current === refreshPromise) {
+          refreshPromiseRef.current = null
+        }
+      })
+
+    refreshPromiseRef.current = refreshPromise
+    return refreshPromise
+  }
+
+  const authenticatedRequest = async <T,>(
+    request: (accessToken: string) => Promise<T>,
+  ): Promise<T> => {
+    const latestTokens = latestTokensRef.current
+
+    if (latestTokens === null) {
+      throw new Error('Authentication is unavailable.')
+    }
+
+    try {
+      return await request(latestTokens.access_token)
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) {
+        throw error
+      }
+
+      const rotatedTokens = await refreshAccessToken()
+      return request(rotatedTokens.access_token)
+    }
+  }
 
   const handleLoginSuccess = async (loginTokens: TokenResponse) => {
     try {
       const authenticatedUser = await getCurrentUser(loginTokens.access_token)
+      latestTokensRef.current = loginTokens
       setTokens(loginTokens)
       setCurrentUser(authenticatedUser)
     } catch (error) {
+      latestTokensRef.current = null
+      refreshPromiseRef.current = null
       setTokens(null)
       setCurrentUser(null)
       throw error
@@ -5068,10 +5135,12 @@ function App() {
     setIsLogoutPending(true)
 
     try {
-      await logout(tokens.access_token)
+      await authenticatedRequest((accessToken) => logout(accessToken))
     } catch {
       // Local logout must complete even if server revocation fails.
     } finally {
+      latestTokensRef.current = null
+      refreshPromiseRef.current = null
       setTokens(null)
       setCurrentUser(null)
       setIsLogoutPending(false)
