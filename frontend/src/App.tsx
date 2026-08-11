@@ -1189,10 +1189,6 @@ function TestBuilder({
     useState(startInOnlineMode)
   const [, setDesignLocked] = useState(false)
 
-  useLayoutEffect(() => {
-    setOnlineCreationShortcut(startInOnlineMode)
-  }, [startInOnlineMode])
-
   const resetParameters = () => {
     setQuestionCount(20)
     setDurationMinutes(30)
