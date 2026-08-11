@@ -279,11 +279,29 @@ function Sidebar({
   screen,
   onHome,
   onOpenOnlineTests,
+  firstName,
+  lastName,
+  roleDisplayName,
 }: {
   screen: Screen
   onHome: () => void
   onOpenOnlineTests: () => void
+  firstName: string
+  lastName: string
+  roleDisplayName: string
 }) {
+  const normalizedFirstName = firstName.trim()
+  const normalizedLastName = lastName.trim()
+  const displayName = [
+    normalizedFirstName,
+    normalizedLastName ? `${normalizedLastName.charAt(0)}.` : '',
+  ].filter(Boolean).join(' ')
+  const avatarInitials = [normalizedFirstName, normalizedLastName]
+    .map((name) => name.charAt(0))
+    .filter(Boolean)
+    .join('')
+    .toLocaleUpperCase()
+
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -329,8 +347,8 @@ function Sidebar({
 
       <div className="sidebar__bottom">
         <button className="profile-card" type="button">
-          <div className="avatar">E</div>
-          <div><strong>Elvin R.</strong><span>Müəllim</span><small><i />Online</small></div>
+          <div className="avatar">{avatarInitials || '?'}</div>
+          <div><strong>{displayName || 'User'}</strong><span>{roleDisplayName}</span><small><i />Online</small></div>
           <ChevronRight size={18} />
         </button>
 
@@ -5059,6 +5077,9 @@ function App() {
         screen={screen}
         onHome={openDashboard}
         onOpenOnlineTests={openOnlineTests}
+        firstName={currentUser.first_name}
+        lastName={currentUser.last_name}
+        roleDisplayName={currentUser.active_role.display_name}
       />
 
       {screen === 'dashboard' && (
