@@ -4,6 +4,8 @@ import LoginScreen from './components/LoginScreen'
 import { getCurrentUser, logout, refreshTokens } from './api/auth'
 import type { CurrentUserResponse, TokenResponse } from './api/auth'
 import { ApiError } from './api/client'
+import { getGrades } from './api/catalog'
+import type { GradeCatalogResponse } from './api/catalog'
 
 import {
   Archive,
@@ -99,7 +101,6 @@ const purposes = [
   { id: 'other', title: 'Digər', description: 'İstədiyiniz qaydada sərbəst test tərtib edin.', icon: FilePlus2, tone: 'orange', enabled: false },
 ]
 
-const classes = [5, 6, 7, 8, 9, 10, 11]
 const temporarySections = ['Bölmə 1', 'Bölmə 2', 'Bölmə 3', 'Bölmə 4', 'Bölmə 5']
 const temporaryTopics = ['Mövzu 1', 'Mövzu 2', 'Mövzu 3', 'Mövzu 4', 'Mövzu 5', 'Mövzu 6']
 const questionTypes = [
@@ -1041,7 +1042,7 @@ function StepIndicator({
 }: {
   currentStep: BuilderStep
   selectedPurpose: string | null
-  selectedClass: number | null
+  selectedClass: string | null
   selectedSection: string | null
   topicsReady: boolean
   parametersReady: boolean
@@ -1130,17 +1131,26 @@ function ClockIcon() {
 function TestBuilder({
   onBack,
   onOpenOnlineTests,
+  grades,
+  gradesLoading,
+  gradesError,
+  onRetryGrades,
   startInOnlineMode = false,
 }: {
   onBack: () => void
   onOpenOnlineTests: () => void
+  grades: GradeCatalogResponse[]
+  gradesLoading: boolean
+  gradesError: string | null
+  onRetryGrades: () => void
   startInOnlineMode?: boolean
 }) {
   const [builderStep, setBuilderStep] = useState<BuilderStep>('purpose')
   const [preparationStage, setPreparationStage] =
     useState<PreparationStage>('review')
   const [selectedPurpose, setSelectedPurpose] = useState<string | null>(null)
-  const [selectedClass, setSelectedClass] = useState<number | null>(null)
+  const [selectedGradeId, setSelectedGradeId] = useState<string | null>(null)
+  const [selectedClass, setSelectedClass] = useState<string | null>(null)
   const [selectedSection, setSelectedSection] = useState<string | null>(null)
   const [selectedTopics, setSelectedTopics] = useState<string[]>([])
   const [aiSelectTopics, setAiSelectTopics] = useState(false)
@@ -1253,6 +1263,7 @@ function TestBuilder({
   }
 
   const resetAfterPurpose = () => {
+    setSelectedGradeId(null)
     setSelectedClass(null)
     setSelectedSection(null)
     setSelectedTopics([])
@@ -1285,11 +1296,12 @@ function TestBuilder({
     if (purposeId === 'ksq') setBuilderStep('class')
   }
 
-  const selectClass = (classNumber: number) => {
-    if (selectedClass !== classNumber) {
+  const selectClass = (grade: GradeCatalogResponse) => {
+    if (selectedGradeId !== grade.id) {
       resetAfterClass()
     }
-    setSelectedClass(classNumber)
+    setSelectedGradeId(grade.id)
+    setSelectedClass(grade.display_name)
   }
 
   const selectSection = (section: string) => {
@@ -1723,7 +1735,7 @@ function TestBuilder({
     purposes.find((purpose) => purpose.id === selectedPurpose)?.title ?? 'KSQ'
 
   const onlineClassTopicLabel = [
-    selectedClass !== null ? `${selectedClass}-ci sinif` : null,
+    selectedClass,
     selectedTopics.length > 0 ? selectedTopics.join(', ') : selectedSection,
   ]
     .filter(Boolean)
@@ -2143,18 +2155,33 @@ function TestBuilder({
         {builderStep === 'class' && (
           <section className="builder-panel simplified-panel">
             <div className="class-grid">
-              {classes.map((classNumber) => {
-                const selected = selectedClass === classNumber
+              {gradesLoading && <p>Siniflər yüklənir...</p>}
+
+              {!gradesLoading && gradesError && (
+                <div>
+                  <p>{gradesError}</p>
+                  <button className="secondary-action" type="button" onClick={onRetryGrades}>
+                    Yenidən cəhd et
+                  </button>
+                </div>
+              )}
+
+              {!gradesLoading && !gradesError && grades.length === 0 && (
+                <p>Seçim üçün aktiv sinif tapılmadı.</p>
+              )}
+
+              {!gradesLoading && !gradesError && grades.map((grade) => {
+                const selected = selectedGradeId === grade.id
 
                 return (
                   <button
-                    key={classNumber}
+                    key={grade.id}
                     type="button"
                     className={selected ? 'class-card selected' : 'class-card'}
-                    onClick={() => selectClass(classNumber)}
+                    onClick={() => selectClass(grade)}
                   >
-                    <span>{classNumber}</span>
-                    <strong>{classNumber}-ci sinif</strong>
+                    <span aria-hidden="true"><GraduationCap size={24} /></span>
+                    <strong>{grade.display_name}</strong>
                     {selected && <div className="class-card__check"><Check size={16} /></div>}
                   </button>
                 )
@@ -2169,7 +2196,7 @@ function TestBuilder({
               <button
                 className="primary-action next-right"
                 type="button"
-                disabled={selectedClass === null}
+                disabled={selectedGradeId === null}
                 onClick={() => setBuilderStep('section')}
               >
                 Davam et<ChevronRight size={19} />
@@ -2809,7 +2836,7 @@ function TestBuilder({
                   </div>
 
                   <div className="summary-basic-grid">
-                    <div><span>Sinif</span><strong>{selectedClass}-ci sinif</strong></div>
+                    <div><span>Sinif</span><strong>{selectedClass}</strong></div>
                     <div><span>Fənn</span><strong>Riyaziyyat</strong></div>
                     <div><span>Ümumi sual sayı</span><strong>{questionCount} (maks. 25)</strong></div>
                     <div>
@@ -2963,7 +2990,7 @@ function TestBuilder({
                     </div>
                     <div className="review-fact">
                       <span>Sinif</span>
-                      <strong>{selectedClass}-ci sinif</strong>
+                      <strong>{selectedClass}</strong>
                     </div>
                     <div className="review-fact">
                       <span>Bölmə</span>
@@ -4568,7 +4595,7 @@ function TestBuilder({
                       </div>
 
                       <div className="ksq-header-center">
-                        <strong>{selectedClass}. Sinif Riyaziyyat</strong>
+                        <strong>{selectedClass} Riyaziyyat</strong>
                         <span>{activeVariantLetter} variantı</span>
                       </div>
 
@@ -4752,7 +4779,7 @@ function TestBuilder({
                     </div>
                     <div>
                       <span>Sinif</span>
-                      <strong>{selectedClass}-ci sinif</strong>
+                      <strong>{selectedClass}</strong>
                     </div>
                     <div>
                       <span>Sual sayı</span>
@@ -4914,7 +4941,7 @@ function TestBuilder({
                         </div>
 
                         <div className="ksq-header-center">
-                          <strong>{selectedClass}. Sinif Riyaziyyat</strong>
+                          <strong>{selectedClass} Riyaziyyat</strong>
                           <span>{activeVariantLetter} variantı</span>
                         </div>
 
@@ -5050,8 +5077,24 @@ function App() {
   const [tokens, setTokens] = useState<TokenResponse | null>(null)
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null)
   const [isLogoutPending, setIsLogoutPending] = useState(false)
+  const [grades, setGrades] = useState<GradeCatalogResponse[]>([])
+  const [gradesLoading, setGradesLoading] = useState(false)
+  const [gradesLoaded, setGradesLoaded] = useState(false)
+  const [gradesError, setGradesError] = useState<string | null>(null)
   const latestTokensRef = useRef<TokenResponse | null>(null)
   const refreshPromiseRef = useRef<Promise<TokenResponse> | null>(null)
+  const gradeLoadPromiseRef =
+    useRef<Promise<GradeCatalogResponse[]> | null>(null)
+  const authSessionVersionRef = useRef(0)
+
+  const invalidateGradeCatalog = () => {
+    authSessionVersionRef.current += 1
+    gradeLoadPromiseRef.current = null
+    setGrades([])
+    setGradesLoading(false)
+    setGradesLoaded(false)
+    setGradesError(null)
+  }
 
   const refreshAccessToken = (): Promise<TokenResponse> => {
     if (refreshPromiseRef.current !== null) {
@@ -5077,6 +5120,7 @@ function App() {
       .catch((error: unknown) => {
         if (refreshPromiseRef.current === refreshPromise) {
           latestTokensRef.current = null
+          invalidateGradeCatalog()
           setTokens(null)
           setCurrentUser(null)
         }
@@ -5117,12 +5161,14 @@ function App() {
   const handleLoginSuccess = async (loginTokens: TokenResponse) => {
     try {
       const authenticatedUser = await getCurrentUser(loginTokens.access_token)
+      invalidateGradeCatalog()
       latestTokensRef.current = loginTokens
       setTokens(loginTokens)
       setCurrentUser(authenticatedUser)
     } catch (error) {
       latestTokensRef.current = null
       refreshPromiseRef.current = null
+      invalidateGradeCatalog()
       setTokens(null)
       setCurrentUser(null)
       throw error
@@ -5133,6 +5179,7 @@ function App() {
     if (tokens === null || isLogoutPending) return
 
     setIsLogoutPending(true)
+    invalidateGradeCatalog()
 
     try {
       await authenticatedRequest((accessToken) => logout(accessToken))
@@ -5144,6 +5191,51 @@ function App() {
       setTokens(null)
       setCurrentUser(null)
       setIsLogoutPending(false)
+    }
+  }
+
+  const loadGrades = async () => {
+    const existingPromise = gradeLoadPromiseRef.current
+
+    if (existingPromise !== null) {
+      try {
+        await existingPromise
+      } catch {
+        // The caller that created the request owns the shared error state.
+      }
+      return
+    }
+
+    setGradesLoading(true)
+    setGradesError(null)
+
+    const sessionVersion = authSessionVersionRef.current
+    const gradeLoadPromise = authenticatedRequest((accessToken) =>
+      getGrades(accessToken),
+    )
+    gradeLoadPromiseRef.current = gradeLoadPromise
+
+    try {
+      const catalogGrades = await gradeLoadPromise
+
+      if (authSessionVersionRef.current !== sessionVersion) return
+
+      setGrades(catalogGrades)
+      setGradesLoaded(true)
+    } catch {
+      if (authSessionVersionRef.current !== sessionVersion) return
+
+      setGrades([])
+      setGradesLoaded(false)
+      setGradesError('Sinif siyahısını yükləmək mümkün olmadı.')
+    } finally {
+      if (gradeLoadPromiseRef.current === gradeLoadPromise) {
+        gradeLoadPromiseRef.current = null
+
+        if (authSessionVersionRef.current === sessionVersion) {
+          setGradesLoading(false)
+        }
+      }
     }
   }
 
@@ -5159,6 +5251,7 @@ function App() {
   const openTestBuilder = () => {
     setStartInOnlineMode(false)
     setScreen('test-builder')
+    if (!gradesLoaded && !gradesLoading) void loadGrades()
   }
 
   const openOnlineTests = () => {
@@ -5169,6 +5262,7 @@ function App() {
   const createOnlineTest = () => {
     setStartInOnlineMode(true)
     setScreen('test-builder')
+    if (!gradesLoaded && !gradesLoading) void loadGrades()
   }
 
   const openOnlineTestDetails = () => setScreen('online-test-details')
@@ -5211,6 +5305,10 @@ function App() {
         <TestBuilder
           onBack={openDashboard}
           onOpenOnlineTests={openOnlineTests}
+          grades={grades}
+          gradesLoading={gradesLoading}
+          gradesError={gradesError}
+          onRetryGrades={() => void loadGrades()}
           startInOnlineMode={startInOnlineMode}
         />
       )}
