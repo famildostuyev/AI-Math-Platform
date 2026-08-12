@@ -123,7 +123,9 @@ class CurriculumCourseModelMetadataTest(unittest.TestCase):
             {"name", "purpose_id", "workflow", "ksq", "bsq"}
             .isdisjoint(table.c.keys())
         )
-        self.assertNotIn("sections", relationships)
+        self.assertEqual(relationships.sections.back_populates, "course")
+        self.assertNotIn("delete", relationships.sections.cascade)
+        self.assertNotIn("delete-orphan", relationships.sections.cascade)
         self.assertNotIn("topics", relationships)
 
 

@@ -12,6 +12,7 @@ from app.database.base_model import BaseModel
 if TYPE_CHECKING:
     from app.models.curriculum_program import CurriculumProgram
     from app.models.grade import Grade
+    from app.models.section import Section
     from app.models.subject import Subject
 
 
@@ -94,4 +95,9 @@ class CurriculumCourse(BaseModel):
     grade: Mapped["Grade | None"] = relationship(
         "Grade",
         back_populates="curriculum_courses",
+    )
+
+    sections: Mapped[list["Section"]] = relationship(
+        "Section",
+        back_populates="course",
     )
