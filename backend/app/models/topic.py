@@ -10,25 +10,31 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base_model import BaseModel
 
 if TYPE_CHECKING:
-    from app.models.curriculum_course import CurriculumCourse
-    from app.models.topic import Topic
+    from app.models.section import Section
 
 
-class Section(BaseModel):
-    __tablename__ = "sections"
+class Topic(BaseModel):
+    __tablename__ = "topics"
 
     __table_args__ = (
         UniqueConstraint(
-            "curriculum_course_id",
+            "section_id",
             "name",
-            name="uq_sections_curriculum_course_id_name",
+            name="uq_topics_section_id_name",
         ),
     )
 
-    curriculum_course_id: Mapped[uuid.UUID] = mapped_column(
+    section_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("curriculum_courses.id", ondelete="RESTRICT"),
+        ForeignKey("sections.id", ondelete="RESTRICT"),
         nullable=False,
+        index=True,
+    )
+
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("topics.id", ondelete="RESTRICT"),
+        nullable=True,
         index=True,
     )
 
@@ -61,12 +67,20 @@ class Section(BaseModel):
         nullable=False,
     )
 
-    course: Mapped["CurriculumCourse"] = relationship(
-        "CurriculumCourse",
-        back_populates="sections",
+    section: Mapped["Section"] = relationship(
+        "Section",
+        back_populates="topics",
     )
 
-    topics: Mapped[list["Topic"]] = relationship(
+    parent: Mapped["Topic | None"] = relationship(
         "Topic",
-        back_populates="section",
+        remote_side="Topic.id",
+        foreign_keys=[parent_id],
+        back_populates="children",
+    )
+
+    children: Mapped[list["Topic"]] = relationship(
+        "Topic",
+        foreign_keys="Topic.parent_id",
+        back_populates="parent",
     )

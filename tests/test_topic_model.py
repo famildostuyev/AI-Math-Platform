@@ -5,25 +5,26 @@ import unittest
 from pathlib import Path
 
 from sqlalchemy import Boolean, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import RelationshipDirection
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
 import app.models  # noqa: F401
-from app.models.curriculum_course import CurriculumCourse
 from app.models.section import Section
+from app.models.topic import Topic
 
 
-class SectionModelMetadataTest(unittest.TestCase):
-    def test_metadata_matches_curriculum_section_contract(self) -> None:
-        table = Section.__table__
+class TopicModelMetadataTest(unittest.TestCase):
+    def test_metadata_matches_hierarchical_topic_contract(self) -> None:
+        table = Topic.__table__
 
-        self.assertEqual(table.name, "sections")
+        self.assertEqual(table.name, "topics")
         self.assertEqual(
             set(table.columns.keys()),
             {
-                "id", "curriculum_course_id", "name", "display_name",
+                "id", "section_id", "parent_id", "name", "display_name",
                 "description", "sort_order", "is_active", "created_at",
                 "updated_at", "deleted_at",
             },
@@ -33,18 +34,22 @@ class SectionModelMetadataTest(unittest.TestCase):
         self.assertIn("updated_at", table.c)
         self.assertTrue(table.c.deleted_at.nullable)
 
-        course_column = table.c.curriculum_course_id
-        course_fk = next(iter(course_column.foreign_keys))
-        self.assertFalse(course_column.nullable)
-        self.assertTrue(course_column.index)
-        self.assertEqual(course_fk.target_fullname, "curriculum_courses.id")
-        self.assertEqual(course_fk.ondelete, "RESTRICT")
+        expected_foreign_keys = {
+            "section_id": ("sections.id", False),
+            "parent_id": ("topics.id", True),
+        }
+        for column_name, (target, nullable) in expected_foreign_keys.items():
+            column = table.c[column_name]
+            foreign_key = next(iter(column.foreign_keys))
+            self.assertEqual(column.nullable, nullable)
+            self.assertTrue(column.index)
+            self.assertEqual(foreign_key.target_fullname, target)
+            self.assertEqual(foreign_key.ondelete, "RESTRICT")
 
         self.assertIsInstance(table.c.name.type, String)
         self.assertEqual(table.c.name.type.length, 100)
         self.assertFalse(table.c.name.nullable)
         self.assertFalse(bool(table.c.name.unique))
-        self.assertFalse(bool(table.c.name.index))
         self.assertIsInstance(table.c.display_name.type, String)
         self.assertEqual(table.c.display_name.type.length, 150)
         self.assertFalse(table.c.display_name.nullable)
@@ -66,26 +71,43 @@ class SectionModelMetadataTest(unittest.TestCase):
             for constraint in table.constraints
             if isinstance(constraint, UniqueConstraint)
         }
-        identity = unique_constraints[
-            "uq_sections_curriculum_course_id_name"
-        ]
+        identity = unique_constraints["uq_topics_section_id_name"]
         self.assertEqual(
             [column.name for column in identity.columns],
-            ["curriculum_course_id", "name"],
+            ["section_id", "name"],
         )
+        self.assertNotIn("parent_id", identity.columns)
         self.assertNotIn("deleted_at", identity.columns)
 
-        relationships = Section.__mapper__.relationships
-        self.assertEqual(set(relationships.keys()), {"course", "topics"})
-        self.assertEqual(relationships.course.back_populates, "sections")
+        relationships = Topic.__mapper__.relationships
         self.assertEqual(
-            CurriculumCourse.__mapper__.relationships.sections.back_populates,
-            "course",
+            set(relationships.keys()),
+            {"section", "parent", "children"},
+        )
+        self.assertEqual(relationships.section.back_populates, "topics")
+        self.assertEqual(
+            Section.__mapper__.relationships.topics.back_populates,
+            "section",
+        )
+        self.assertEqual(relationships.parent.back_populates, "children")
+        self.assertEqual(relationships.children.back_populates, "parent")
+        self.assertEqual(
+            relationships.parent.direction,
+            RelationshipDirection.MANYTOONE,
+        )
+        self.assertEqual(
+            relationships.children.direction,
+            RelationshipDirection.ONETOMANY,
+        )
+        self.assertEqual(
+            relationships.parent.remote_side,
+            {table.c.id},
         )
         for relationship in (
-            relationships.course,
-            CurriculumCourse.__mapper__.relationships.sections,
-            relationships.topics,
+            relationships.section,
+            relationships.parent,
+            relationships.children,
+            Section.__mapper__.relationships.topics,
         ):
             self.assertNotIn("delete", relationship.cascade)
             self.assertNotIn("delete-orphan", relationship.cascade)
@@ -94,10 +116,9 @@ class SectionModelMetadataTest(unittest.TestCase):
             {
                 "purpose_id", "workflow", "ksq", "bsq", "selection_limit",
                 "embedding", "semantic_tags", "learning_objectives",
-                "prerequisites", "difficulty", "ai_score",
+                "prerequisites", "difficulty", "ai_score", "generated",
             }.isdisjoint(table.c.keys())
         )
-        self.assertEqual(relationships.topics.back_populates, "section")
 
 
 if __name__ == "__main__":
