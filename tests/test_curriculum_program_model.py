@@ -53,7 +53,10 @@ class CurriculumProgramModelMetadataTest(unittest.TestCase):
         self.assertIn("updated_at", table.c)
         self.assertTrue(table.c.deleted_at.nullable)
         self.assertEqual(len(table.foreign_keys), 0)
-        self.assertEqual(len(CurriculumProgram.__mapper__.relationships), 0)
+        self.assertEqual(
+            set(CurriculumProgram.__mapper__.relationships.keys()),
+            {"courses"},
+        )
 
         self.assertTrue(
             {"version", "effective_from", "effective_to", "academic_year"}

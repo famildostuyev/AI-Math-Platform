@@ -1,7 +1,14 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from sqlalchemy import Boolean, Integer, String, Text, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base_model import BaseModel
+
+if TYPE_CHECKING:
+    from app.models.curriculum_course import CurriculumCourse
 
 
 class Subject(BaseModel):
@@ -36,4 +43,9 @@ class Subject(BaseModel):
         default=True,
         server_default=text("true"),
         nullable=False,
+    )
+
+    courses: Mapped[list["CurriculumCourse"]] = relationship(
+        "CurriculumCourse",
+        back_populates="subject",
     )

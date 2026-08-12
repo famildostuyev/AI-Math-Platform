@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base_model import BaseModel
 
 if TYPE_CHECKING:
+    from app.models.curriculum_course import CurriculumCourse
     from app.models.group_grade import GroupGrade
     from app.models.group_member import GroupMember
 
@@ -49,5 +50,10 @@ class Grade(BaseModel):
 
     group_members: Mapped[list["GroupMember"]] = relationship(
         "GroupMember",
+        back_populates="grade",
+    )
+
+    curriculum_courses: Mapped[list["CurriculumCourse"]] = relationship(
+        "CurriculumCourse",
         back_populates="grade",
     )

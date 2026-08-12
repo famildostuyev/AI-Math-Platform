@@ -59,7 +59,10 @@ class SubjectModelMetadataTest(unittest.TestCase):
 
         self.assertTrue(table.c.deleted_at.nullable)
         self.assertEqual(len(table.foreign_keys), 0)
-        self.assertEqual(len(Subject.__mapper__.relationships), 0)
+        self.assertEqual(
+            set(Subject.__mapper__.relationships.keys()),
+            {"courses"},
+        )
 
 
 if __name__ == "__main__":
