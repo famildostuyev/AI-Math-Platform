@@ -4,7 +4,14 @@ import sys
 import unittest
 from pathlib import Path
 
-from sqlalchemy import Boolean, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    ForeignKeyConstraint,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import RelationshipDirection
 
 
@@ -34,17 +41,43 @@ class TopicModelMetadataTest(unittest.TestCase):
         self.assertIn("updated_at", table.c)
         self.assertTrue(table.c.deleted_at.nullable)
 
-        expected_foreign_keys = {
-            "section_id": ("sections.id", False),
-            "parent_id": ("topics.id", True),
+        self.assertFalse(table.c.section_id.nullable)
+        self.assertTrue(table.c.section_id.index)
+        self.assertTrue(table.c.parent_id.nullable)
+        self.assertTrue(table.c.parent_id.index)
+
+        foreign_key_constraints = {
+            constraint.name: constraint
+            for constraint in table.constraints
+            if isinstance(constraint, ForeignKeyConstraint)
         }
-        for column_name, (target, nullable) in expected_foreign_keys.items():
-            column = table.c[column_name]
-            foreign_key = next(iter(column.foreign_keys))
-            self.assertEqual(column.nullable, nullable)
-            self.assertTrue(column.index)
-            self.assertEqual(foreign_key.target_fullname, target)
-            self.assertEqual(foreign_key.ondelete, "RESTRICT")
+        section_fk = next(
+            constraint
+            for constraint in foreign_key_constraints.values()
+            if [element.target_fullname for element in constraint.elements]
+            == ["sections.id"]
+        )
+        self.assertEqual(section_fk.ondelete, "RESTRICT")
+        parent_fk = foreign_key_constraints[
+            "fk_topics_section_id_parent_id_topics"
+        ]
+        self.assertEqual(
+            [column.name for column in parent_fk.columns],
+            ["section_id", "parent_id"],
+        )
+        self.assertEqual(
+            [element.target_fullname for element in parent_fk.elements],
+            ["topics.section_id", "topics.id"],
+        )
+        self.assertEqual(parent_fk.ondelete, "RESTRICT")
+        self.assertFalse(
+            any(
+                constraint
+                for constraint in foreign_key_constraints.values()
+                if [column.name for column in constraint.columns]
+                == ["parent_id"]
+            )
+        )
 
         self.assertIsInstance(table.c.name.type, String)
         self.assertEqual(table.c.name.type.length, 100)
@@ -78,6 +111,11 @@ class TopicModelMetadataTest(unittest.TestCase):
         )
         self.assertNotIn("parent_id", identity.columns)
         self.assertNotIn("deleted_at", identity.columns)
+        parent_key = unique_constraints["uq_topics_section_id_id"]
+        self.assertEqual(
+            [column.name for column in parent_key.columns],
+            ["section_id", "id"],
+        )
 
         relationships = Topic.__mapper__.relationships
         self.assertEqual(
@@ -101,8 +139,9 @@ class TopicModelMetadataTest(unittest.TestCase):
         )
         self.assertEqual(
             relationships.parent.remote_side,
-            {table.c.id},
+            {table.c.section_id, table.c.id},
         )
+        self.assertTrue(relationships.children.passive_deletes)
         for relationship in (
             relationships.section,
             relationships.parent,
