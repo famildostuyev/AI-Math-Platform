@@ -12,17 +12,17 @@ BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
 from app.database.base import Base
-from app.models import ContentBlock, TextBlockContent
+from app.models import ContentBlock, FormulaBlockContent
 
 
-class TextBlockContentModelMetadataTest(unittest.TestCase):
-    def test_metadata_matches_canonical_text_contract(self) -> None:
-        table = TextBlockContent.__table__
+class FormulaBlockContentModelMetadataTest(unittest.TestCase):
+    def test_metadata_matches_canonical_formula_contract(self) -> None:
+        table = FormulaBlockContent.__table__
 
-        self.assertEqual(table.name, "text_block_contents")
+        self.assertEqual(table.name, "formula_block_contents")
         self.assertEqual(
             set(table.columns.keys()),
-            {"content_block_id", "source_text", "format_version"},
+            {"content_block_id", "source_latex", "format_version"},
         )
 
         content_block_column = table.c.content_block_id
@@ -33,9 +33,9 @@ class TextBlockContentModelMetadataTest(unittest.TestCase):
         self.assertEqual(content_block_fk.target_fullname, "content_blocks.id")
         self.assertEqual(content_block_fk.ondelete, "RESTRICT")
 
-        self.assertIsInstance(table.c.source_text.type, Text)
-        self.assertIsNone(table.c.source_text.type.length)
-        self.assertFalse(table.c.source_text.nullable)
+        self.assertIsInstance(table.c.source_latex.type, Text)
+        self.assertIsNone(table.c.source_latex.type.length)
+        self.assertFalse(table.c.source_latex.nullable)
 
         self.assertIsInstance(table.c.format_version.type, Integer)
         self.assertFalse(table.c.format_version.nullable)
@@ -50,12 +50,12 @@ class TextBlockContentModelMetadataTest(unittest.TestCase):
         self.assertEqual(
             checks,
             {
-                "ck_text_block_contents_format_version_positive":
+                "ck_formula_block_contents_format_version_positive":
                     "format_version > 0",
             },
         )
         self.assertFalse(
-            any("source_text" in expression for expression in checks.values())
+            any("source_latex" in expression for expression in checks.values())
         )
 
         self.assertTrue(
@@ -63,28 +63,30 @@ class TextBlockContentModelMetadataTest(unittest.TestCase):
                 "id", "created_at", "updated_at", "deleted_at", "is_active",
                 "question_revision_id", "block_type", "sort_order",
                 "revision_number", "status", "approved_by", "reviewed_by",
-                "rendered_html", "editor_state", "editor_json", "payload",
-                "ai_status", "ai_proposal_id", "source_document_id",
-                "ocr_confidence",
+                "rendered_html", "rendered_svg", "rendered_mathml",
+                "editor_state", "editor_json", "payload", "source_format",
+                "display_mode", "alignment", "equation_number", "label",
+                "caption", "style", "font_size", "renderer", "ai_status",
+                "ai_proposal_id", "source_document_id", "ocr_confidence",
             }.isdisjoint(table.c.keys())
         )
 
-        relationships = TextBlockContent.__mapper__.relationships
+        relationships = FormulaBlockContent.__mapper__.relationships
         self.assertEqual(set(relationships.keys()), {"content_block"})
         self.assertFalse(relationships.content_block.uselist)
         self.assertEqual(
             relationships.content_block.back_populates,
-            "text_content",
+            "formula_content",
         )
         self.assertNotIn("delete", relationships.content_block.cascade)
         self.assertNotIn("delete-orphan", relationships.content_block.cascade)
 
-        text_relationship = ContentBlock.__mapper__.relationships.text_content
-        self.assertFalse(text_relationship.uselist)
-        self.assertEqual(text_relationship.back_populates, "content_block")
-        self.assertTrue(text_relationship.passive_deletes)
-        self.assertNotIn("delete", text_relationship.cascade)
-        self.assertNotIn("delete-orphan", text_relationship.cascade)
+        formula_relationship = ContentBlock.__mapper__.relationships.formula_content
+        self.assertFalse(formula_relationship.uselist)
+        self.assertEqual(formula_relationship.back_populates, "content_block")
+        self.assertTrue(formula_relationship.passive_deletes)
+        self.assertNotIn("delete", formula_relationship.cascade)
+        self.assertNotIn("delete-orphan", formula_relationship.cascade)
 
         # Parent block-type compatibility is a cross-table service invariant;
         # this table deliberately has no duplicated discriminator or local CHECK.
@@ -97,17 +99,16 @@ class TextBlockContentModelMetadataTest(unittest.TestCase):
             "question_types", "question_families", "question_forms",
             "question_revisions", "question_revision_related_topics",
             "question_revision_purposes", "content_blocks",
-            "text_block_contents",
+            "text_block_contents", "formula_block_contents",
         }
         self.assertTrue(expected_tables.issubset(Base.metadata.tables))
 
         for excluded_table in {
-            "media_assets", "image_block_contents",
-            "geometry_block_contents", "graph_block_contents",
-            "table_block_contents", "table_rows", "table_cells",
-            "diagram_block_contents", "answer_options", "accepted_answers",
-            "solutions", "hints", "rubrics", "media", "situation_contexts",
-            "matching_items", "assessment_rules",
+            "media_assets", "image_block_contents", "geometry_block_contents",
+            "graph_block_contents", "table_block_contents", "table_rows",
+            "table_cells", "diagram_block_contents", "answer_options",
+            "accepted_answers", "solutions", "hints", "rubrics", "media",
+            "situation_contexts", "matching_items", "assessment_rules",
         }:
             self.assertNotIn(excluded_table, Base.metadata.tables)
 

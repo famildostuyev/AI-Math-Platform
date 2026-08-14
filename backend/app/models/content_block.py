@@ -68,3 +68,10 @@ class ContentBlock(BaseModel):
         uselist=False,
         passive_deletes=True,
     )
+
+    formula_content: Mapped["FormulaBlockContent | None"] = relationship(
+        "FormulaBlockContent",
+        back_populates="content_block",
+        uselist=False,
+        passive_deletes=True,
+    )
