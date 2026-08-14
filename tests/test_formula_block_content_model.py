@@ -104,7 +104,7 @@ class FormulaBlockContentModelMetadataTest(unittest.TestCase):
         self.assertTrue(expected_tables.issubset(Base.metadata.tables))
 
         for excluded_table in {
-            "media_assets", "image_block_contents", "geometry_block_contents",
+            "image_block_contents", "geometry_block_contents",
             "graph_block_contents", "table_block_contents", "table_rows",
             "table_cells", "diagram_block_contents", "answer_options",
             "accepted_answers", "solutions", "hints", "rubrics", "media",

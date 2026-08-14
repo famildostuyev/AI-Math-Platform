@@ -7,6 +7,7 @@ from app.models.group import Group
 from app.models.group_grade import GroupGrade
 from app.models.group_member import GroupMember
 from app.models.group_purpose import GroupPurpose
+from app.models.media_asset import MediaAsset
 from app.models.permission import Permission
 from app.models.purpose import Purpose
 from app.models.question_family import QuestionFamily
@@ -37,6 +38,7 @@ __all__ = [
     "GroupGrade",
     "GroupMember",
     "GroupPurpose",
+    "MediaAsset",
     "Permission",
     "Purpose",
     "QuestionFamily",
