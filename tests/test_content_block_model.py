@@ -83,7 +83,10 @@ class ContentBlockModelMetadataTest(unittest.TestCase):
         self.assertNotIn("is_active", table.c)
 
         relationships = ContentBlock.__mapper__.relationships
-        self.assertEqual(set(relationships.keys()), {"question_revision"})
+        self.assertEqual(
+            set(relationships.keys()),
+            {"question_revision", "text_content"},
+        )
         self.assertFalse(relationships.question_revision.uselist)
         self.assertEqual(
             relationships.question_revision.back_populates,
@@ -120,12 +123,12 @@ class ContentBlockModelMetadataTest(unittest.TestCase):
         self.assertIn("content_blocks", Base.metadata.tables)
 
         for excluded_table in {
-            "text_block_contents", "formula_block_contents", "media_assets",
-            "image_block_contents", "geometry_block_contents",
-            "graph_block_contents", "table_block_contents", "table_rows",
-            "table_cells", "diagram_block_contents", "answer_options",
-            "accepted_answers", "solutions", "hints", "rubrics", "media",
-            "situation_contexts", "matching_items", "assessment_rules",
+            "formula_block_contents", "media_assets", "image_block_contents",
+            "geometry_block_contents", "graph_block_contents",
+            "table_block_contents", "table_rows", "table_cells",
+            "diagram_block_contents", "answer_options", "accepted_answers",
+            "solutions", "hints", "rubrics", "media", "situation_contexts",
+            "matching_items", "assessment_rules",
         }:
             self.assertNotIn(excluded_table, Base.metadata.tables)
 

@@ -61,3 +61,10 @@ class ContentBlock(BaseModel):
         foreign_keys=[question_revision_id],
         back_populates="content_blocks",
     )
+
+    text_content: Mapped["TextBlockContent | None"] = relationship(
+        "TextBlockContent",
+        back_populates="content_block",
+        uselist=False,
+        passive_deletes=True,
+    )

@@ -19,6 +19,7 @@ from app.models.role_permission import RolePermission
 from app.models.section import Section
 from app.models.subject import Subject
 from app.models.topic import Topic
+from app.models.text_block_content import TextBlockContent
 from app.models.user import User
 from app.models.user_relationship import UserRelationship
 from app.models.user_role import UserRole
@@ -47,6 +48,7 @@ __all__ = [
     "Section",
     "Subject",
     "Topic",
+    "TextBlockContent",
     "User",
     "UserRelationship",
     "UserRole",
