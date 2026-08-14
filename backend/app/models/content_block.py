@@ -75,3 +75,10 @@ class ContentBlock(BaseModel):
         uselist=False,
         passive_deletes=True,
     )
+
+    image_content: Mapped["ImageBlockContent | None"] = relationship(
+        "ImageBlockContent",
+        back_populates="content_block",
+        uselist=False,
+        passive_deletes=True,
+    )

@@ -85,7 +85,12 @@ class ContentBlockModelMetadataTest(unittest.TestCase):
         relationships = ContentBlock.__mapper__.relationships
         self.assertEqual(
             set(relationships.keys()),
-            {"question_revision", "text_content", "formula_content"},
+            {
+                "question_revision",
+                "text_content",
+                "formula_content",
+                "image_content",
+            },
         )
         self.assertFalse(relationships.question_revision.uselist)
         self.assertEqual(
@@ -123,7 +128,6 @@ class ContentBlockModelMetadataTest(unittest.TestCase):
         self.assertIn("content_blocks", Base.metadata.tables)
 
         for excluded_table in {
-            "image_block_contents",
             "geometry_block_contents", "graph_block_contents",
             "table_block_contents", "table_rows", "table_cells",
             "diagram_block_contents", "answer_options", "accepted_answers",

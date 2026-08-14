@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy import BigInteger, CheckConstraint, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base_model import BaseModel
 
@@ -72,4 +72,10 @@ class MediaAsset(BaseModel):
     height_px: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
+    )
+
+    image_block_contents: Mapped[list["ImageBlockContent"]] = relationship(
+        "ImageBlockContent",
+        back_populates="media_asset",
+        passive_deletes=True,
     )

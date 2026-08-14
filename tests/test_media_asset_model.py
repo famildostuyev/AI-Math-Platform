@@ -105,7 +105,10 @@ class MediaAssetModelMetadataTest(unittest.TestCase):
                 "public_url", "signed_url", "absolute_path",
             }.isdisjoint(table.c.keys())
         )
-        self.assertEqual(set(MediaAsset.__mapper__.relationships.keys()), set())
+        self.assertEqual(
+            set(MediaAsset.__mapper__.relationships.keys()),
+            {"image_block_contents"},
+        )
         self.assertEqual(len(table.foreign_keys), 0)
 
         expected_tables = {
@@ -119,11 +122,12 @@ class MediaAssetModelMetadataTest(unittest.TestCase):
             "text_block_contents",
             "formula_block_contents",
             "media_assets",
+            "image_block_contents",
         }
         self.assertTrue(expected_tables.issubset(Base.metadata.tables))
 
         for excluded_table in {
-            "image_block_contents", "geometry_block_contents",
+            "geometry_block_contents",
             "graph_block_contents", "table_block_contents", "table_rows",
             "table_cells", "diagram_block_contents", "answer_options",
             "accepted_answers", "solutions", "hints", "rubrics",
