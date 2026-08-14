@@ -82,3 +82,10 @@ class ContentBlock(BaseModel):
         uselist=False,
         passive_deletes=True,
     )
+
+    geometry_content: Mapped["GeometryBlockContent | None"] = relationship(
+        "GeometryBlockContent",
+        back_populates="content_block",
+        uselist=False,
+        passive_deletes=True,
+    )

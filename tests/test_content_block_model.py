@@ -90,6 +90,7 @@ class ContentBlockModelMetadataTest(unittest.TestCase):
                 "text_content",
                 "formula_content",
                 "image_content",
+                "geometry_content",
             },
         )
         self.assertFalse(relationships.question_revision.uselist)
@@ -128,7 +129,7 @@ class ContentBlockModelMetadataTest(unittest.TestCase):
         self.assertIn("content_blocks", Base.metadata.tables)
 
         for excluded_table in {
-            "geometry_block_contents", "graph_block_contents",
+            "graph_block_contents",
             "table_block_contents", "table_rows", "table_cells",
             "diagram_block_contents", "answer_options", "accepted_answers",
             "solutions", "hints", "rubrics", "media", "situation_contexts",

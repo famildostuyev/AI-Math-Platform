@@ -3,6 +3,7 @@ from app.models.content_block import ContentBlock
 from app.models.curriculum_course import CurriculumCourse
 from app.models.curriculum_program import CurriculumProgram
 from app.models.formula_block_content import FormulaBlockContent
+from app.models.geometry_block_content import GeometryBlockContent
 from app.models.group import Group
 from app.models.group_grade import GroupGrade
 from app.models.group_member import GroupMember
@@ -34,6 +35,7 @@ __all__ = [
     "CurriculumCourse",
     "CurriculumProgram",
     "FormulaBlockContent",
+    "GeometryBlockContent",
     "Grade",
     "Group",
     "GroupGrade",
