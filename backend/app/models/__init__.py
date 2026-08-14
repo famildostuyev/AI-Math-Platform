@@ -1,4 +1,5 @@
 ﻿from app.models.grade import Grade
+from app.models.content_block import ContentBlock
 from app.models.curriculum_course import CurriculumCourse
 from app.models.curriculum_program import CurriculumProgram
 from app.models.group import Group
@@ -25,6 +26,7 @@ from app.models.user_session import UserSession
 from app.models.verification_challenge import VerificationChallenge
 
 __all__ = [
+    "ContentBlock",
     "CurriculumCourse",
     "CurriculumProgram",
     "Grade",

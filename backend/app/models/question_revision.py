@@ -186,3 +186,10 @@ class QuestionRevision(BaseModel):
         back_populates="based_on_revision",
         passive_deletes=True,
     )
+
+    content_blocks: Mapped[list["ContentBlock"]] = relationship(
+        "ContentBlock",
+        back_populates="question_revision",
+        order_by="ContentBlock.sort_order",
+        passive_deletes=True,
+    )

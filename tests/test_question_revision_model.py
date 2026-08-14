@@ -127,6 +127,7 @@ class QuestionRevisionModelMetadataTest(unittest.TestCase):
             {
                 "question_form", "primary_topic", "created_by_user",
                 "reviewed_by_user", "based_on_revision", "derived_revisions",
+                "content_blocks",
             },
         )
         for scalar_name in {

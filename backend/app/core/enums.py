@@ -97,3 +97,13 @@ class QuestionDifficulty(str, Enum):
     EASY = "easy"
     MEDIUM = "medium"
     HARD = "hard"
+
+
+class ContentBlockType(str, Enum):
+    TEXT = "text"
+    FORMULA = "formula"
+    IMAGE = "image"
+    GEOMETRY = "geometry"
+    GRAPH = "graph"
+    TABLE = "table"
+    DIAGRAM = "diagram"
