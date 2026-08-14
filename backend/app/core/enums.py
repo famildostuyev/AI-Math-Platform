@@ -60,3 +60,40 @@ class GroupMembershipStatus(str, Enum):
     REJECTED = "rejected"
     LEFT = "left"
     REMOVED = "removed"
+
+
+class QuestionFamilyOriginKind(str, Enum):
+    AUTHORED = "authored"
+    IMPORTED = "imported"
+    AI_GENERATED_SIMILAR = "ai_generated_similar"
+
+
+class QuestionFormDerivationKind(str, Enum):
+    ORIGINAL = "original"
+    TRANSFORMED = "transformed"
+
+
+class OpenResponseMode(str, Enum):
+    SHORT_ANSWER = "short_answer"
+    DETAILED_SOLUTION = "detailed_solution"
+
+
+class QuestionRevisionStatus(str, Enum):
+    DRAFT = "draft"
+    PROPOSED = "proposed"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class QuestionRevisionProvenanceKind(str, Enum):
+    HUMAN_AUTHORED = "human_authored"
+    IMPORTED = "imported"
+    AI_GENERATED = "ai_generated"
+    AI_TRANSFORMED = "ai_transformed"
+    ADMIN_EDITED = "admin_edited"
+
+
+class QuestionDifficulty(str, Enum):
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"

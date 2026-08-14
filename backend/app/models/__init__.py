@@ -7,6 +7,12 @@ from app.models.group_member import GroupMember
 from app.models.group_purpose import GroupPurpose
 from app.models.permission import Permission
 from app.models.purpose import Purpose
+from app.models.question_family import QuestionFamily
+from app.models.question_form import QuestionForm
+from app.models.question_revision import QuestionRevision
+from app.models.question_revision_purpose import QuestionRevisionPurpose
+from app.models.question_revision_related_topic import QuestionRevisionRelatedTopic
+from app.models.question_type import QuestionType
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.section import Section
@@ -28,6 +34,12 @@ __all__ = [
     "GroupPurpose",
     "Permission",
     "Purpose",
+    "QuestionFamily",
+    "QuestionForm",
+    "QuestionRevision",
+    "QuestionRevisionPurpose",
+    "QuestionRevisionRelatedTopic",
+    "QuestionType",
     "Role",
     "RolePermission",
     "Section",
