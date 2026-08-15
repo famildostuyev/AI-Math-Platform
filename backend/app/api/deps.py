@@ -211,7 +211,9 @@ def require_roles(
                 UserRole.role_id
                 == current_user.last_active_role_id,
                 UserRole.is_active.is_(True),
+                UserRole.deleted_at.is_(None),
                 Role.is_active.is_(True),
+                Role.deleted_at.is_(None),
             )
         )
 
