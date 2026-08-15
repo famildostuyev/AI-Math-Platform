@@ -6,7 +6,9 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+from sqlalchemy.exc import IntegrityError
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
@@ -24,8 +26,16 @@ from app.models.question_form import QuestionForm
 from app.models.question_revision import QuestionRevision
 from app.models.question_revision_purpose import QuestionRevisionPurpose
 from app.models.question_revision_related_topic import QuestionRevisionRelatedTopic
-from app.schemas.question_editor import QuestionDraftCreate, QuestionRevisionEditorRead
+from app.models.content_block import ContentBlock
+from app.models.text_block_content import TextBlockContent
+from app.schemas.question_editor import (
+    QuestionDraftCreate,
+    QuestionRevisionEditorRead,
+    TextBlockCreate,
+    TextBlockRead,
+)
 from app.services.question_editor_service import (
+    ContentBlockOrderConflictError,
     PurposeNotFoundError,
     QuestionEditorService,
     QuestionTypeNotFoundError,
@@ -34,6 +44,9 @@ from app.services.question_editor_service import (
     RevisionNotFoundError,
     TopicNotFoundError,
     UnsupportedEditorBlockTypeError,
+)
+from app.services.structured_text_service import (
+    UnsupportedStructuredTextVersionError,
 )
 
 
@@ -47,6 +60,46 @@ def scalar_result(values: list[object]) -> MagicMock:
 
 
 class QuestionEditorServiceTest(unittest.TestCase):
+    def _text_block_request(self) -> TextBlockCreate:
+        return TextBlockCreate.model_validate({
+            "block_type": "text",
+            "payload": {
+                "document": {
+                    "type": "document",
+                    "content": [{
+                        "type": "paragraph",
+                        "content": [
+                            {"type": "text", "text": "Solve "},
+                            {"type": "inline_math", "latex": "x^2"},
+                        ],
+                    }],
+                },
+                "format_version": 1,
+            },
+            "expected_revision_updated_at": NOW,
+        })
+
+    def _text_block_db(
+        self,
+        *,
+        status: QuestionRevisionStatus = QuestionRevisionStatus.DRAFT,
+        updated_at: datetime = NOW,
+        maximum_sort_order: int | None = None,
+    ) -> tuple[MagicMock, SimpleNamespace]:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(), status=status, updated_at=updated_at,
+        )
+        db = MagicMock()
+        db.scalar.side_effect = [revision, maximum_sort_order]
+
+        def assign_block_id() -> None:
+            block = db.add.call_args.args[0]
+            if isinstance(block, ContentBlock):
+                block.id = uuid.uuid4()
+
+        db.flush.side_effect = assign_block_id
+        return db, revision
+
     def _draft_db(self, scalar_values: list[object]) -> MagicMock:
         db = MagicMock()
         db.scalar.side_effect = scalar_values
@@ -357,6 +410,165 @@ class QuestionEditorServiceTest(unittest.TestCase):
             QuestionEditorService(MagicMock()).ensure_revision_timestamp_matches(
                 SimpleNamespace(updated_at=NOW), NOW - timedelta(seconds=1),
             )
+
+    def test_draft_revision_creates_canonical_text_block(self) -> None:
+        db, revision = self._text_block_db()
+        new_timestamp = NOW + timedelta(seconds=1)
+
+        with patch(
+            "app.services.question_editor_service._utc_now",
+            return_value=new_timestamp,
+        ):
+            response = QuestionEditorService(db).create_text_block(
+                revision_id=revision.id,
+                request=self._text_block_request(),
+            )
+
+        created = [call.args[0] for call in db.add.call_args_list]
+        block, content = created
+        self.assertIsInstance(block, ContentBlock)
+        self.assertEqual(block.question_revision_id, revision.id)
+        self.assertEqual(block.block_type, ContentBlockType.TEXT)
+        self.assertIsInstance(content, TextBlockContent)
+        self.assertEqual(content.content_block_id, block.id)
+        self.assertEqual(content.source_text, "Solve x^2")
+        self.assertEqual(content.document_data["type"], "document")
+        self.assertEqual(content.format_version, 1)
+        self.assertIsInstance(response, TextBlockRead)
+        self.assertEqual(response.payload.source_text, "Solve x^2")
+        self.assertEqual(response.payload.document.type, "document")
+        self.assertEqual(response.payload.format_version, 1)
+        self.assertEqual(revision.updated_at, new_timestamp)
+        db.commit.assert_called_once_with()
+        db.rollback.assert_not_called()
+
+    def test_revision_lookup_is_active_non_deleted_and_locked(self) -> None:
+        db, revision = self._text_block_db()
+        QuestionEditorService(db).create_text_block(
+            revision_id=revision.id,
+            request=self._text_block_request(),
+        )
+        statement = str(db.scalar.call_args_list[0].args[0])
+        self.assertIn("question_revisions.deleted_at IS NULL", statement)
+        self.assertIn("question_forms.deleted_at IS NULL", statement)
+        self.assertIn("question_families.deleted_at IS NULL", statement)
+        self.assertIn("FOR UPDATE", statement)
+
+    def test_empty_active_block_list_starts_at_1000(self) -> None:
+        db, revision = self._text_block_db(maximum_sort_order=None)
+        response = QuestionEditorService(db).create_text_block(
+            revision_id=revision.id,
+            request=self._text_block_request(),
+        )
+        self.assertEqual(response.sort_order, 1000)
+
+    def test_existing_maximum_appends_with_1000_spacing(self) -> None:
+        db, revision = self._text_block_db(maximum_sort_order=1000)
+        response = QuestionEditorService(db).create_text_block(
+            revision_id=revision.id,
+            request=self._text_block_request(),
+        )
+        self.assertEqual(response.sort_order, 2000)
+
+    def test_maximum_query_uses_database_max_and_ignores_deleted_blocks(self) -> None:
+        db, revision = self._text_block_db(maximum_sort_order=3000)
+        QuestionEditorService(db).create_text_block(
+            revision_id=revision.id,
+            request=self._text_block_request(),
+        )
+        statement = str(db.scalar.call_args_list[1].args[0])
+        self.assertIn("max(content_blocks.sort_order)", statement)
+        self.assertIn("content_blocks.question_revision_id", statement)
+        self.assertIn("content_blocks.deleted_at IS NULL", statement)
+        db.scalars.assert_not_called()
+
+    def test_content_block_is_flushed_before_shared_pk_payload_is_added(self) -> None:
+        db, revision = self._text_block_db()
+        QuestionEditorService(db).create_text_block(
+            revision_id=revision.id,
+            request=self._text_block_request(),
+        )
+        method_names = [call[0] for call in db.method_calls]
+        first_add = method_names.index("add")
+        flush = method_names.index("flush")
+        second_add = method_names.index("add", first_add + 1)
+        self.assertLess(first_add, flush)
+        self.assertLess(flush, second_add)
+
+    def test_revision_not_found_rolls_back_without_commit(self) -> None:
+        db = MagicMock()
+        db.scalar.return_value = None
+        with self.assertRaises(RevisionNotFoundError):
+            QuestionEditorService(db).create_text_block(
+                revision_id=uuid.uuid4(), request=self._text_block_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+        db.add.assert_not_called()
+
+    def test_non_draft_revision_rolls_back_without_commit(self) -> None:
+        db, revision = self._text_block_db(
+            status=QuestionRevisionStatus.APPROVED,
+        )
+        with self.assertRaises(RevisionNotEditableError):
+            QuestionEditorService(db).create_text_block(
+                revision_id=revision.id, request=self._text_block_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+        self.assertEqual(db.scalar.call_count, 1)
+
+    def test_stale_concurrency_rolls_back_without_commit(self) -> None:
+        db, revision = self._text_block_db(
+            updated_at=NOW + timedelta(seconds=1),
+        )
+        with self.assertRaises(RevisionConflictError):
+            QuestionEditorService(db).create_text_block(
+                revision_id=revision.id, request=self._text_block_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+        self.assertEqual(db.scalar.call_count, 1)
+
+    def test_invalid_structured_text_version_rolls_back(self) -> None:
+        request = self._text_block_request()
+        invalid_payload = request.payload.model_copy(update={"format_version": 2})
+        invalid_request = request.model_copy(update={"payload": invalid_payload})
+        db, revision = self._text_block_db()
+        with self.assertRaises(UnsupportedStructuredTextVersionError):
+            QuestionEditorService(db).create_text_block(
+                revision_id=revision.id, request=invalid_request,
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+        db.add.assert_not_called()
+
+    def test_payload_add_failure_rolls_back_partial_block(self) -> None:
+        db, revision = self._text_block_db()
+
+        def fail_second_add(instance: object) -> None:
+            if isinstance(instance, TextBlockContent):
+                raise RuntimeError("payload insert failed")
+
+        db.add.side_effect = fail_second_add
+        with self.assertRaises(RuntimeError):
+            QuestionEditorService(db).create_text_block(
+                revision_id=revision.id, request=self._text_block_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+
+    def test_integrity_conflict_is_translated_and_rolled_back(self) -> None:
+        db, revision = self._text_block_db()
+        db.commit.side_effect = IntegrityError(
+            "insert", {}, Exception("active order conflict"),
+        )
+        with self.assertRaises(ContentBlockOrderConflictError):
+            QuestionEditorService(db).create_text_block(
+                revision_id=revision.id, request=self._text_block_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_called_once_with()
 
 
 if __name__ == "__main__":

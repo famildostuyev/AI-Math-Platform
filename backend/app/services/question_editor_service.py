@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.enums import (
@@ -21,6 +22,7 @@ from app.models.question_revision import QuestionRevision
 from app.models.question_revision_purpose import QuestionRevisionPurpose
 from app.models.question_revision_related_topic import QuestionRevisionRelatedTopic
 from app.models.question_type import QuestionType
+from app.models.text_block_content import TextBlockContent
 from app.models.topic import Topic
 from app.schemas.question_editor import (
     FormulaBlockPayloadRead,
@@ -32,10 +34,18 @@ from app.schemas.question_editor import (
     QuestionDraftCreate,
     QuestionDraftRead,
     QuestionRevisionEditorRead,
+    TextBlockCreate,
     TextBlockPayloadRead,
     TextBlockRead,
 )
-from app.services.structured_text_service import normalize_text_content
+from app.services.structured_text_service import (
+    normalize_text_content,
+    prepare_structured_text_write,
+)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class QuestionEditorServiceError(Exception):
@@ -72,6 +82,10 @@ class EditorBlockContentMissingError(QuestionEditorServiceError):
 
 class RevisionConflictError(QuestionEditorServiceError):
     """Raised when an optimistic concurrency timestamp is stale."""
+
+
+class ContentBlockOrderConflictError(QuestionEditorServiceError):
+    """Raised when an active block append position conflicts."""
 
 
 class QuestionEditorService:
@@ -238,6 +252,96 @@ class QuestionEditorService:
             **draft_read.model_dump(),
             blocks=[self._serialize_block(block) for block in blocks],
         )
+
+    def create_text_block(
+        self,
+        *,
+        revision_id: uuid.UUID,
+        request: TextBlockCreate,
+    ) -> TextBlockRead:
+        """Append one canonical structured-text block to a draft revision."""
+
+        try:
+            revision = self.db.scalar(
+                select(QuestionRevision)
+                .join(
+                    QuestionForm,
+                    QuestionForm.id == QuestionRevision.question_form_id,
+                )
+                .join(
+                    QuestionFamily,
+                    QuestionFamily.id == QuestionForm.question_family_id,
+                )
+                .where(
+                    QuestionRevision.id == revision_id,
+                    QuestionRevision.deleted_at.is_(None),
+                    QuestionForm.is_active.is_(True),
+                    QuestionForm.deleted_at.is_(None),
+                    QuestionFamily.is_active.is_(True),
+                    QuestionFamily.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if revision is None:
+                raise RevisionNotFoundError(
+                    "Question revision was not found."
+                )
+
+            self.ensure_revision_editable(revision)
+            self.ensure_revision_timestamp_matches(
+                revision,
+                request.expected_revision_updated_at,
+            )
+            prepared = prepare_structured_text_write(
+                request.payload.document,
+                request.payload.format_version,
+            )
+
+            maximum_sort_order = self.db.scalar(
+                select(func.max(ContentBlock.sort_order)).where(
+                    ContentBlock.question_revision_id == revision.id,
+                    ContentBlock.deleted_at.is_(None),
+                )
+            )
+            sort_order = (maximum_sort_order or 0) + 1000
+
+            block = ContentBlock(
+                question_revision_id=revision.id,
+                block_type=ContentBlockType.TEXT,
+                sort_order=sort_order,
+            )
+            self.db.add(block)
+            self.db.flush()
+
+            content = TextBlockContent(
+                content_block_id=block.id,
+                source_text=prepared.source_text,
+                document_data=prepared.document_data,
+                format_version=prepared.format_version,
+            )
+            self.db.add(content)
+            revision.updated_at = _utc_now()
+
+            self.db.commit()
+
+            return TextBlockRead(
+                id=block.id,
+                block_type=ContentBlockType.TEXT,
+                sort_order=block.sort_order,
+                payload=TextBlockPayloadRead(
+                    source_text=prepared.source_text,
+                    document=request.payload.document,
+                    format_version=prepared.format_version,
+                ),
+            )
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise ContentBlockOrderConflictError(
+                "The active block append position is no longer available."
+            ) from exc
+        except Exception:
+            self.db.rollback()
+            raise
 
     def ensure_revision_editable(self, revision: QuestionRevision) -> None:
         """Require the only currently editable revision state: draft."""
