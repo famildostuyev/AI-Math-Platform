@@ -37,6 +37,7 @@ from app.schemas.question_editor import (
     TextBlockCreate,
     TextBlockPayloadRead,
     TextBlockRead,
+    TextBlockUpdate,
 )
 from app.services.structured_text_service import (
     normalize_text_content,
@@ -78,6 +79,14 @@ class UnsupportedEditorBlockTypeError(QuestionEditorServiceError):
 
 class EditorBlockContentMissingError(QuestionEditorServiceError):
     """Raised when a persisted block has no matching payload row."""
+
+
+class EditorBlockNotFoundError(QuestionEditorServiceError):
+    """Raised when a block is unavailable within the target revision."""
+
+
+class EditorBlockTypeMismatchError(QuestionEditorServiceError):
+    """Raised when a mutation targets the wrong block type."""
 
 
 class RevisionConflictError(QuestionEditorServiceError):
@@ -362,6 +371,96 @@ class QuestionEditorService:
             raise RevisionConflictError(
                 "Question revision was modified by another request."
             )
+
+    def update_text_block(
+        self,
+        *,
+        revision_id: uuid.UUID,
+        block_id: uuid.UUID,
+        request: TextBlockUpdate,
+    ) -> TextBlockRead:
+        """Replace one existing text payload without changing block identity."""
+
+        try:
+            revision = self.db.scalar(
+                select(QuestionRevision)
+                .join(
+                    QuestionForm,
+                    QuestionForm.id == QuestionRevision.question_form_id,
+                )
+                .join(
+                    QuestionFamily,
+                    QuestionFamily.id == QuestionForm.question_family_id,
+                )
+                .where(
+                    QuestionRevision.id == revision_id,
+                    QuestionRevision.deleted_at.is_(None),
+                    QuestionForm.is_active.is_(True),
+                    QuestionForm.deleted_at.is_(None),
+                    QuestionFamily.is_active.is_(True),
+                    QuestionFamily.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if revision is None:
+                raise RevisionNotFoundError(
+                    "Question revision was not found."
+                )
+
+            self.ensure_revision_editable(revision)
+            self.ensure_revision_timestamp_matches(
+                revision,
+                request.expected_revision_updated_at,
+            )
+
+            block = self.db.scalar(
+                select(ContentBlock)
+                .where(
+                    ContentBlock.id == block_id,
+                    ContentBlock.question_revision_id == revision.id,
+                    ContentBlock.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if block is None:
+                raise EditorBlockNotFoundError(
+                    "Content block was not found in the revision."
+                )
+            if block.block_type != ContentBlockType.TEXT:
+                raise EditorBlockTypeMismatchError(
+                    "Content block is not a text block."
+                )
+
+            content = block.text_content
+            if content is None:
+                raise EditorBlockContentMissingError(
+                    "Text block content is missing."
+                )
+
+            prepared = prepare_structured_text_write(
+                request.document,
+                request.format_version,
+            )
+            content.source_text = prepared.source_text
+            content.document_data = prepared.document_data
+            content.format_version = prepared.format_version
+            revision.updated_at = _utc_now()
+
+            self.db.commit()
+
+            return TextBlockRead(
+                id=block.id,
+                block_type=ContentBlockType.TEXT,
+                sort_order=block.sort_order,
+                payload=TextBlockPayloadRead(
+                    source_text=prepared.source_text,
+                    document=request.document,
+                    format_version=prepared.format_version,
+                ),
+            )
+        except Exception:
+            self.db.rollback()
+            raise
 
     def _require_question_type(self, question_type_id: uuid.UUID) -> None:
         question_type = self.db.scalar(

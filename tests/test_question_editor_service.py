@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 
@@ -33,9 +34,13 @@ from app.schemas.question_editor import (
     QuestionRevisionEditorRead,
     TextBlockCreate,
     TextBlockRead,
+    TextBlockUpdate,
 )
 from app.services.question_editor_service import (
     ContentBlockOrderConflictError,
+    EditorBlockContentMissingError,
+    EditorBlockNotFoundError,
+    EditorBlockTypeMismatchError,
     PurposeNotFoundError,
     QuestionEditorService,
     QuestionTypeNotFoundError,
@@ -99,6 +104,55 @@ class QuestionEditorServiceTest(unittest.TestCase):
 
         db.flush.side_effect = assign_block_id
         return db, revision
+
+    def _text_block_update_request(self) -> TextBlockUpdate:
+        return TextBlockUpdate.model_validate({
+            "document": {
+                "type": "document",
+                "content": [{
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "Updated "},
+                        {"type": "inline_math", "latex": "y^2"},
+                    ],
+                }],
+            },
+            "format_version": 1,
+            "expected_revision_updated_at": NOW,
+        })
+
+    def _text_block_update_db(
+        self,
+        *,
+        revision_status: QuestionRevisionStatus = QuestionRevisionStatus.DRAFT,
+        revision_updated_at: datetime = NOW,
+        block_type: ContentBlockType = ContentBlockType.TEXT,
+        include_content: bool = True,
+    ) -> tuple[MagicMock, SimpleNamespace, SimpleNamespace, object | None]:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(),
+            status=revision_status,
+            updated_at=revision_updated_at,
+        )
+        content = (
+            SimpleNamespace(
+                source_text="Original",
+                document_data={"type": "document", "content": []},
+                format_version=1,
+            )
+            if include_content
+            else None
+        )
+        block = SimpleNamespace(
+            id=uuid.uuid4(),
+            question_revision_id=revision.id,
+            block_type=block_type,
+            sort_order=2000,
+            text_content=content,
+        )
+        db = MagicMock()
+        db.scalar.side_effect = [revision, block]
+        return db, revision, block, content
 
     def _draft_db(self, scalar_values: list[object]) -> MagicMock:
         db = MagicMock()
@@ -566,6 +620,199 @@ class QuestionEditorServiceTest(unittest.TestCase):
         with self.assertRaises(ContentBlockOrderConflictError):
             QuestionEditorService(db).create_text_block(
                 revision_id=revision.id, request=self._text_block_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_called_once_with()
+
+    def test_existing_text_block_updates_in_place_and_returns_typed_read(self) -> None:
+        db, revision, block, content = self._text_block_update_db()
+        original_block_id = block.id
+        original_sort_order = block.sort_order
+        new_timestamp = NOW + timedelta(seconds=1)
+
+        with patch(
+            "app.services.question_editor_service._utc_now",
+            return_value=new_timestamp,
+        ):
+            response = QuestionEditorService(db).update_text_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._text_block_update_request(),
+            )
+
+        self.assertIsInstance(response, TextBlockRead)
+        self.assertEqual(response.id, original_block_id)
+        self.assertEqual(response.sort_order, original_sort_order)
+        self.assertEqual(response.block_type, ContentBlockType.TEXT)
+        self.assertEqual(response.payload.source_text, "Updated y^2")
+        self.assertEqual(response.payload.document.type, "document")
+        self.assertEqual(response.payload.format_version, 1)
+        self.assertEqual(content.source_text, "Updated y^2")
+        self.assertEqual(content.document_data["type"], "document")
+        self.assertEqual(content.format_version, 1)
+        self.assertEqual(block.id, original_block_id)
+        self.assertEqual(block.sort_order, original_sort_order)
+        self.assertEqual(block.block_type, ContentBlockType.TEXT)
+        self.assertEqual(revision.updated_at, new_timestamp)
+        db.add.assert_not_called()
+        db.flush.assert_not_called()
+        db.commit.assert_called_once_with()
+        db.rollback.assert_not_called()
+
+    def test_update_revision_query_filters_eligibility_and_locks(self) -> None:
+        db, revision, block, _content = self._text_block_update_db()
+        QuestionEditorService(db).update_text_block(
+            revision_id=revision.id,
+            block_id=block.id,
+            request=self._text_block_update_request(),
+        )
+        statement = str(db.scalar.call_args_list[0].args[0])
+        self.assertIn("question_revisions.deleted_at IS NULL", statement)
+        self.assertIn("question_forms.is_active IS true", statement)
+        self.assertIn("question_forms.deleted_at IS NULL", statement)
+        self.assertIn("question_families.is_active IS true", statement)
+        self.assertIn("question_families.deleted_at IS NULL", statement)
+        self.assertIn("FOR UPDATE", statement)
+
+    def test_update_block_query_is_revision_scoped_active_and_locked(self) -> None:
+        db, revision, block, _content = self._text_block_update_db()
+        QuestionEditorService(db).update_text_block(
+            revision_id=revision.id,
+            block_id=block.id,
+            request=self._text_block_update_request(),
+        )
+        statement = str(db.scalar.call_args_list[1].args[0])
+        self.assertIn("content_blocks.id", statement)
+        self.assertIn("content_blocks.question_revision_id", statement)
+        self.assertIn("content_blocks.deleted_at IS NULL", statement)
+        self.assertIn("FOR UPDATE", statement)
+
+    def test_update_revision_not_found_rolls_back_without_commit(self) -> None:
+        db = MagicMock()
+        db.scalar.return_value = None
+        with self.assertRaises(RevisionNotFoundError):
+            QuestionEditorService(db).update_text_block(
+                revision_id=uuid.uuid4(),
+                block_id=uuid.uuid4(),
+                request=self._text_block_update_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+        self.assertEqual(db.scalar.call_count, 1)
+
+    def test_update_non_draft_revision_rejects_before_block_lookup(self) -> None:
+        db, revision, block, _content = self._text_block_update_db(
+            revision_status=QuestionRevisionStatus.APPROVED,
+        )
+        with self.assertRaises(RevisionNotEditableError):
+            QuestionEditorService(db).update_text_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._text_block_update_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+        self.assertEqual(db.scalar.call_count, 1)
+
+    def test_update_stale_timestamp_rejects_before_block_lookup(self) -> None:
+        db, revision, block, content = self._text_block_update_db(
+            revision_updated_at=NOW + timedelta(seconds=1),
+        )
+        with self.assertRaises(RevisionConflictError):
+            QuestionEditorService(db).update_text_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._text_block_update_request(),
+            )
+        self.assertEqual(content.source_text, "Original")
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+        self.assertEqual(db.scalar.call_count, 1)
+
+    def test_missing_cross_revision_or_deleted_block_is_rejected(self) -> None:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(), status=QuestionRevisionStatus.DRAFT,
+            updated_at=NOW,
+        )
+        db = MagicMock()
+        db.scalar.side_effect = [revision, None]
+        with self.assertRaises(EditorBlockNotFoundError):
+            QuestionEditorService(db).update_text_block(
+                revision_id=revision.id,
+                block_id=uuid.uuid4(),
+                request=self._text_block_update_request(),
+            )
+        statement = str(db.scalar.call_args_list[1].args[0])
+        self.assertIn("content_blocks.question_revision_id", statement)
+        self.assertIn("content_blocks.deleted_at IS NULL", statement)
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+
+    def test_non_text_block_is_rejected_without_mutation(self) -> None:
+        db, revision, block, _content = self._text_block_update_db(
+            block_type=ContentBlockType.FORMULA,
+        )
+        with self.assertRaises(EditorBlockTypeMismatchError):
+            QuestionEditorService(db).update_text_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._text_block_update_request(),
+            )
+        db.add.assert_not_called()
+        db.commit.assert_not_called()
+        db.rollback.assert_called_once_with()
+
+    def test_missing_text_payload_is_rejected(self) -> None:
+        db, revision, block, _content = self._text_block_update_db(
+            include_content=False,
+        )
+        with self.assertRaises(EditorBlockContentMissingError):
+            QuestionEditorService(db).update_text_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._text_block_update_request(),
+            )
+        db.commit.assert_not_called()
+        db.rollback.assert_called_once_with()
+
+    def test_invalid_update_document_rolls_back_without_mutation(self) -> None:
+        request = TextBlockUpdate.model_construct(
+            document={"type": "document", "content": [{"type": "html"}]},
+            format_version=1,
+            expected_revision_updated_at=NOW,
+        )
+        db, revision, block, content = self._text_block_update_db()
+        with self.assertRaises(ValidationError):
+            QuestionEditorService(db).update_text_block(
+                revision_id=revision.id, block_id=block.id, request=request,
+            )
+        self.assertEqual(content.source_text, "Original")
+        db.commit.assert_not_called()
+        db.rollback.assert_called_once_with()
+
+    def test_unsupported_update_version_rolls_back_without_mutation(self) -> None:
+        request = self._text_block_update_request().model_copy(
+            update={"format_version": 2},
+        )
+        db, revision, block, content = self._text_block_update_db()
+        with self.assertRaises(UnsupportedStructuredTextVersionError):
+            QuestionEditorService(db).update_text_block(
+                revision_id=revision.id, block_id=block.id, request=request,
+            )
+        self.assertEqual(content.source_text, "Original")
+        db.commit.assert_not_called()
+        db.rollback.assert_called_once_with()
+
+    def test_update_commit_failure_rolls_back_and_propagates_integrity_error(self) -> None:
+        db, revision, block, _content = self._text_block_update_db()
+        db.commit.side_effect = IntegrityError(
+            "update", {}, Exception("persistence conflict"),
+        )
+        with self.assertRaises(IntegrityError):
+            QuestionEditorService(db).update_text_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._text_block_update_request(),
             )
         db.rollback.assert_called_once_with()
         db.commit.assert_called_once_with()
