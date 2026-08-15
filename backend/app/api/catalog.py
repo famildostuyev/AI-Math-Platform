@@ -8,7 +8,12 @@ from app.api.deps import CurrentUser
 from app.database.session import get_db
 from app.models.grade import Grade
 from app.models.purpose import Purpose
-from app.schemas.catalog import GradeCatalogResponse, PurposeCatalogResponse
+from app.models.question_type import QuestionType
+from app.schemas.catalog import (
+    GradeCatalogResponse,
+    PurposeCatalogResponse,
+    QuestionTypeCatalogResponse,
+)
 
 
 router = APIRouter(
@@ -82,4 +87,35 @@ def list_purposes(
     return [
         PurposeCatalogResponse.model_validate(purpose)
         for purpose in purposes
+    ]
+
+
+@router.get(
+    "/question-types",
+    response_model=list[QuestionTypeCatalogResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List active question types",
+)
+def list_question_types(
+    _current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[QuestionTypeCatalogResponse]:
+    """Return active, non-deleted question types in deterministic order."""
+
+    question_types = db.scalars(
+        select(QuestionType)
+        .where(
+            QuestionType.is_active.is_(True),
+            QuestionType.deleted_at.is_(None),
+        )
+        .order_by(
+            QuestionType.sort_order,
+            QuestionType.display_name,
+            QuestionType.id,
+        )
+    ).all()
+
+    return [
+        QuestionTypeCatalogResponse.model_validate(question_type)
+        for question_type in question_types
     ]
