@@ -26,6 +26,7 @@ from app.models.question_type import QuestionType
 from app.models.text_block_content import TextBlockContent
 from app.models.topic import Topic
 from app.schemas.question_editor import (
+    BlockOrderRequest,
     FormulaBlockCreate,
     FormulaBlockPayloadRead,
     FormulaBlockRead,
@@ -98,6 +99,10 @@ class RevisionConflictError(QuestionEditorServiceError):
 
 class ContentBlockOrderConflictError(QuestionEditorServiceError):
     """Raised when an active block append position conflicts."""
+
+
+class BlockOrderSetMismatchError(QuestionEditorServiceError):
+    """Raised when a reorder request does not contain every active block."""
 
 
 class QuestionEditorService:
@@ -693,6 +698,89 @@ class QuestionEditorService:
             revision.updated_at = deleted_at
 
             self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def reorder_blocks(
+        self,
+        *,
+        revision_id: uuid.UUID,
+        request: BlockOrderRequest,
+    ) -> None:
+        """Replace the complete active block order with normalized positions."""
+
+        try:
+            revision = self.db.scalar(
+                select(QuestionRevision)
+                .join(
+                    QuestionForm,
+                    QuestionForm.id == QuestionRevision.question_form_id,
+                )
+                .join(
+                    QuestionFamily,
+                    QuestionFamily.id == QuestionForm.question_family_id,
+                )
+                .where(
+                    QuestionRevision.id == revision_id,
+                    QuestionRevision.deleted_at.is_(None),
+                    QuestionForm.is_active.is_(True),
+                    QuestionForm.deleted_at.is_(None),
+                    QuestionFamily.is_active.is_(True),
+                    QuestionFamily.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if revision is None:
+                raise RevisionNotFoundError(
+                    "Question revision was not found."
+                )
+
+            self.ensure_revision_editable(revision)
+            self.ensure_revision_timestamp_matches(
+                revision,
+                request.expected_revision_updated_at,
+            )
+
+            blocks = list(self.db.scalars(
+                select(ContentBlock)
+                .where(
+                    ContentBlock.question_revision_id == revision.id,
+                    ContentBlock.deleted_at.is_(None),
+                )
+                .order_by(ContentBlock.sort_order, ContentBlock.id)
+                .with_for_update()
+            ).all())
+            block_by_id = {block.id: block for block in blocks}
+            requested_ids = request.block_ids
+            if (
+                len(requested_ids) != len(blocks)
+                or set(requested_ids) != set(block_by_id)
+            ):
+                raise BlockOrderSetMismatchError(
+                    "Block order must contain exactly every active block."
+                )
+
+            if blocks:
+                current_max = max(block.sort_order for block in blocks)
+                final_max = len(blocks) * 1000
+                temporary_base = max(current_max, final_max) + 1_000_000
+                for position, block_id in enumerate(requested_ids):
+                    block_by_id[block_id].sort_order = (
+                        temporary_base + ((position + 1) * 1000)
+                    )
+                self.db.flush()
+
+                for position, block_id in enumerate(requested_ids):
+                    block_by_id[block_id].sort_order = (position + 1) * 1000
+
+            revision.updated_at = _utc_now()
+            self.db.commit()
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise ContentBlockOrderConflictError(
+                "The active block order could not be persisted."
+            ) from exc
         except Exception:
             self.db.rollback()
             raise

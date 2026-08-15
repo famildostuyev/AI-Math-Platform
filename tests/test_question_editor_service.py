@@ -31,6 +31,7 @@ from app.models.content_block import ContentBlock
 from app.models.formula_block_content import FormulaBlockContent
 from app.models.text_block_content import TextBlockContent
 from app.schemas.question_editor import (
+    BlockOrderRequest,
     FormulaBlockCreate,
     FormulaBlockRead,
     FormulaBlockUpdate,
@@ -41,6 +42,7 @@ from app.schemas.question_editor import (
     TextBlockUpdate,
 )
 from app.services.question_editor_service import (
+    BlockOrderSetMismatchError,
     ContentBlockOrderConflictError,
     EditorBlockContentMissingError,
     EditorBlockNotFoundError,
@@ -147,6 +149,44 @@ class QuestionEditorServiceTest(unittest.TestCase):
         db = MagicMock()
         db.scalar.side_effect = [revision, block]
         return db, revision, block
+
+    def _reorder_blocks_db(
+        self,
+        *,
+        sort_orders: tuple[int, ...] = (1000, 2000),
+        revision_status: QuestionRevisionStatus = QuestionRevisionStatus.DRAFT,
+        revision_updated_at: datetime = NOW,
+    ) -> tuple[MagicMock, SimpleNamespace, list[SimpleNamespace]]:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(),
+            status=revision_status,
+            updated_at=revision_updated_at,
+        )
+        block_types = tuple(ContentBlockType)
+        blocks = [
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                question_revision_id=revision.id,
+                block_type=block_types[index % len(block_types)],
+                sort_order=sort_order,
+                deleted_at=None,
+                payload=SimpleNamespace(value=f"payload-{index}"),
+            )
+            for index, sort_order in enumerate(sort_orders)
+        ]
+        db = MagicMock()
+        db.scalar.return_value = revision
+        db.scalars.return_value = scalar_result(blocks)
+        return db, revision, blocks
+
+    def _block_order_request(
+        self,
+        block_ids: list[uuid.UUID],
+    ) -> BlockOrderRequest:
+        return BlockOrderRequest.model_validate({
+            "block_ids": block_ids,
+            "expected_revision_updated_at": NOW,
+        })
 
     def _text_block_request(self) -> TextBlockCreate:
         return TextBlockCreate.model_validate({
@@ -1394,6 +1434,219 @@ class QuestionEditorServiceTest(unittest.TestCase):
                 expected_revision_updated_at=NOW,
             )
         self.assertIs(raised.exception, failure)
+        db.rollback.assert_called_once_with()
+        db.commit.assert_called_once_with()
+
+    def test_reorder_blocks_swaps_with_safe_temporary_phase(self) -> None:
+        db, revision, blocks = self._reorder_blocks_db()
+        first, second = blocks
+        original = {
+            block.id: (
+                block.question_revision_id,
+                block.block_type,
+                block.deleted_at,
+                block.payload.value,
+            )
+            for block in blocks
+        }
+        temporary_orders: list[int] = []
+        db.flush.side_effect = lambda: temporary_orders.extend(
+            block.sort_order for block in blocks
+        )
+        updated_at = NOW + timedelta(seconds=1)
+
+        with patch(
+            "app.services.question_editor_service._utc_now",
+            return_value=updated_at,
+        ):
+            result = QuestionEditorService(db).reorder_blocks(
+                revision_id=revision.id,
+                request=self._block_order_request([second.id, first.id]),
+            )
+
+        self.assertIsNone(result)
+        self.assertEqual(second.sort_order, 1000)
+        self.assertEqual(first.sort_order, 2000)
+        self.assertEqual(len(set(temporary_orders)), 2)
+        self.assertTrue(all(order > 2000 for order in temporary_orders))
+        self.assertTrue(all(order >= 0 for order in temporary_orders))
+        self.assertEqual(revision.updated_at, updated_at)
+        for block in blocks:
+            self.assertEqual(
+                (
+                    block.question_revision_id,
+                    block.block_type,
+                    block.deleted_at,
+                    block.payload.value,
+                ),
+                original[block.id],
+            )
+        db.flush.assert_called_once_with()
+        db.commit.assert_called_once_with()
+        db.rollback.assert_not_called()
+        db.add.assert_not_called()
+        db.delete.assert_not_called()
+
+    def test_reorder_blocks_normalizes_three_blocks_in_requested_order(self) -> None:
+        db, revision, blocks = self._reorder_blocks_db(
+            sort_orders=(7000, 12000, 29000),
+        )
+        requested = [blocks[2].id, blocks[0].id, blocks[1].id]
+        QuestionEditorService(db).reorder_blocks(
+            revision_id=revision.id,
+            request=self._block_order_request(requested),
+        )
+        by_id = {block.id: block for block in blocks}
+        self.assertEqual(
+            [by_id[block_id].sort_order for block_id in requested],
+            [1000, 2000, 3000],
+        )
+        self.assertEqual(db.scalars.call_count, 1)
+
+    def test_reorder_blocks_supports_all_types_and_ignores_payloads(self) -> None:
+        sort_orders = tuple((index + 1) * 1000 for index in range(len(ContentBlockType)))
+        db, revision, blocks = self._reorder_blocks_db(sort_orders=sort_orders)
+        self.assertEqual({block.block_type for block in blocks}, set(ContentBlockType))
+        requested = [block.id for block in reversed(blocks)]
+        QuestionEditorService(db).reorder_blocks(
+            revision_id=revision.id,
+            request=self._block_order_request(requested),
+        )
+        self.assertEqual(
+            [block.sort_order for block in reversed(blocks)],
+            [(index + 1) * 1000 for index in range(len(blocks))],
+        )
+        self.assertEqual(
+            [block.payload.value for block in blocks],
+            [f"payload-{index}" for index in range(len(blocks))],
+        )
+
+    def test_reorder_queries_revision_and_all_active_blocks_with_locks(self) -> None:
+        db, revision, blocks = self._reorder_blocks_db()
+        QuestionEditorService(db).reorder_blocks(
+            revision_id=revision.id,
+            request=self._block_order_request([block.id for block in blocks]),
+        )
+        revision_statement = str(db.scalar.call_args.args[0])
+        self.assertIn("question_revisions.deleted_at IS NULL", revision_statement)
+        self.assertIn("question_forms.is_active IS true", revision_statement)
+        self.assertIn("question_forms.deleted_at IS NULL", revision_statement)
+        self.assertIn("question_families.is_active IS true", revision_statement)
+        self.assertIn("question_families.deleted_at IS NULL", revision_statement)
+        self.assertIn("FOR UPDATE", revision_statement)
+        block_statement = str(db.scalars.call_args.args[0])
+        self.assertIn("content_blocks.question_revision_id", block_statement)
+        self.assertIn("content_blocks.deleted_at IS NULL", block_statement)
+        self.assertIn("ORDER BY content_blocks.sort_order, content_blocks.id", block_statement)
+        self.assertIn("FOR UPDATE", block_statement)
+        self.assertEqual(db.scalars.call_count, 1)
+
+    def test_reorder_set_mismatches_roll_back_without_mutation(self) -> None:
+        cases = ("missing", "extra", "foreign", "soft_deleted", "empty")
+        for case in cases:
+            with self.subTest(case=case):
+                db, revision, blocks = self._reorder_blocks_db()
+                original_orders = [block.sort_order for block in blocks]
+                if case in {"extra", "foreign", "soft_deleted"}:
+                    requested = [block.id for block in blocks] + [uuid.uuid4()]
+                elif case == "empty":
+                    requested = []
+                else:
+                    requested = [blocks[0].id]
+                with self.assertRaises(BlockOrderSetMismatchError):
+                    QuestionEditorService(db).reorder_blocks(
+                        revision_id=revision.id,
+                        request=self._block_order_request(requested),
+                    )
+                self.assertEqual(
+                    [block.sort_order for block in blocks], original_orders,
+                )
+                db.flush.assert_not_called()
+                db.commit.assert_not_called()
+                db.rollback.assert_called_once_with()
+
+    def test_reorder_zero_active_blocks_requires_empty_set_and_touches_revision(self) -> None:
+        db, revision, _blocks = self._reorder_blocks_db(sort_orders=())
+        updated_at = NOW + timedelta(seconds=1)
+        with patch(
+            "app.services.question_editor_service._utc_now",
+            return_value=updated_at,
+        ):
+            result = QuestionEditorService(db).reorder_blocks(
+                revision_id=revision.id,
+                request=self._block_order_request([]),
+            )
+        self.assertIsNone(result)
+        self.assertEqual(revision.updated_at, updated_at)
+        db.flush.assert_not_called()
+        db.commit.assert_called_once_with()
+
+        db, revision, _blocks = self._reorder_blocks_db(sort_orders=())
+        with self.assertRaises(BlockOrderSetMismatchError):
+            QuestionEditorService(db).reorder_blocks(
+                revision_id=revision.id,
+                request=self._block_order_request([uuid.uuid4()]),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+
+    def test_reorder_revision_failures_prevent_active_block_query(self) -> None:
+        cases = (
+            (None, RevisionNotFoundError),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(), status=QuestionRevisionStatus.APPROVED,
+                    updated_at=NOW,
+                ),
+                RevisionNotEditableError,
+            ),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(), status=QuestionRevisionStatus.DRAFT,
+                    updated_at=NOW + timedelta(seconds=1),
+                ),
+                RevisionConflictError,
+            ),
+        )
+        for revision, error in cases:
+            with self.subTest(error=error.__name__):
+                db = MagicMock()
+                db.scalar.return_value = revision
+                with self.assertRaises(error):
+                    QuestionEditorService(db).reorder_blocks(
+                        revision_id=(revision.id if revision else uuid.uuid4()),
+                        request=self._block_order_request([]),
+                    )
+                db.scalars.assert_not_called()
+                db.rollback.assert_called_once_with()
+                db.commit.assert_not_called()
+
+    def test_reorder_flush_integrity_error_translates_order_conflict(self) -> None:
+        db, revision, blocks = self._reorder_blocks_db()
+        original_orders = [block.sort_order for block in blocks]
+        failure = IntegrityError("flush", {}, Exception("temporary conflict"))
+        db.flush.side_effect = failure
+        with self.assertRaises(ContentBlockOrderConflictError) as raised:
+            QuestionEditorService(db).reorder_blocks(
+                revision_id=revision.id,
+                request=self._block_order_request([blocks[1].id, blocks[0].id]),
+            )
+        self.assertIs(raised.exception.__cause__, failure)
+        self.assertNotEqual([block.sort_order for block in blocks], original_orders)
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+
+    def test_reorder_commit_integrity_error_translates_order_conflict(self) -> None:
+        db, revision, blocks = self._reorder_blocks_db()
+        failure = IntegrityError("commit", {}, Exception("final conflict"))
+        db.commit.side_effect = failure
+        with self.assertRaises(ContentBlockOrderConflictError) as raised:
+            QuestionEditorService(db).reorder_blocks(
+                revision_id=revision.id,
+                request=self._block_order_request([blocks[1].id, blocks[0].id]),
+            )
+        self.assertIs(raised.exception.__cause__, failure)
+        db.flush.assert_called_once_with()
         db.rollback.assert_called_once_with()
         db.commit.assert_called_once_with()
 
