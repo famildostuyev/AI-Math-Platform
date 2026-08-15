@@ -15,6 +15,7 @@ from app.core.enums import (
     QuestionRevisionStatus,
 )
 from app.models.content_block import ContentBlock
+from app.models.formula_block_content import FormulaBlockContent
 from app.models.purpose import Purpose
 from app.models.question_family import QuestionFamily
 from app.models.question_form import QuestionForm
@@ -25,6 +26,7 @@ from app.models.question_type import QuestionType
 from app.models.text_block_content import TextBlockContent
 from app.models.topic import Topic
 from app.schemas.question_editor import (
+    FormulaBlockCreate,
     FormulaBlockPayloadRead,
     FormulaBlockRead,
     GeometryBlockPayloadRead,
@@ -341,6 +343,90 @@ class QuestionEditorService:
                     source_text=prepared.source_text,
                     document=request.payload.document,
                     format_version=prepared.format_version,
+                ),
+            )
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise ContentBlockOrderConflictError(
+                "The active block append position is no longer available."
+            ) from exc
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def create_formula_block(
+        self,
+        *,
+        revision_id: uuid.UUID,
+        request: FormulaBlockCreate,
+    ) -> FormulaBlockRead:
+        """Append one formula block to an editable draft revision."""
+
+        try:
+            revision = self.db.scalar(
+                select(QuestionRevision)
+                .join(
+                    QuestionForm,
+                    QuestionForm.id == QuestionRevision.question_form_id,
+                )
+                .join(
+                    QuestionFamily,
+                    QuestionFamily.id == QuestionForm.question_family_id,
+                )
+                .where(
+                    QuestionRevision.id == revision_id,
+                    QuestionRevision.deleted_at.is_(None),
+                    QuestionForm.is_active.is_(True),
+                    QuestionForm.deleted_at.is_(None),
+                    QuestionFamily.is_active.is_(True),
+                    QuestionFamily.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if revision is None:
+                raise RevisionNotFoundError(
+                    "Question revision was not found."
+                )
+
+            self.ensure_revision_editable(revision)
+            self.ensure_revision_timestamp_matches(
+                revision,
+                request.expected_revision_updated_at,
+            )
+
+            maximum_sort_order = self.db.scalar(
+                select(func.max(ContentBlock.sort_order)).where(
+                    ContentBlock.question_revision_id == revision.id,
+                    ContentBlock.deleted_at.is_(None),
+                )
+            )
+            sort_order = (maximum_sort_order or 0) + 1000
+
+            block = ContentBlock(
+                question_revision_id=revision.id,
+                block_type=ContentBlockType.FORMULA,
+                sort_order=sort_order,
+            )
+            self.db.add(block)
+            self.db.flush()
+
+            content = FormulaBlockContent(
+                content_block_id=block.id,
+                source_latex=request.payload.source_latex,
+                format_version=request.payload.format_version,
+            )
+            self.db.add(content)
+            revision.updated_at = _utc_now()
+
+            self.db.commit()
+
+            return FormulaBlockRead(
+                id=block.id,
+                block_type=ContentBlockType.FORMULA,
+                sort_order=block.sort_order,
+                payload=FormulaBlockPayloadRead(
+                    source_latex=content.source_latex,
+                    format_version=content.format_version,
                 ),
             )
         except IntegrityError as exc:

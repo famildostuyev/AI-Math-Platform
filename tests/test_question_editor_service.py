@@ -28,8 +28,11 @@ from app.models.question_revision import QuestionRevision
 from app.models.question_revision_purpose import QuestionRevisionPurpose
 from app.models.question_revision_related_topic import QuestionRevisionRelatedTopic
 from app.models.content_block import ContentBlock
+from app.models.formula_block_content import FormulaBlockContent
 from app.models.text_block_content import TextBlockContent
 from app.schemas.question_editor import (
+    FormulaBlockCreate,
+    FormulaBlockRead,
     QuestionDraftCreate,
     QuestionRevisionEditorRead,
     TextBlockCreate,
@@ -65,6 +68,19 @@ def scalar_result(values: list[object]) -> MagicMock:
 
 
 class QuestionEditorServiceTest(unittest.TestCase):
+    def _formula_block_request(
+        self,
+        source_latex: str = "x^2+1",
+    ) -> FormulaBlockCreate:
+        return FormulaBlockCreate.model_validate({
+            "block_type": "formula",
+            "payload": {
+                "source_latex": source_latex,
+                "format_version": 1,
+            },
+            "expected_revision_updated_at": NOW,
+        })
+
     def _text_block_request(self) -> TextBlockCreate:
         return TextBlockCreate.model_validate({
             "block_type": "text",
@@ -813,6 +829,172 @@ class QuestionEditorServiceTest(unittest.TestCase):
                 revision_id=revision.id,
                 block_id=block.id,
                 request=self._text_block_update_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_called_once_with()
+
+    def test_draft_revision_creates_formula_block_and_shared_pk_payload(self) -> None:
+        db, revision = self._text_block_db()
+        new_timestamp = NOW + timedelta(seconds=1)
+
+        with patch(
+            "app.services.question_editor_service._utc_now",
+            return_value=new_timestamp,
+        ):
+            response = QuestionEditorService(db).create_formula_block(
+                revision_id=revision.id,
+                request=self._formula_block_request(),
+            )
+
+        block, content = [call.args[0] for call in db.add.call_args_list]
+        self.assertIsInstance(block, ContentBlock)
+        self.assertEqual(block.question_revision_id, revision.id)
+        self.assertEqual(block.block_type, ContentBlockType.FORMULA)
+        self.assertEqual(block.sort_order, 1000)
+        self.assertIsInstance(content, FormulaBlockContent)
+        self.assertEqual(content.content_block_id, block.id)
+        self.assertEqual(content.source_latex, "x^2+1")
+        self.assertEqual(content.format_version, 1)
+        self.assertFalse(hasattr(content, "rendered_html"))
+        self.assertFalse(hasattr(content, "rendered_svg"))
+        self.assertFalse(hasattr(content, "rendered_mathml"))
+        self.assertIsInstance(response, FormulaBlockRead)
+        self.assertEqual(response.id, block.id)
+        self.assertEqual(response.sort_order, 1000)
+        self.assertEqual(response.payload.source_latex, "x^2+1")
+        self.assertEqual(response.payload.format_version, 1)
+        self.assertEqual(revision.updated_at, new_timestamp)
+        db.commit.assert_called_once_with()
+        db.rollback.assert_not_called()
+
+    def test_formula_revision_query_filters_eligibility_and_locks(self) -> None:
+        db, revision = self._text_block_db()
+        QuestionEditorService(db).create_formula_block(
+            revision_id=revision.id,
+            request=self._formula_block_request(),
+        )
+        statement = str(db.scalar.call_args_list[0].args[0])
+        self.assertIn("question_revisions.deleted_at IS NULL", statement)
+        self.assertIn("question_forms.is_active IS true", statement)
+        self.assertIn("question_forms.deleted_at IS NULL", statement)
+        self.assertIn("question_families.is_active IS true", statement)
+        self.assertIn("question_families.deleted_at IS NULL", statement)
+        self.assertIn("FOR UPDATE", statement)
+
+    def test_formula_append_uses_active_database_max_and_spacing(self) -> None:
+        for maximum, expected in ((None, 1000), (1000, 2000), (5000, 6000)):
+            with self.subTest(maximum=maximum):
+                db, revision = self._text_block_db(
+                    maximum_sort_order=maximum,
+                )
+                response = QuestionEditorService(db).create_formula_block(
+                    revision_id=revision.id,
+                    request=self._formula_block_request(),
+                )
+                self.assertEqual(response.sort_order, expected)
+                statement = str(db.scalar.call_args_list[1].args[0])
+                self.assertIn("max(content_blocks.sort_order)", statement)
+                self.assertIn("content_blocks.question_revision_id", statement)
+                self.assertIn("content_blocks.deleted_at IS NULL", statement)
+                db.scalars.assert_not_called()
+
+    def test_formula_content_block_is_flushed_before_payload_add(self) -> None:
+        db, revision = self._text_block_db()
+        QuestionEditorService(db).create_formula_block(
+            revision_id=revision.id,
+            request=self._formula_block_request(),
+        )
+        names = [call[0] for call in db.method_calls]
+        first_add = names.index("add")
+        flush = names.index("flush")
+        second_add = names.index("add", first_add + 1)
+        self.assertLess(first_add, flush)
+        self.assertLess(flush, second_add)
+        self.assertIsInstance(db.add.call_args_list[0].args[0], ContentBlock)
+        self.assertIsInstance(
+            db.add.call_args_list[1].args[0], FormulaBlockContent,
+        )
+        self.assertFalse(any(
+            isinstance(call.args[0], TextBlockContent)
+            for call in db.add.call_args_list
+        ))
+
+    def test_empty_formula_latex_is_valid_draft_content(self) -> None:
+        db, revision = self._text_block_db()
+        response = QuestionEditorService(db).create_formula_block(
+            revision_id=revision.id,
+            request=self._formula_block_request(""),
+        )
+        content = db.add.call_args_list[1].args[0]
+        self.assertEqual(content.source_latex, "")
+        self.assertEqual(response.payload.source_latex, "")
+
+    def test_formula_revision_not_found_rolls_back_without_commit(self) -> None:
+        db = MagicMock()
+        db.scalar.return_value = None
+        with self.assertRaises(RevisionNotFoundError):
+            QuestionEditorService(db).create_formula_block(
+                revision_id=uuid.uuid4(),
+                request=self._formula_block_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+        db.add.assert_not_called()
+
+    def test_formula_non_draft_and_stale_revision_reject_before_add(self) -> None:
+        cases = (
+            (
+                {"status": QuestionRevisionStatus.APPROVED},
+                RevisionNotEditableError,
+            ),
+            (
+                {"updated_at": NOW + timedelta(seconds=1)},
+                RevisionConflictError,
+            ),
+        )
+        for changes, error in cases:
+            with self.subTest(error=error.__name__):
+                db, revision = self._text_block_db(
+                    status=changes.get(
+                        "status", QuestionRevisionStatus.DRAFT,
+                    ),
+                    updated_at=changes.get("updated_at", NOW),
+                )
+                with self.assertRaises(error):
+                    QuestionEditorService(db).create_formula_block(
+                        revision_id=revision.id,
+                        request=self._formula_block_request(),
+                    )
+                db.rollback.assert_called_once_with()
+                db.commit.assert_not_called()
+                db.add.assert_not_called()
+                self.assertEqual(db.scalar.call_count, 1)
+
+    def test_formula_payload_add_failure_rolls_back_partial_block(self) -> None:
+        db, revision = self._text_block_db()
+
+        def fail_formula_payload(instance: object) -> None:
+            if isinstance(instance, FormulaBlockContent):
+                raise RuntimeError("formula payload insert failed")
+
+        db.add.side_effect = fail_formula_payload
+        with self.assertRaises(RuntimeError):
+            QuestionEditorService(db).create_formula_block(
+                revision_id=revision.id,
+                request=self._formula_block_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+
+    def test_formula_integrity_conflict_is_translated_and_rolled_back(self) -> None:
+        db, revision = self._text_block_db()
+        db.commit.side_effect = IntegrityError(
+            "insert", {}, Exception("active formula order conflict"),
+        )
+        with self.assertRaises(ContentBlockOrderConflictError):
+            QuestionEditorService(db).create_formula_block(
+                revision_id=revision.id,
+                request=self._formula_block_request(),
             )
         db.rollback.assert_called_once_with()
         db.commit.assert_called_once_with()
