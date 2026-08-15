@@ -33,6 +33,7 @@ from app.models.text_block_content import TextBlockContent
 from app.schemas.question_editor import (
     FormulaBlockCreate,
     FormulaBlockRead,
+    FormulaBlockUpdate,
     QuestionDraftCreate,
     QuestionRevisionEditorRead,
     TextBlockCreate,
@@ -80,6 +81,49 @@ class QuestionEditorServiceTest(unittest.TestCase):
             },
             "expected_revision_updated_at": NOW,
         })
+
+    def _formula_block_update_request(
+        self,
+        source_latex: str = "  y^2 + 1  ",
+    ) -> FormulaBlockUpdate:
+        return FormulaBlockUpdate.model_validate({
+            "source_latex": source_latex,
+            "format_version": 1,
+            "expected_revision_updated_at": NOW,
+        })
+
+    def _formula_block_update_db(
+        self,
+        *,
+        revision_status: QuestionRevisionStatus = QuestionRevisionStatus.DRAFT,
+        revision_updated_at: datetime = NOW,
+        block_type: ContentBlockType = ContentBlockType.FORMULA,
+        include_content: bool = True,
+    ) -> tuple[MagicMock, SimpleNamespace, SimpleNamespace, object | None]:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(),
+            status=revision_status,
+            updated_at=revision_updated_at,
+        )
+        content = (
+            SimpleNamespace(
+                content_block_id=uuid.uuid4(),
+                source_latex="x^2",
+                format_version=1,
+            )
+            if include_content
+            else None
+        )
+        block = SimpleNamespace(
+            id=(content.content_block_id if content is not None else uuid.uuid4()),
+            question_revision_id=revision.id,
+            block_type=block_type,
+            sort_order=3000,
+            formula_content=content,
+        )
+        db = MagicMock()
+        db.scalar.side_effect = [revision, block]
+        return db, revision, block, content
 
     def _text_block_request(self) -> TextBlockCreate:
         return TextBlockCreate.model_validate({
@@ -996,6 +1040,189 @@ class QuestionEditorServiceTest(unittest.TestCase):
                 revision_id=revision.id,
                 request=self._formula_block_request(),
             )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_called_once_with()
+
+    def test_existing_formula_updates_in_place_and_preserves_block_identity(self) -> None:
+        db, revision, block, content = self._formula_block_update_db()
+        original_block_id = block.id
+        original_revision_id = block.question_revision_id
+        original_sort_order = block.sort_order
+        original_payload_id = content.content_block_id
+        new_timestamp = NOW + timedelta(seconds=1)
+
+        with patch(
+            "app.services.question_editor_service._utc_now",
+            return_value=new_timestamp,
+        ):
+            response = QuestionEditorService(db).update_formula_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._formula_block_update_request(),
+            )
+
+        self.assertIsInstance(response, FormulaBlockRead)
+        self.assertEqual(response.id, original_block_id)
+        self.assertEqual(response.block_type, ContentBlockType.FORMULA)
+        self.assertEqual(response.sort_order, original_sort_order)
+        self.assertEqual(response.payload.source_latex, "  y^2 + 1  ")
+        self.assertEqual(response.payload.format_version, 1)
+        self.assertEqual(content.source_latex, "  y^2 + 1  ")
+        self.assertEqual(content.format_version, 1)
+        self.assertEqual(content.content_block_id, original_payload_id)
+        self.assertEqual(block.id, original_block_id)
+        self.assertEqual(block.question_revision_id, original_revision_id)
+        self.assertEqual(block.block_type, ContentBlockType.FORMULA)
+        self.assertEqual(block.sort_order, original_sort_order)
+        self.assertEqual(revision.updated_at, new_timestamp)
+        self.assertFalse(hasattr(content, "rendered_html"))
+        self.assertFalse(hasattr(content, "rendered_svg"))
+        self.assertFalse(hasattr(content, "rendered_mathml"))
+        db.add.assert_not_called()
+        db.flush.assert_not_called()
+        db.commit.assert_called_once_with()
+        db.rollback.assert_not_called()
+
+    def test_formula_update_revision_query_filters_eligibility_and_locks(self) -> None:
+        db, revision, block, _content = self._formula_block_update_db()
+        QuestionEditorService(db).update_formula_block(
+            revision_id=revision.id,
+            block_id=block.id,
+            request=self._formula_block_update_request(),
+        )
+        statement = str(db.scalar.call_args_list[0].args[0])
+        self.assertIn("question_revisions.deleted_at IS NULL", statement)
+        self.assertIn("question_forms.is_active IS true", statement)
+        self.assertIn("question_forms.deleted_at IS NULL", statement)
+        self.assertIn("question_families.is_active IS true", statement)
+        self.assertIn("question_families.deleted_at IS NULL", statement)
+        self.assertIn("FOR UPDATE", statement)
+
+    def test_formula_update_block_query_is_scoped_active_and_locked(self) -> None:
+        db, revision, block, _content = self._formula_block_update_db()
+        QuestionEditorService(db).update_formula_block(
+            revision_id=revision.id,
+            block_id=block.id,
+            request=self._formula_block_update_request(),
+        )
+        statement = str(db.scalar.call_args_list[1].args[0])
+        self.assertIn("content_blocks.id", statement)
+        self.assertIn("content_blocks.question_revision_id", statement)
+        self.assertIn("content_blocks.deleted_at IS NULL", statement)
+        self.assertIn("FOR UPDATE", statement)
+
+    def test_empty_formula_update_is_accepted_exactly(self) -> None:
+        db, revision, block, content = self._formula_block_update_db()
+        response = QuestionEditorService(db).update_formula_block(
+            revision_id=revision.id,
+            block_id=block.id,
+            request=self._formula_block_update_request(""),
+        )
+        self.assertEqual(content.source_latex, "")
+        self.assertEqual(response.payload.source_latex, "")
+
+    def test_formula_update_revision_failures_prevent_block_lookup(self) -> None:
+        cases = (
+            (None, RevisionNotFoundError),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(),
+                    status=QuestionRevisionStatus.APPROVED,
+                    updated_at=NOW,
+                ),
+                RevisionNotEditableError,
+            ),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(),
+                    status=QuestionRevisionStatus.DRAFT,
+                    updated_at=NOW + timedelta(seconds=1),
+                ),
+                RevisionConflictError,
+            ),
+        )
+        for revision, error in cases:
+            with self.subTest(error=error.__name__):
+                db = MagicMock()
+                db.scalar.return_value = revision
+                with self.assertRaises(error):
+                    QuestionEditorService(db).update_formula_block(
+                        revision_id=(revision.id if revision else uuid.uuid4()),
+                        block_id=uuid.uuid4(),
+                        request=self._formula_block_update_request(),
+                    )
+                self.assertEqual(db.scalar.call_count, 1)
+                db.rollback.assert_called_once_with()
+                db.commit.assert_not_called()
+                db.add.assert_not_called()
+
+    def test_missing_cross_revision_or_deleted_formula_block_is_rejected(self) -> None:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(), status=QuestionRevisionStatus.DRAFT,
+            updated_at=NOW,
+        )
+        db = MagicMock()
+        db.scalar.side_effect = [revision, None]
+        with self.assertRaises(EditorBlockNotFoundError):
+            QuestionEditorService(db).update_formula_block(
+                revision_id=revision.id,
+                block_id=uuid.uuid4(),
+                request=self._formula_block_update_request(),
+            )
+        statement = str(db.scalar.call_args_list[1].args[0])
+        self.assertIn("content_blocks.question_revision_id", statement)
+        self.assertIn("content_blocks.deleted_at IS NULL", statement)
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+
+    def test_non_formula_blocks_are_rejected_without_mutation(self) -> None:
+        for block_type in (
+            ContentBlockType.TEXT,
+            ContentBlockType.IMAGE,
+            ContentBlockType.GEOMETRY,
+            ContentBlockType.GRAPH,
+        ):
+            with self.subTest(block_type=block_type):
+                db, revision, block, content = self._formula_block_update_db(
+                    block_type=block_type,
+                )
+                with self.assertRaises(EditorBlockTypeMismatchError):
+                    QuestionEditorService(db).update_formula_block(
+                        revision_id=revision.id,
+                        block_id=block.id,
+                        request=self._formula_block_update_request(),
+                    )
+                self.assertEqual(content.source_latex, "x^2")
+                db.rollback.assert_called_once_with()
+                db.commit.assert_not_called()
+                db.add.assert_not_called()
+
+    def test_missing_formula_payload_is_rejected(self) -> None:
+        db, revision, block, _content = self._formula_block_update_db(
+            include_content=False,
+        )
+        with self.assertRaises(EditorBlockContentMissingError):
+            QuestionEditorService(db).update_formula_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._formula_block_update_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+
+    def test_formula_update_integrity_error_rolls_back_and_propagates(self) -> None:
+        db, revision, block, _content = self._formula_block_update_db()
+        failure = IntegrityError(
+            "update", {}, Exception("formula persistence conflict"),
+        )
+        db.commit.side_effect = failure
+        with self.assertRaises(IntegrityError) as raised:
+            QuestionEditorService(db).update_formula_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._formula_block_update_request(),
+            )
+        self.assertIs(raised.exception, failure)
         db.rollback.assert_called_once_with()
         db.commit.assert_called_once_with()
 
