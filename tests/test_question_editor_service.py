@@ -125,6 +125,29 @@ class QuestionEditorServiceTest(unittest.TestCase):
         db.scalar.side_effect = [revision, block]
         return db, revision, block, content
 
+    def _delete_block_db(
+        self,
+        *,
+        revision_status: QuestionRevisionStatus = QuestionRevisionStatus.DRAFT,
+        revision_updated_at: datetime = NOW,
+        block_type: ContentBlockType = ContentBlockType.TEXT,
+    ) -> tuple[MagicMock, SimpleNamespace, SimpleNamespace]:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(),
+            status=revision_status,
+            updated_at=revision_updated_at,
+        )
+        block = SimpleNamespace(
+            id=uuid.uuid4(),
+            question_revision_id=revision.id,
+            block_type=block_type,
+            sort_order=2000,
+            deleted_at=None,
+        )
+        db = MagicMock()
+        db.scalar.side_effect = [revision, block]
+        return db, revision, block
+
     def _text_block_request(self) -> TextBlockCreate:
         return TextBlockCreate.model_validate({
             "block_type": "text",
@@ -1221,6 +1244,154 @@ class QuestionEditorServiceTest(unittest.TestCase):
                 revision_id=revision.id,
                 block_id=block.id,
                 request=self._formula_block_update_request(),
+            )
+        self.assertIs(raised.exception, failure)
+        db.rollback.assert_called_once_with()
+        db.commit.assert_called_once_with()
+
+    def test_delete_block_soft_deletes_container_only_and_touches_revision(self) -> None:
+        db, revision, block = self._delete_block_db()
+        text_payload = SimpleNamespace(document={"type": "document"})
+        formula_payload = SimpleNamespace(source_latex="x^2", format_version=1)
+        block.text_content = text_payload
+        block.formula_content = formula_payload
+        original = (
+            block.id,
+            block.question_revision_id,
+            block.block_type,
+            block.sort_order,
+        )
+        deleted_at = NOW + timedelta(seconds=1)
+
+        with patch(
+            "app.services.question_editor_service._utc_now",
+            return_value=deleted_at,
+        ):
+            result = QuestionEditorService(db).delete_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                expected_revision_updated_at=NOW,
+            )
+
+        self.assertIsNone(result)
+        self.assertEqual(block.deleted_at, deleted_at)
+        self.assertIsNotNone(block.deleted_at.tzinfo)
+        self.assertEqual(revision.updated_at, deleted_at)
+        self.assertEqual(
+            (block.id, block.question_revision_id, block.block_type, block.sort_order),
+            original,
+        )
+        self.assertEqual(text_payload.document, {"type": "document"})
+        self.assertEqual(formula_payload.source_latex, "x^2")
+        self.assertEqual(formula_payload.format_version, 1)
+        db.add.assert_not_called()
+        db.delete.assert_not_called()
+        db.flush.assert_not_called()
+        db.commit.assert_called_once_with()
+        db.rollback.assert_not_called()
+
+    def test_delete_block_queries_are_active_scoped_and_locked(self) -> None:
+        db, revision, block = self._delete_block_db()
+        QuestionEditorService(db).delete_block(
+            revision_id=revision.id,
+            block_id=block.id,
+            expected_revision_updated_at=NOW,
+        )
+
+        revision_statement = str(db.scalar.call_args_list[0].args[0])
+        self.assertIn("question_revisions.id", revision_statement)
+        self.assertIn("question_revisions.deleted_at IS NULL", revision_statement)
+        self.assertIn("question_forms.is_active IS true", revision_statement)
+        self.assertIn("question_forms.deleted_at IS NULL", revision_statement)
+        self.assertIn("question_families.is_active IS true", revision_statement)
+        self.assertIn("question_families.deleted_at IS NULL", revision_statement)
+        self.assertIn("FOR UPDATE", revision_statement)
+
+        block_statement = str(db.scalar.call_args_list[1].args[0])
+        self.assertIn("content_blocks.id", block_statement)
+        self.assertIn("content_blocks.question_revision_id", block_statement)
+        self.assertIn("content_blocks.deleted_at IS NULL", block_statement)
+        self.assertIn("FOR UPDATE", block_statement)
+
+    def test_delete_block_accepts_every_content_block_type_without_payload(self) -> None:
+        for block_type in ContentBlockType:
+            with self.subTest(block_type=block_type):
+                db, revision, block = self._delete_block_db(
+                    block_type=block_type,
+                )
+                QuestionEditorService(db).delete_block(
+                    revision_id=revision.id,
+                    block_id=block.id,
+                    expected_revision_updated_at=NOW,
+                )
+                self.assertIsNotNone(block.deleted_at)
+                db.commit.assert_called_once_with()
+
+    def test_delete_block_revision_failures_prevent_block_lookup(self) -> None:
+        cases = (
+            (None, RevisionNotFoundError),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(),
+                    status=QuestionRevisionStatus.APPROVED,
+                    updated_at=NOW,
+                ),
+                RevisionNotEditableError,
+            ),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(),
+                    status=QuestionRevisionStatus.DRAFT,
+                    updated_at=NOW + timedelta(seconds=1),
+                ),
+                RevisionConflictError,
+            ),
+        )
+        for revision, error in cases:
+            with self.subTest(error=error.__name__):
+                db = MagicMock()
+                db.scalar.return_value = revision
+                with self.assertRaises(error):
+                    QuestionEditorService(db).delete_block(
+                        revision_id=(revision.id if revision else uuid.uuid4()),
+                        block_id=uuid.uuid4(),
+                        expected_revision_updated_at=NOW,
+                    )
+                self.assertEqual(db.scalar.call_count, 1)
+                db.rollback.assert_called_once_with()
+                db.commit.assert_not_called()
+
+    def test_delete_block_missing_cross_revision_or_deleted_is_rejected(self) -> None:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(),
+            status=QuestionRevisionStatus.DRAFT,
+            updated_at=NOW,
+        )
+        db = MagicMock()
+        db.scalar.side_effect = [revision, None]
+        with self.assertRaises(EditorBlockNotFoundError):
+            QuestionEditorService(db).delete_block(
+                revision_id=revision.id,
+                block_id=uuid.uuid4(),
+                expected_revision_updated_at=NOW,
+            )
+        block_statement = str(db.scalar.call_args_list[1].args[0])
+        self.assertIn("content_blocks.question_revision_id", block_statement)
+        self.assertIn("content_blocks.deleted_at IS NULL", block_statement)
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+
+    def test_delete_block_integrity_error_rolls_back_and_propagates(self) -> None:
+        db, revision, block = self._delete_block_db()
+        failure = IntegrityError(
+            "update", {}, Exception("block soft-delete conflict"),
+        )
+        db.commit.side_effect = failure
+        with self.assertRaises(IntegrityError) as raised:
+            QuestionEditorService(db).delete_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                expected_revision_updated_at=NOW,
             )
         self.assertIs(raised.exception, failure)
         db.rollback.assert_called_once_with()

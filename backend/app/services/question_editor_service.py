@@ -633,6 +633,70 @@ class QuestionEditorService:
             self.db.rollback()
             raise
 
+    def delete_block(
+        self,
+        *,
+        revision_id: uuid.UUID,
+        block_id: uuid.UUID,
+        expected_revision_updated_at: datetime,
+    ) -> None:
+        """Soft-delete one active block while preserving its payload rows."""
+
+        try:
+            revision = self.db.scalar(
+                select(QuestionRevision)
+                .join(
+                    QuestionForm,
+                    QuestionForm.id == QuestionRevision.question_form_id,
+                )
+                .join(
+                    QuestionFamily,
+                    QuestionFamily.id == QuestionForm.question_family_id,
+                )
+                .where(
+                    QuestionRevision.id == revision_id,
+                    QuestionRevision.deleted_at.is_(None),
+                    QuestionForm.is_active.is_(True),
+                    QuestionForm.deleted_at.is_(None),
+                    QuestionFamily.is_active.is_(True),
+                    QuestionFamily.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if revision is None:
+                raise RevisionNotFoundError(
+                    "Question revision was not found."
+                )
+
+            self.ensure_revision_editable(revision)
+            self.ensure_revision_timestamp_matches(
+                revision,
+                expected_revision_updated_at,
+            )
+
+            block = self.db.scalar(
+                select(ContentBlock)
+                .where(
+                    ContentBlock.id == block_id,
+                    ContentBlock.question_revision_id == revision.id,
+                    ContentBlock.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if block is None:
+                raise EditorBlockNotFoundError(
+                    "Content block was not found in the revision."
+                )
+
+            deleted_at = _utc_now()
+            block.deleted_at = deleted_at
+            revision.updated_at = deleted_at
+
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
     def _require_question_type(self, question_type_id: uuid.UUID) -> None:
         question_type = self.db.scalar(
             select(QuestionType).where(
