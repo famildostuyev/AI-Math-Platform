@@ -37,12 +37,24 @@ from app.schemas.question_editor import (
     QuestionDraftCreate,
     QuestionDraftRead,
     QuestionRevisionEditorRead,
+    TextBlockCreate,
+    TextBlockRead,
+    TextBlockUpdate,
 )
 from app.services.question_editor_service import (
+    ContentBlockOrderConflictError,
+    EditorBlockContentMissingError,
+    EditorBlockNotFoundError,
+    EditorBlockTypeMismatchError,
     PurposeNotFoundError,
     QuestionTypeNotFoundError,
     RevisionNotFoundError,
+    RevisionConflictError,
+    RevisionNotEditableError,
     TopicNotFoundError,
+)
+from app.services.structured_text_service import (
+    UnsupportedStructuredTextVersionError,
 )
 
 
@@ -102,6 +114,44 @@ class QuestionEditorApiTest(unittest.TestCase):
         return QuestionRevisionEditorRead.model_validate({
             **self._draft_response().model_dump(),
             "blocks": [],
+        })
+
+    def _document(self) -> dict[str, object]:
+        return {
+            "type": "document",
+            "content": [{
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "Solve this"}],
+            }],
+        }
+
+    def _text_create_request(self) -> dict[str, object]:
+        return {
+            "block_type": "text",
+            "payload": {
+                "document": self._document(),
+                "format_version": 1,
+            },
+            "expected_revision_updated_at": NOW.isoformat(),
+        }
+
+    def _text_update_request(self) -> dict[str, object]:
+        return {
+            "document": self._document(),
+            "format_version": 1,
+            "expected_revision_updated_at": NOW.isoformat(),
+        }
+
+    def _text_response(self) -> TextBlockRead:
+        return TextBlockRead.model_validate({
+            "id": uuid.uuid4(),
+            "block_type": "text",
+            "sort_order": 1000,
+            "payload": {
+                "source_text": "Solve this",
+                "document": self._document(),
+                "format_version": 1,
+            },
         })
 
     @patch("app.api.question_editor.QuestionEditorService")
@@ -250,7 +300,213 @@ class QuestionEditorApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         service_class.assert_not_called()
 
-    def test_router_contains_only_step_6e_a_question_editor_routes(self) -> None:
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_admin_creates_text_block_with_validated_request(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        expected = self._text_response()
+        service_class.return_value.create_text_block.return_value = expected
+        response = self.client.post(
+            f"/api/v1/question-editor/revisions/{revision_id}/blocks/text",
+            json=self._text_create_request(),
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json(), expected.model_dump(mode="json"))
+        service_class.assert_called_once_with(self.db)
+        call = service_class.return_value.create_text_block.call_args
+        self.assertEqual(call.kwargs["revision_id"], revision_id)
+        self.assertIsInstance(call.kwargs["request"], TextBlockCreate)
+        self.assertEqual(
+            call.kwargs["request"].expected_revision_updated_at, NOW,
+        )
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_text_rejects_invalid_path_and_strict_body_fields(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        valid = self._text_create_request()
+        cases = (
+            ("not-a-uuid", valid),
+            (str(revision_id), {"block_type": "text"}),
+            (str(revision_id), {**valid, "source_text": "client value"}),
+            (str(revision_id), {**valid, "sort_order": 1000}),
+            (str(revision_id), {**valid, "revision_id": str(revision_id)}),
+        )
+        for path_id, body in cases:
+            with self.subTest(path_id=path_id, body=body):
+                response = self.client.post(
+                    f"/api/v1/question-editor/revisions/{path_id}/blocks/text",
+                    json=body,
+                )
+                self.assertEqual(response.status_code, 422)
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_text_maps_known_service_errors(
+        self, service_class: MagicMock,
+    ) -> None:
+        cases = (
+            (RevisionNotFoundError(), 404, "Question revision was not found."),
+            (RevisionNotEditableError(), 409, "Question revision is not editable."),
+            (
+                RevisionConflictError(), 409,
+                "Question revision was modified by another request.",
+            ),
+            (
+                ContentBlockOrderConflictError(), 409,
+                "Content block order conflict.",
+            ),
+            (
+                UnsupportedStructuredTextVersionError(), 422,
+                "Structured text format version is unsupported.",
+            ),
+        )
+        for error, status_code, detail in cases:
+            with self.subTest(error=type(error).__name__):
+                service_class.reset_mock()
+                service_class.return_value.create_text_block.side_effect = error
+                response = self.client.post(
+                    f"/api/v1/question-editor/revisions/{uuid.uuid4()}/blocks/text",
+                    json=self._text_create_request(),
+                )
+                self.assertEqual(response.status_code, status_code)
+                self.assertEqual(response.json(), {"detail": detail})
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_admin_updates_text_block_with_validated_ids_and_request(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        expected = self._text_response()
+        service_class.return_value.update_text_block.return_value = expected
+        response = self.client.patch(
+            f"/api/v1/question-editor/revisions/{revision_id}/blocks/{block_id}/text",
+            json=self._text_update_request(),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), expected.model_dump(mode="json"))
+        call = service_class.return_value.update_text_block.call_args
+        self.assertEqual(call.kwargs["revision_id"], revision_id)
+        self.assertEqual(call.kwargs["block_id"], block_id)
+        self.assertIsInstance(call.kwargs["request"], TextBlockUpdate)
+        self.assertEqual(
+            call.kwargs["request"].expected_revision_updated_at, NOW,
+        )
+        self.assertEqual(
+            set(response.json()), {"id", "block_type", "sort_order", "payload"},
+        )
+        self.assertEqual(
+            set(response.json()["payload"]),
+            {"source_text", "document", "format_version"},
+        )
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_text_rejects_invalid_path_and_strict_body_fields(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        valid = self._text_update_request()
+        cases = (
+            ("not-a-uuid", str(block_id), valid),
+            (str(revision_id), "not-a-uuid", valid),
+            (str(revision_id), str(block_id), {}),
+            (str(revision_id), str(block_id), {**valid, "block_type": "text"}),
+            (str(revision_id), str(block_id), {**valid, "source_text": "client"}),
+            (str(revision_id), str(block_id), {**valid, "sort_order": 2000}),
+            (str(revision_id), str(block_id), {**valid, "deleted_at": NOW.isoformat()}),
+        )
+        for revision_path, block_path, body in cases:
+            with self.subTest(body=body):
+                response = self.client.patch(
+                    "/api/v1/question-editor/revisions/"
+                    f"{revision_path}/blocks/{block_path}/text",
+                    json=body,
+                )
+                self.assertEqual(response.status_code, 422)
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_text_maps_known_service_errors(
+        self, service_class: MagicMock,
+    ) -> None:
+        cases = (
+            (RevisionNotFoundError(), 404, "Question revision was not found."),
+            (RevisionNotEditableError(), 409, "Question revision is not editable."),
+            (
+                RevisionConflictError(), 409,
+                "Question revision was modified by another request.",
+            ),
+            (EditorBlockNotFoundError(), 404, "Content block was not found."),
+            (
+                EditorBlockTypeMismatchError(), 409,
+                "Content block type does not match the requested operation.",
+            ),
+            (
+                EditorBlockContentMissingError(), 409,
+                "Content block payload is unavailable.",
+            ),
+            (
+                UnsupportedStructuredTextVersionError(), 422,
+                "Structured text format version is unsupported.",
+            ),
+        )
+        for error, status_code, detail in cases:
+            with self.subTest(error=type(error).__name__):
+                service_class.reset_mock()
+                service_class.return_value.update_text_block.side_effect = error
+                response = self.client.patch(
+                    "/api/v1/question-editor/revisions/"
+                    f"{uuid.uuid4()}/blocks/{uuid.uuid4()}/text",
+                    json=self._text_update_request(),
+                )
+                self.assertEqual(response.status_code, status_code)
+                self.assertEqual(response.json(), {"detail": detail})
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_text_routes_require_authentication_before_service(
+        self, service_class: MagicMock,
+    ) -> None:
+        del app.dependency_overrides[get_current_active_user]
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        responses = (
+            self.client.post(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/text",
+                json=self._text_create_request(),
+            ),
+            self.client.patch(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/{block_id}/text",
+                json=self._text_update_request(),
+            ),
+        )
+        self.assertTrue(all(response.status_code == 401 for response in responses))
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_text_routes_reject_non_admin_before_service(
+        self, service_class: MagicMock,
+    ) -> None:
+        self.db.scalar.return_value = RoleName.TEACHER.value
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        responses = (
+            self.client.post(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/text",
+                json=self._text_create_request(),
+            ),
+            self.client.patch(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/{block_id}/text",
+                json=self._text_update_request(),
+            ),
+        )
+        self.assertTrue(all(response.status_code == 403 for response in responses))
+        service_class.assert_not_called()
+
+    def test_router_contains_only_step_6e_a_and_b_routes(self) -> None:
         route_methods = {
             (method, route.path)
             for route in question_editor_router.routes
@@ -259,6 +515,11 @@ class QuestionEditorApiTest(unittest.TestCase):
         self.assertEqual(route_methods, {
             ("POST", "/question-editor/drafts"),
             ("GET", "/question-editor/revisions/{revision_id}"),
+            ("POST", "/question-editor/revisions/{revision_id}/blocks/text"),
+            (
+                "PATCH",
+                "/question-editor/revisions/{revision_id}/blocks/{block_id}/text",
+            ),
         })
 
 
