@@ -38,6 +38,9 @@ from app.schemas.question_editor import (
     FormulaBlockCreate,
     FormulaBlockRead,
     FormulaBlockUpdate,
+    GeometryBlockCreate,
+    GeometryBlockRead,
+    GeometryBlockUpdate,
     ImageBlockCreate,
     ImageBlockRead,
     ImageBlockUpdate,
@@ -196,6 +199,43 @@ class QuestionEditorApiTest(unittest.TestCase):
                 "format_version": 1,
             },
         })
+
+    def _geometry_create_request(
+        self,
+        source_data: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        return {
+            "block_type": "geometry",
+            "payload": {
+                "source_data": {} if source_data is None else source_data,
+                "format_version": 1,
+            },
+            "expected_revision_updated_at": NOW.isoformat(),
+        }
+
+    def _geometry_response(
+        self,
+        source_data: dict[str, object] | None = None,
+    ) -> GeometryBlockRead:
+        return GeometryBlockRead.model_validate({
+            "id": uuid.uuid4(),
+            "block_type": "geometry",
+            "sort_order": 1000,
+            "payload": {
+                "source_data": {} if source_data is None else source_data,
+                "format_version": 1,
+            },
+        })
+
+    def _geometry_update_request(
+        self,
+        source_data: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        return {
+            "source_data": {} if source_data is None else source_data,
+            "format_version": 1,
+            "expected_revision_updated_at": NOW.isoformat(),
+        }
 
     def _image_create_request(
         self,
@@ -1293,7 +1333,340 @@ class QuestionEditorApiTest(unittest.TestCase):
         self.assertTrue(all(item.status_code == 403 for item in forbidden))
         service_class.assert_not_called()
 
-    def test_router_contains_exactly_ten_routes_without_upload_or_geometry_write(self) -> None:
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_admin_create_geometry_delegates_exact_public_contract(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        source_data = {
+            "objects": [{"type": "future-shape", "points": [0, 1.5, -2]}],
+            "metadata": {"visible": True, "optional": None},
+        }
+        expected = self._geometry_response(source_data)
+        service_class.return_value.create_geometry_block.return_value = expected
+        response = self.client.post(
+            f"/api/v1/question-editor/revisions/{revision_id}/blocks/geometry",
+            json=self._geometry_create_request(source_data),
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json(), expected.model_dump(mode="json"))
+        call = service_class.return_value.create_geometry_block.call_args
+        self.assertEqual(call.kwargs["revision_id"], revision_id)
+        self.assertIsInstance(call.kwargs["request"], GeometryBlockCreate)
+        self.assertEqual(call.kwargs["request"].payload.source_data, source_data)
+        self.assertEqual(call.kwargs["request"].payload.format_version, 1)
+        self.assertEqual(
+            call.kwargs["request"].expected_revision_updated_at, NOW,
+        )
+        self.assertEqual(
+            set(response.json()), {"id", "block_type", "sort_order", "payload"},
+        )
+        self.assertEqual(
+            set(response.json()["payload"]), {"source_data", "format_version"},
+        )
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_geometry_accepts_empty_source_data(
+        self, service_class: MagicMock,
+    ) -> None:
+        expected = self._geometry_response({})
+        service_class.return_value.create_geometry_block.return_value = expected
+        response = self.client.post(
+            f"/api/v1/question-editor/revisions/{uuid.uuid4()}/blocks/geometry",
+            json=self._geometry_create_request({}),
+        )
+        self.assertEqual(response.status_code, 201)
+        request = service_class.return_value.create_geometry_block.call_args.kwargs[
+            "request"
+        ]
+        self.assertEqual(request.payload.source_data, {})
+        self.assertEqual(response.json()["payload"]["source_data"], {})
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_geometry_preserves_opaque_nested_and_inert_strings(
+        self, service_class: MagicMock,
+    ) -> None:
+        source_data = {
+            "future": [{"data": [True, None, {"value": 2.75}]}],
+            "svg": "<svg><script>alert(1)</script></svg>",
+            "html": "<b>inert</b>",
+        }
+        expected = self._geometry_response(source_data)
+        service_class.return_value.create_geometry_block.return_value = expected
+        response = self.client.post(
+            f"/api/v1/question-editor/revisions/{uuid.uuid4()}/blocks/geometry",
+            json=self._geometry_create_request(source_data),
+        )
+        self.assertEqual(response.status_code, 201)
+        request = service_class.return_value.create_geometry_block.call_args.kwargs[
+            "request"
+        ]
+        self.assertEqual(request.payload.source_data, source_data)
+        self.assertEqual(response.json()["payload"]["source_data"], source_data)
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_geometry_rejects_invalid_and_internal_fields(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        valid = self._geometry_create_request({"objects": []})
+        payload = valid["payload"]
+        cases = (
+            ("not-a-uuid", valid),
+            (str(revision_id), {**valid, "block_type": "formula"}),
+            (str(revision_id), {key: value for key, value in valid.items() if key != "block_type"}),
+            (str(revision_id), {**valid, "payload": {**payload, "source_data": []}}),
+            (str(revision_id), {**valid, "payload": {**payload, "format_version": 2}}),
+            (
+                str(revision_id),
+                {**valid, "expected_revision_updated_at": "2026-08-15T12:00:00"},
+            ),
+            (
+                str(revision_id),
+                {
+                    key: value for key, value in valid.items()
+                    if key != "expected_revision_updated_at"
+                },
+            ),
+            (str(revision_id), {key: value for key, value in valid.items() if key != "payload"}),
+            (str(revision_id), {**valid, "sort_order": 1000}),
+            (str(revision_id), {**valid, "revision_id": str(revision_id)}),
+            (str(revision_id), {**valid, "deleted_at": None}),
+            (str(revision_id), {**valid, "rendered_svg": "<svg />"}),
+            (str(revision_id), {**valid, "payload": {**payload, "preview": {}}}),
+        )
+        for path_id, body in cases:
+            with self.subTest(path_id=path_id, body=body):
+                response = self.client.post(
+                    f"/api/v1/question-editor/revisions/{path_id}/blocks/geometry",
+                    json=body,
+                )
+                self.assertEqual(response.status_code, 422)
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_geometry_maps_known_service_errors(
+        self, service_class: MagicMock,
+    ) -> None:
+        cases = (
+            (RevisionNotFoundError(), 404, "Question revision was not found."),
+            (RevisionNotEditableError(), 409, "Question revision is not editable."),
+            (
+                RevisionConflictError(), 409,
+                "Question revision was modified by another request.",
+            ),
+            (
+                ContentBlockOrderConflictError(), 409,
+                "Content block order conflict.",
+            ),
+        )
+        for error, status_code, detail in cases:
+            with self.subTest(error=type(error).__name__):
+                service_class.reset_mock()
+                service_class.return_value.create_geometry_block.side_effect = error
+                response = self.client.post(
+                    f"/api/v1/question-editor/revisions/{uuid.uuid4()}/blocks/geometry",
+                    json=self._geometry_create_request(),
+                )
+                self.assertEqual(response.status_code, status_code)
+                self.assertEqual(response.json(), {"detail": detail})
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_geometry_enforces_authentication_and_admin_role(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        del app.dependency_overrides[get_current_active_user]
+        unauthenticated = self.client.post(
+            f"/api/v1/question-editor/revisions/{revision_id}/blocks/geometry",
+            json=self._geometry_create_request(),
+        )
+        self.assertEqual(unauthenticated.status_code, 401)
+        app.dependency_overrides[get_current_active_user] = lambda: self.current_user
+        self.db.scalar.return_value = RoleName.TEACHER.value
+        forbidden = self.client.post(
+            f"/api/v1/question-editor/revisions/{revision_id}/blocks/geometry",
+            json=self._geometry_create_request(),
+        )
+        self.assertEqual(forbidden.status_code, 403)
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_admin_update_geometry_delegates_exact_public_contract(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        source_data = {
+            "objects": [{"type": "future-shape", "points": [0, 1.5, -2]}],
+            "metadata": {"visible": True, "optional": None},
+        }
+        expected = self._geometry_response(source_data)
+        service_class.return_value.update_geometry_block.return_value = expected
+        response = self.client.patch(
+            "/api/v1/question-editor/revisions/"
+            f"{revision_id}/blocks/{block_id}/geometry",
+            json=self._geometry_update_request(source_data),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), expected.model_dump(mode="json"))
+        call = service_class.return_value.update_geometry_block.call_args
+        self.assertEqual(call.kwargs["revision_id"], revision_id)
+        self.assertEqual(call.kwargs["block_id"], block_id)
+        self.assertIsInstance(call.kwargs["request"], GeometryBlockUpdate)
+        self.assertEqual(call.kwargs["request"].source_data, source_data)
+        self.assertEqual(call.kwargs["request"].format_version, 1)
+        self.assertEqual(
+            call.kwargs["request"].expected_revision_updated_at, NOW,
+        )
+        self.assertEqual(
+            set(response.json()), {"id", "block_type", "sort_order", "payload"},
+        )
+        self.assertEqual(
+            set(response.json()["payload"]), {"source_data", "format_version"},
+        )
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_geometry_accepts_empty_source_data(
+        self, service_class: MagicMock,
+    ) -> None:
+        expected = self._geometry_response({})
+        service_class.return_value.update_geometry_block.return_value = expected
+        response = self.client.patch(
+            "/api/v1/question-editor/revisions/"
+            f"{uuid.uuid4()}/blocks/{uuid.uuid4()}/geometry",
+            json=self._geometry_update_request({}),
+        )
+        self.assertEqual(response.status_code, 200)
+        request = service_class.return_value.update_geometry_block.call_args.kwargs[
+            "request"
+        ]
+        self.assertEqual(request.source_data, {})
+        self.assertEqual(response.json()["payload"]["source_data"], {})
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_geometry_preserves_opaque_nested_and_inert_strings(
+        self, service_class: MagicMock,
+    ) -> None:
+        source_data = {
+            "future": [{"data": [True, None, {"value": 2.75}]}],
+            "svg": "<svg><script>alert(1)</script></svg>",
+            "html": "<b>inert</b>",
+        }
+        expected = self._geometry_response(source_data)
+        service_class.return_value.update_geometry_block.return_value = expected
+        response = self.client.patch(
+            "/api/v1/question-editor/revisions/"
+            f"{uuid.uuid4()}/blocks/{uuid.uuid4()}/geometry",
+            json=self._geometry_update_request(source_data),
+        )
+        self.assertEqual(response.status_code, 200)
+        request = service_class.return_value.update_geometry_block.call_args.kwargs[
+            "request"
+        ]
+        self.assertEqual(request.source_data, source_data)
+        self.assertEqual(response.json()["payload"]["source_data"], source_data)
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_geometry_rejects_invalid_and_internal_fields(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        valid = self._geometry_update_request({"objects": []})
+        cases = (
+            ("not-a-uuid", str(block_id), valid),
+            (str(revision_id), "not-a-uuid", valid),
+            (str(revision_id), str(block_id), {**valid, "source_data": []}),
+            (str(revision_id), str(block_id), {**valid, "format_version": 2}),
+            (
+                str(revision_id), str(block_id),
+                {**valid, "expected_revision_updated_at": "2026-08-15T12:00:00"},
+            ),
+            (
+                str(revision_id), str(block_id),
+                {key: value for key, value in valid.items() if key != "source_data"},
+            ),
+            (
+                str(revision_id), str(block_id),
+                {
+                    key: value for key, value in valid.items()
+                    if key != "expected_revision_updated_at"
+                },
+            ),
+            (str(revision_id), str(block_id), {**valid, "block_type": "geometry"}),
+            (str(revision_id), str(block_id), {**valid, "sort_order": 1000}),
+            (str(revision_id), str(block_id), {**valid, "revision_id": str(revision_id)}),
+            (str(revision_id), str(block_id), {**valid, "deleted_at": None}),
+            (str(revision_id), str(block_id), {**valid, "rendered_svg": "<svg />"}),
+        )
+        for revision_path, block_path, body in cases:
+            with self.subTest(body=body):
+                response = self.client.patch(
+                    "/api/v1/question-editor/revisions/"
+                    f"{revision_path}/blocks/{block_path}/geometry",
+                    json=body,
+                )
+                self.assertEqual(response.status_code, 422)
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_geometry_maps_known_service_errors(
+        self, service_class: MagicMock,
+    ) -> None:
+        cases = (
+            (RevisionNotFoundError(), 404, "Question revision was not found."),
+            (RevisionNotEditableError(), 409, "Question revision is not editable."),
+            (
+                RevisionConflictError(), 409,
+                "Question revision was modified by another request.",
+            ),
+            (EditorBlockNotFoundError(), 404, "Content block was not found."),
+            (
+                EditorBlockTypeMismatchError(), 409,
+                "Content block type does not match the requested operation.",
+            ),
+            (
+                EditorBlockContentMissingError(), 409,
+                "Content block payload is unavailable.",
+            ),
+        )
+        for error, status_code, detail in cases:
+            with self.subTest(error=type(error).__name__):
+                service_class.reset_mock()
+                service_class.return_value.update_geometry_block.side_effect = error
+                response = self.client.patch(
+                    "/api/v1/question-editor/revisions/"
+                    f"{uuid.uuid4()}/blocks/{uuid.uuid4()}/geometry",
+                    json=self._geometry_update_request(),
+                )
+                self.assertEqual(response.status_code, status_code)
+                self.assertEqual(response.json(), {"detail": detail})
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_geometry_enforces_authentication_and_admin_role(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        del app.dependency_overrides[get_current_active_user]
+        unauthenticated = self.client.patch(
+            "/api/v1/question-editor/revisions/"
+            f"{revision_id}/blocks/{block_id}/geometry",
+            json=self._geometry_update_request(),
+        )
+        self.assertEqual(unauthenticated.status_code, 401)
+        app.dependency_overrides[get_current_active_user] = lambda: self.current_user
+        self.db.scalar.return_value = RoleName.TEACHER.value
+        forbidden = self.client.patch(
+            "/api/v1/question-editor/revisions/"
+            f"{revision_id}/blocks/{block_id}/geometry",
+            json=self._geometry_update_request(),
+        )
+        self.assertEqual(forbidden.status_code, 403)
+        service_class.assert_not_called()
+
+    def test_router_contains_exactly_twelve_routes_with_geometry_writes(self) -> None:
         route_methods = {
             (method, route.path)
             for route in question_editor_router.routes
@@ -1318,6 +1691,11 @@ class QuestionEditorApiTest(unittest.TestCase):
             ),
             ("PUT", "/question-editor/revisions/{revision_id}/blocks/order"),
             ("POST", "/question-editor/revisions/{revision_id}/blocks/image"),
+            ("POST", "/question-editor/revisions/{revision_id}/blocks/geometry"),
+            (
+                "PATCH",
+                "/question-editor/revisions/{revision_id}/blocks/{block_id}/geometry",
+            ),
             (
                 "PATCH",
                 "/question-editor/revisions/{revision_id}/blocks/{block_id}/image",
