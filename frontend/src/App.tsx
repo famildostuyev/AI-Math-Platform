@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import './App.css'
 import LoginScreen from './components/LoginScreen'
+import AdminQuestionEditor from './components/AdminQuestionEditor'
 import { getCurrentUser, logout, refreshTokens } from './api/auth'
 import type { CurrentUserResponse, TokenResponse } from './api/auth'
 import { ApiError } from './api/client'
@@ -61,7 +62,7 @@ import {
   BookOpen,
 } from 'lucide-react'
 
-type Screen = 'dashboard' | 'test-builder' | 'online-tests' | 'online-test-details' | 'active-test-details'
+type Screen = 'dashboard' | 'test-builder' | 'online-tests' | 'online-test-details' | 'active-test-details' | 'admin-question-editor'
 type BuilderStep = 'purpose' | 'class' | 'section' | 'topics' | 'parameters' | 'review'
 type PreparationStage = 'review' | 'use-mode' | 'online-students' | 'online-time' | 'online-presentation' | 'online-activation' | 'preview' | 'design' | 'final' | 'export'
 
@@ -294,6 +295,8 @@ function Sidebar({
   screen,
   onHome,
   onOpenOnlineTests,
+  onOpenQuestionEditor,
+  isAdmin,
   firstName,
   lastName,
   roleDisplayName,
@@ -303,6 +306,8 @@ function Sidebar({
   screen: Screen
   onHome: () => void
   onOpenOnlineTests: () => void
+  onOpenQuestionEditor: () => void
+  isAdmin: boolean
   firstName: string
   lastName: string
   roleDisplayName: string
@@ -352,6 +357,15 @@ function Sidebar({
             </button>
           )
         })}
+        {isAdmin && (
+          <button
+            className={screen === 'admin-question-editor' ? 'nav-item active' : 'nav-item'}
+            type="button"
+            onClick={onOpenQuestionEditor}
+          >
+            <FileText size={21} /><span>Sual redaktoru</span>
+          </button>
+        )}
       </nav>
 
       <div className="sidebar__secondary">
@@ -5374,6 +5388,7 @@ function App() {
 
   const openOnlineTestDetails = () => setScreen('online-test-details')
   const openActiveTestDetails = () => setScreen('active-test-details')
+  const openQuestionEditor = () => setScreen('admin-question-editor')
 
   return (
     <div className="app-shell">
@@ -5381,6 +5396,8 @@ function App() {
         screen={screen}
         onHome={openDashboard}
         onOpenOnlineTests={openOnlineTests}
+        onOpenQuestionEditor={openQuestionEditor}
+        isAdmin={currentUser.active_role.name === 'admin'}
         firstName={currentUser.first_name}
         lastName={currentUser.last_name}
         roleDisplayName={currentUser.active_role.display_name}
@@ -5421,6 +5438,13 @@ function App() {
           gradesError={gradesError}
           onRetryGrades={() => void loadGrades()}
           startInOnlineMode={startInOnlineMode}
+        />
+      )}
+
+      {screen === 'admin-question-editor' && (
+        <AdminQuestionEditor
+          authenticatedRequest={authenticatedRequest}
+          onBack={openDashboard}
         />
       )}
     </div>
