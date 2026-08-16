@@ -24,6 +24,14 @@ export type QuestionTypeCatalogResponse = {
   sort_order: number
 }
 
+export type QuestionSourceCatalogResponse = {
+  id: string
+  name: string
+  display_name: string
+  description: string | null
+  sort_order: number
+}
+
 export function getGrades(
   accessToken: string,
 ): Promise<GradeCatalogResponse[]> {
@@ -51,6 +59,20 @@ export function getQuestionTypes(
 ): Promise<QuestionTypeCatalogResponse[]> {
   return requestJson<QuestionTypeCatalogResponse[]>(
     '/api/v1/catalog/question-types',
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  )
+}
+
+export function getQuestionSources(
+  accessToken: string,
+): Promise<QuestionSourceCatalogResponse[]> {
+  return requestJson<QuestionSourceCatalogResponse[]>(
+    '/api/v1/catalog/question-sources',
     {
       method: 'GET',
       headers: {

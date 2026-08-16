@@ -14,6 +14,7 @@ export type QuestionBankListQuery = {
   status?: QuestionRevisionStatus
   difficulty?: QuestionDifficulty
   purpose_id?: UUID
+  source_id?: UUID
   page?: number
   page_size?: number
   sort?: QuestionBankSort
@@ -31,6 +32,13 @@ export type QuestionBankPrimaryTopicRead = {
   display_name: string
 }
 
+export type QuestionBankSourceRead = {
+  id: UUID
+  name: string
+  display_name: string
+  detail: string | null
+}
+
 export type QuestionBankItemRead = {
   question_family_id: UUID
   question_form_id: UUID
@@ -41,6 +49,7 @@ export type QuestionBankItemRead = {
   question_type: QuestionBankQuestionTypeRead
   difficulty: QuestionDifficulty | null
   primary_topic: QuestionBankPrimaryTopicRead | null
+  source: QuestionBankSourceRead | null
   block_count: number
   text_preview: string | null
   updated_at: IsoDateTime
@@ -67,6 +76,9 @@ function buildQuestionBankQueryString(query: QuestionBankListQuery): string {
   }
   if (query.purpose_id !== undefined) {
     parameters.set('purpose_id', query.purpose_id)
+  }
+  if (query.source_id !== undefined) {
+    parameters.set('source_id', query.source_id)
   }
   if (query.page !== undefined) parameters.set('page', String(query.page))
   if (query.page_size !== undefined) {
