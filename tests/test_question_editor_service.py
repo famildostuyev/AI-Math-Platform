@@ -29,12 +29,16 @@ from app.models.question_revision_purpose import QuestionRevisionPurpose
 from app.models.question_revision_related_topic import QuestionRevisionRelatedTopic
 from app.models.content_block import ContentBlock
 from app.models.formula_block_content import FormulaBlockContent
+from app.models.image_block_content import ImageBlockContent
 from app.models.text_block_content import TextBlockContent
 from app.schemas.question_editor import (
     BlockOrderRequest,
     FormulaBlockCreate,
     FormulaBlockRead,
     FormulaBlockUpdate,
+    ImageBlockCreate,
+    ImageBlockRead,
+    ImageBlockUpdate,
     QuestionDraftCreate,
     QuestionRevisionEditorRead,
     TextBlockCreate,
@@ -47,6 +51,7 @@ from app.services.question_editor_service import (
     EditorBlockContentMissingError,
     EditorBlockNotFoundError,
     EditorBlockTypeMismatchError,
+    MediaAssetNotFoundError,
     PurposeNotFoundError,
     QuestionEditorService,
     QuestionTypeNotFoundError,
@@ -71,6 +76,110 @@ def scalar_result(values: list[object]) -> MagicMock:
 
 
 class QuestionEditorServiceTest(unittest.TestCase):
+    def _image_block_request(
+        self,
+        media_asset_id: uuid.UUID | None = None,
+        alt_text: str | None = "Graph",
+    ) -> ImageBlockCreate:
+        return ImageBlockCreate.model_validate({
+            "block_type": "image",
+            "payload": {
+                "media_asset_id": media_asset_id or uuid.uuid4(),
+                "alt_text": alt_text,
+            },
+            "expected_revision_updated_at": NOW,
+        })
+
+    def _image_block_update_request(
+        self,
+        media_asset_id: uuid.UUID | None = None,
+        alt_text: str | None = "Updated graph",
+    ) -> ImageBlockUpdate:
+        return ImageBlockUpdate.model_validate({
+            "media_asset_id": media_asset_id or uuid.uuid4(),
+            "alt_text": alt_text,
+            "expected_revision_updated_at": NOW,
+        })
+
+    def _image_create_db(
+        self,
+        *,
+        status: QuestionRevisionStatus = QuestionRevisionStatus.DRAFT,
+        updated_at: datetime = NOW,
+        maximum_sort_order: int | None = None,
+        media_available: bool = True,
+    ) -> tuple[MagicMock, SimpleNamespace, SimpleNamespace | None]:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(), status=status, updated_at=updated_at,
+        )
+        media = (
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                deleted_at=None,
+                storage_key="private/image.png",
+                mime_type="image/png",
+                sha256="a" * 64,
+            )
+            if media_available
+            else None
+        )
+        db = MagicMock()
+        db.scalar.side_effect = [revision, media, maximum_sort_order]
+
+        def assign_block_id() -> None:
+            block = db.add.call_args.args[0]
+            if isinstance(block, ContentBlock):
+                block.id = uuid.uuid4()
+
+        db.flush.side_effect = assign_block_id
+        return db, revision, media
+
+    def _image_update_db(
+        self,
+        *,
+        revision_status: QuestionRevisionStatus = QuestionRevisionStatus.DRAFT,
+        revision_updated_at: datetime = NOW,
+        block_type: ContentBlockType = ContentBlockType.IMAGE,
+        include_content: bool = True,
+        media_available: bool = True,
+    ) -> tuple[
+        MagicMock, SimpleNamespace, SimpleNamespace, object | None,
+        SimpleNamespace | None,
+    ]:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(),
+            status=revision_status,
+            updated_at=revision_updated_at,
+        )
+        content = (
+            SimpleNamespace(
+                content_block_id=uuid.uuid4(),
+                media_asset_id=uuid.uuid4(),
+                alt_text="Original graph",
+            )
+            if include_content
+            else None
+        )
+        block = SimpleNamespace(
+            id=(content.content_block_id if content else uuid.uuid4()),
+            question_revision_id=revision.id,
+            block_type=block_type,
+            sort_order=3000,
+            image_content=content,
+        )
+        media = (
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                deleted_at=None,
+                storage_key="private/replacement.png",
+            )
+            if media_available
+            else None
+        )
+        db = MagicMock()
+        db.scalar.side_effect = [revision, block, media]
+        return db, revision, block, content, media
+
     def _formula_block_request(
         self,
         source_latex: str = "x^2+1",
@@ -1647,6 +1756,316 @@ class QuestionEditorServiceTest(unittest.TestCase):
             )
         self.assertIs(raised.exception.__cause__, failure)
         db.flush.assert_called_once_with()
+        db.rollback.assert_called_once_with()
+        db.commit.assert_called_once_with()
+
+
+    def test_create_image_block_persists_reference_and_safe_typed_response(self) -> None:
+        db, revision, media = self._image_create_db()
+        request = self._image_block_request(media.id, "Coordinate graph")
+        updated_at = NOW + timedelta(seconds=1)
+        media_snapshot = vars(media).copy()
+        with patch(
+            "app.services.question_editor_service._utc_now",
+            return_value=updated_at,
+        ):
+            response = QuestionEditorService(db).create_image_block(
+                revision_id=revision.id,
+                request=request,
+            )
+
+        block, content = [call.args[0] for call in db.add.call_args_list]
+        self.assertIsInstance(block, ContentBlock)
+        self.assertEqual(block.question_revision_id, revision.id)
+        self.assertEqual(block.block_type, ContentBlockType.IMAGE)
+        self.assertEqual(block.sort_order, 1000)
+        self.assertIsInstance(content, ImageBlockContent)
+        self.assertEqual(content.content_block_id, block.id)
+        self.assertEqual(content.media_asset_id, media.id)
+        self.assertEqual(content.alt_text, "Coordinate graph")
+        self.assertIsInstance(response, ImageBlockRead)
+        self.assertEqual(response.id, block.id)
+        self.assertEqual(response.block_type, ContentBlockType.IMAGE)
+        self.assertEqual(response.sort_order, 1000)
+        self.assertEqual(response.payload.media_asset_id, media.id)
+        self.assertEqual(response.payload.alt_text, "Coordinate graph")
+        self.assertEqual(set(response.payload.model_dump()), {"media_asset_id", "alt_text"})
+        self.assertEqual(vars(media), media_snapshot)
+        self.assertEqual(revision.updated_at, updated_at)
+        db.commit.assert_called_once_with()
+        db.rollback.assert_not_called()
+
+    def test_create_image_queries_revision_media_and_active_max(self) -> None:
+        db, revision, media = self._image_create_db(maximum_sort_order=5000)
+        response = QuestionEditorService(db).create_image_block(
+            revision_id=revision.id,
+            request=self._image_block_request(media.id),
+        )
+        revision_statement = str(db.scalar.call_args_list[0].args[0])
+        self.assertIn("question_revisions.deleted_at IS NULL", revision_statement)
+        self.assertIn("question_forms.is_active IS true", revision_statement)
+        self.assertIn("question_forms.deleted_at IS NULL", revision_statement)
+        self.assertIn("question_families.is_active IS true", revision_statement)
+        self.assertIn("question_families.deleted_at IS NULL", revision_statement)
+        self.assertIn("FOR UPDATE", revision_statement)
+        media_statement = str(db.scalar.call_args_list[1].args[0])
+        self.assertIn("media_assets.id", media_statement)
+        self.assertIn("media_assets.deleted_at IS NULL", media_statement)
+        max_statement = str(db.scalar.call_args_list[2].args[0])
+        self.assertIn("max(content_blocks.sort_order)", max_statement)
+        self.assertIn("content_blocks.question_revision_id", max_statement)
+        self.assertIn("content_blocks.deleted_at IS NULL", max_statement)
+        self.assertEqual(response.sort_order, 6000)
+
+    def test_create_image_flushes_block_before_payload_and_preserves_alt_text(self) -> None:
+        for alt_text in (None, ""):
+            with self.subTest(alt_text=alt_text):
+                db, revision, media = self._image_create_db()
+                response = QuestionEditorService(db).create_image_block(
+                    revision_id=revision.id,
+                    request=self._image_block_request(media.id, alt_text),
+                )
+                names = [call[0] for call in db.method_calls]
+                first_add = names.index("add")
+                flush = names.index("flush")
+                second_add = names.index("add", first_add + 1)
+                self.assertLess(first_add, flush)
+                self.assertLess(flush, second_add)
+                self.assertEqual(response.payload.alt_text, alt_text)
+
+    def test_create_image_revision_and_media_failures_prevent_persistence(self) -> None:
+        cases = (
+            (None, RevisionNotFoundError),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(), status=QuestionRevisionStatus.APPROVED,
+                    updated_at=NOW,
+                ),
+                RevisionNotEditableError,
+            ),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(), status=QuestionRevisionStatus.DRAFT,
+                    updated_at=NOW + timedelta(seconds=1),
+                ),
+                RevisionConflictError,
+            ),
+        )
+        for revision, error in cases:
+            with self.subTest(error=error.__name__):
+                db = MagicMock()
+                db.scalar.return_value = revision
+                with self.assertRaises(error):
+                    QuestionEditorService(db).create_image_block(
+                        revision_id=(revision.id if revision else uuid.uuid4()),
+                        request=self._image_block_request(),
+                    )
+                self.assertEqual(db.scalar.call_count, 1)
+                db.add.assert_not_called()
+                db.commit.assert_not_called()
+                db.rollback.assert_called_once_with()
+
+        db, revision, _media = self._image_create_db(media_available=False)
+        with self.assertRaises(MediaAssetNotFoundError):
+            QuestionEditorService(db).create_image_block(
+                revision_id=revision.id,
+                request=self._image_block_request(),
+            )
+        self.assertEqual(db.scalar.call_count, 2)
+        db.add.assert_not_called()
+        db.rollback.assert_called_once_with()
+
+    def test_create_image_payload_failure_and_integrity_conflict_roll_back(self) -> None:
+        db, revision, media = self._image_create_db()
+        db.add.side_effect = lambda value: (
+            (_ for _ in ()).throw(RuntimeError("payload insert failed"))
+            if isinstance(value, ImageBlockContent)
+            else None
+        )
+        with self.assertRaises(RuntimeError):
+            QuestionEditorService(db).create_image_block(
+                revision_id=revision.id,
+                request=self._image_block_request(media.id),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+
+        db, revision, media = self._image_create_db()
+        failure = IntegrityError("insert", {}, Exception("active order conflict"))
+        db.commit.side_effect = failure
+        with self.assertRaises(ContentBlockOrderConflictError) as raised:
+            QuestionEditorService(db).create_image_block(
+                revision_id=revision.id,
+                request=self._image_block_request(media.id),
+            )
+        self.assertIs(raised.exception.__cause__, failure)
+        db.rollback.assert_called_once_with()
+
+    def test_update_image_replaces_payload_in_place_and_preserves_container(self) -> None:
+        db, revision, block, content, media = self._image_update_db()
+        request = self._image_block_update_request(media.id, "  replacement  ")
+        original = (
+            block.id, block.question_revision_id, block.block_type,
+            block.sort_order, content.content_block_id, id(content),
+        )
+        media_snapshot = vars(media).copy()
+        updated_at = NOW + timedelta(seconds=1)
+        with patch(
+            "app.services.question_editor_service._utc_now",
+            return_value=updated_at,
+        ):
+            response = QuestionEditorService(db).update_image_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=request,
+            )
+        self.assertEqual(content.media_asset_id, media.id)
+        self.assertEqual(content.alt_text, "  replacement  ")
+        self.assertEqual(
+            (
+                block.id, block.question_revision_id, block.block_type,
+                block.sort_order, content.content_block_id, id(content),
+            ),
+            original,
+        )
+        self.assertEqual(vars(media), media_snapshot)
+        self.assertIsInstance(response, ImageBlockRead)
+        self.assertEqual(response.payload.media_asset_id, media.id)
+        self.assertEqual(response.payload.alt_text, "  replacement  ")
+        self.assertEqual(revision.updated_at, updated_at)
+        db.add.assert_not_called()
+        db.flush.assert_not_called()
+        db.commit.assert_called_once_with()
+        db.rollback.assert_not_called()
+
+    def test_update_image_queries_scoped_locked_block_then_media(self) -> None:
+        db, revision, block, _content, media = self._image_update_db()
+        QuestionEditorService(db).update_image_block(
+            revision_id=revision.id,
+            block_id=block.id,
+            request=self._image_block_update_request(media.id),
+        )
+        revision_statement = str(db.scalar.call_args_list[0].args[0])
+        self.assertIn("FOR UPDATE", revision_statement)
+        block_statement = str(db.scalar.call_args_list[1].args[0])
+        self.assertIn("content_blocks.id", block_statement)
+        self.assertIn("content_blocks.question_revision_id", block_statement)
+        self.assertIn("content_blocks.deleted_at IS NULL", block_statement)
+        self.assertIn("FOR UPDATE", block_statement)
+        media_statement = str(db.scalar.call_args_list[2].args[0])
+        self.assertIn("media_assets.id", media_statement)
+        self.assertIn("media_assets.deleted_at IS NULL", media_statement)
+
+    def test_update_image_accepts_none_and_empty_alt_text_exactly(self) -> None:
+        for alt_text in (None, ""):
+            with self.subTest(alt_text=alt_text):
+                db, revision, block, content, media = self._image_update_db()
+                response = QuestionEditorService(db).update_image_block(
+                    revision_id=revision.id,
+                    block_id=block.id,
+                    request=self._image_block_update_request(media.id, alt_text),
+                )
+                self.assertEqual(content.alt_text, alt_text)
+                self.assertEqual(response.payload.alt_text, alt_text)
+
+    def test_update_image_rejects_bad_block_or_payload_before_media_lookup(self) -> None:
+        cases = (
+            (None, EditorBlockNotFoundError),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(), question_revision_id=uuid.uuid4(),
+                    block_type=ContentBlockType.TEXT, sort_order=1000,
+                    image_content=None,
+                ),
+                EditorBlockTypeMismatchError,
+            ),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(), question_revision_id=uuid.uuid4(),
+                    block_type=ContentBlockType.IMAGE, sort_order=1000,
+                    image_content=None,
+                ),
+                EditorBlockContentMissingError,
+            ),
+        )
+        for block, error in cases:
+            with self.subTest(error=error.__name__):
+                revision = SimpleNamespace(
+                    id=uuid.uuid4(), status=QuestionRevisionStatus.DRAFT,
+                    updated_at=NOW,
+                )
+                db = MagicMock()
+                db.scalar.side_effect = [revision, block]
+                with self.assertRaises(error):
+                    QuestionEditorService(db).update_image_block(
+                        revision_id=revision.id,
+                        block_id=uuid.uuid4(),
+                        request=self._image_block_update_request(),
+                    )
+                self.assertEqual(db.scalar.call_count, 2)
+                db.commit.assert_not_called()
+                db.rollback.assert_called_once_with()
+
+    def test_update_image_unavailable_media_does_not_mutate_payload(self) -> None:
+        db, revision, block, content, _media = self._image_update_db(
+            media_available=False,
+        )
+        original = (content.media_asset_id, content.alt_text)
+        with self.assertRaises(MediaAssetNotFoundError):
+            QuestionEditorService(db).update_image_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._image_block_update_request(),
+            )
+        self.assertEqual((content.media_asset_id, content.alt_text), original)
+        db.add.assert_not_called()
+        db.flush.assert_not_called()
+        db.commit.assert_not_called()
+        db.rollback.assert_called_once_with()
+
+    def test_update_image_revision_failures_prevent_block_lookup(self) -> None:
+        cases = (
+            (None, RevisionNotFoundError),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(), status=QuestionRevisionStatus.APPROVED,
+                    updated_at=NOW,
+                ),
+                RevisionNotEditableError,
+            ),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(), status=QuestionRevisionStatus.DRAFT,
+                    updated_at=NOW + timedelta(seconds=1),
+                ),
+                RevisionConflictError,
+            ),
+        )
+        for revision, error in cases:
+            with self.subTest(error=error.__name__):
+                db = MagicMock()
+                db.scalar.return_value = revision
+                with self.assertRaises(error):
+                    QuestionEditorService(db).update_image_block(
+                        revision_id=(revision.id if revision else uuid.uuid4()),
+                        block_id=uuid.uuid4(),
+                        request=self._image_block_update_request(),
+                    )
+                self.assertEqual(db.scalar.call_count, 1)
+                db.rollback.assert_called_once_with()
+                db.commit.assert_not_called()
+
+    def test_update_image_integrity_error_rolls_back_and_propagates(self) -> None:
+        db, revision, block, _content, media = self._image_update_db()
+        failure = IntegrityError("update", {}, Exception("reference conflict"))
+        db.commit.side_effect = failure
+        with self.assertRaises(IntegrityError) as raised:
+            QuestionEditorService(db).update_image_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._image_block_update_request(media.id),
+            )
+        self.assertIs(raised.exception, failure)
         db.rollback.assert_called_once_with()
         db.commit.assert_called_once_with()
 

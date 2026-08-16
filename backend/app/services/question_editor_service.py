@@ -16,6 +16,8 @@ from app.core.enums import (
 )
 from app.models.content_block import ContentBlock
 from app.models.formula_block_content import FormulaBlockContent
+from app.models.image_block_content import ImageBlockContent
+from app.models.media_asset import MediaAsset
 from app.models.purpose import Purpose
 from app.models.question_family import QuestionFamily
 from app.models.question_form import QuestionForm
@@ -33,8 +35,10 @@ from app.schemas.question_editor import (
     FormulaBlockUpdate,
     GeometryBlockPayloadRead,
     GeometryBlockRead,
+    ImageBlockCreate,
     ImageBlockPayloadRead,
     ImageBlockRead,
+    ImageBlockUpdate,
     QuestionDraftCreate,
     QuestionDraftRead,
     QuestionRevisionEditorRead,
@@ -103,6 +107,10 @@ class ContentBlockOrderConflictError(QuestionEditorServiceError):
 
 class BlockOrderSetMismatchError(QuestionEditorServiceError):
     """Raised when a reorder request does not contain every active block."""
+
+
+class MediaAssetNotFoundError(QuestionEditorServiceError):
+    """Raised when a referenced media asset is unavailable."""
 
 
 class QuestionEditorService:
@@ -444,6 +452,90 @@ class QuestionEditorService:
             self.db.rollback()
             raise
 
+    def create_image_block(
+        self,
+        *,
+        revision_id: uuid.UUID,
+        request: ImageBlockCreate,
+    ) -> ImageBlockRead:
+        """Append an image block referencing an existing media asset."""
+
+        try:
+            revision = self.db.scalar(
+                select(QuestionRevision)
+                .join(
+                    QuestionForm,
+                    QuestionForm.id == QuestionRevision.question_form_id,
+                )
+                .join(
+                    QuestionFamily,
+                    QuestionFamily.id == QuestionForm.question_family_id,
+                )
+                .where(
+                    QuestionRevision.id == revision_id,
+                    QuestionRevision.deleted_at.is_(None),
+                    QuestionForm.is_active.is_(True),
+                    QuestionForm.deleted_at.is_(None),
+                    QuestionFamily.is_active.is_(True),
+                    QuestionFamily.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if revision is None:
+                raise RevisionNotFoundError(
+                    "Question revision was not found."
+                )
+
+            self.ensure_revision_editable(revision)
+            self.ensure_revision_timestamp_matches(
+                revision,
+                request.expected_revision_updated_at,
+            )
+            self._require_media_asset(request.payload.media_asset_id)
+
+            maximum_sort_order = self.db.scalar(
+                select(func.max(ContentBlock.sort_order)).where(
+                    ContentBlock.question_revision_id == revision.id,
+                    ContentBlock.deleted_at.is_(None),
+                )
+            )
+            sort_order = (maximum_sort_order or 0) + 1000
+
+            block = ContentBlock(
+                question_revision_id=revision.id,
+                block_type=ContentBlockType.IMAGE,
+                sort_order=sort_order,
+            )
+            self.db.add(block)
+            self.db.flush()
+
+            content = ImageBlockContent(
+                content_block_id=block.id,
+                media_asset_id=request.payload.media_asset_id,
+                alt_text=request.payload.alt_text,
+            )
+            self.db.add(content)
+            revision.updated_at = _utc_now()
+            self.db.commit()
+
+            return ImageBlockRead(
+                id=block.id,
+                block_type=ContentBlockType.IMAGE,
+                sort_order=block.sort_order,
+                payload=ImageBlockPayloadRead(
+                    media_asset_id=content.media_asset_id,
+                    alt_text=content.alt_text,
+                ),
+            )
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise ContentBlockOrderConflictError(
+                "The active block append position is no longer available."
+            ) from exc
+        except Exception:
+            self.db.rollback()
+            raise
+
     def ensure_revision_editable(self, revision: QuestionRevision) -> None:
         """Require the only currently editable revision state: draft."""
 
@@ -638,6 +730,90 @@ class QuestionEditorService:
             self.db.rollback()
             raise
 
+    def update_image_block(
+        self,
+        *,
+        revision_id: uuid.UUID,
+        block_id: uuid.UUID,
+        request: ImageBlockUpdate,
+    ) -> ImageBlockRead:
+        """Replace one image payload without changing block identity or order."""
+
+        try:
+            revision = self.db.scalar(
+                select(QuestionRevision)
+                .join(
+                    QuestionForm,
+                    QuestionForm.id == QuestionRevision.question_form_id,
+                )
+                .join(
+                    QuestionFamily,
+                    QuestionFamily.id == QuestionForm.question_family_id,
+                )
+                .where(
+                    QuestionRevision.id == revision_id,
+                    QuestionRevision.deleted_at.is_(None),
+                    QuestionForm.is_active.is_(True),
+                    QuestionForm.deleted_at.is_(None),
+                    QuestionFamily.is_active.is_(True),
+                    QuestionFamily.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if revision is None:
+                raise RevisionNotFoundError(
+                    "Question revision was not found."
+                )
+
+            self.ensure_revision_editable(revision)
+            self.ensure_revision_timestamp_matches(
+                revision,
+                request.expected_revision_updated_at,
+            )
+
+            block = self.db.scalar(
+                select(ContentBlock)
+                .where(
+                    ContentBlock.id == block_id,
+                    ContentBlock.question_revision_id == revision.id,
+                    ContentBlock.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if block is None:
+                raise EditorBlockNotFoundError(
+                    "Content block was not found in the revision."
+                )
+            if block.block_type != ContentBlockType.IMAGE:
+                raise EditorBlockTypeMismatchError(
+                    "Content block is not an image block."
+                )
+
+            content = block.image_content
+            if content is None:
+                raise EditorBlockContentMissingError(
+                    "Image block content is missing."
+                )
+
+            self._require_media_asset(request.media_asset_id)
+            content.media_asset_id = request.media_asset_id
+            content.alt_text = request.alt_text
+            revision.updated_at = _utc_now()
+            self.db.commit()
+
+            return ImageBlockRead(
+                id=block.id,
+                block_type=ContentBlockType.IMAGE,
+                sort_order=block.sort_order,
+                payload=ImageBlockPayloadRead(
+                    media_asset_id=content.media_asset_id,
+                    alt_text=content.alt_text,
+                ),
+            )
+        except Exception:
+            self.db.rollback()
+            raise
+
     def delete_block(
         self,
         *,
@@ -797,6 +973,19 @@ class QuestionEditorService:
             raise QuestionTypeNotFoundError(
                 "Active question type was not found."
             )
+
+    def _require_media_asset(self, media_asset_id: uuid.UUID) -> MediaAsset:
+        media_asset = self.db.scalar(
+            select(MediaAsset).where(
+                MediaAsset.id == media_asset_id,
+                MediaAsset.deleted_at.is_(None),
+            )
+        )
+        if media_asset is None:
+            raise MediaAssetNotFoundError(
+                "Media asset is unavailable."
+            )
+        return media_asset
 
     def _require_topic(self, topic_id: uuid.UUID) -> None:
         topic = self.db.scalar(
