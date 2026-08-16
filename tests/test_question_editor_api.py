@@ -34,6 +34,7 @@ from app.core.enums import RoleName
 from app.database.session import get_db
 from app.main import app
 from app.schemas.question_editor import (
+    BlockOrderRequest,
     FormulaBlockCreate,
     FormulaBlockRead,
     FormulaBlockUpdate,
@@ -45,6 +46,7 @@ from app.schemas.question_editor import (
     TextBlockUpdate,
 )
 from app.services.question_editor_service import (
+    BlockOrderSetMismatchError,
     ContentBlockOrderConflictError,
     EditorBlockContentMissingError,
     EditorBlockNotFoundError,
@@ -190,6 +192,15 @@ class QuestionEditorApiTest(unittest.TestCase):
                 "format_version": 1,
             },
         })
+
+    def _reorder_request(
+        self,
+        block_ids: list[uuid.UUID] | None = None,
+    ) -> dict[str, object]:
+        return {
+            "block_ids": [str(block_id) for block_id in (block_ids or [])],
+            "expected_revision_updated_at": NOW.isoformat(),
+        }
 
     @patch("app.api.question_editor.QuestionEditorService")
     def test_admin_creates_draft_with_validated_request_and_actor(
@@ -777,7 +788,215 @@ class QuestionEditorApiTest(unittest.TestCase):
         self.assertTrue(all(item.status_code == 403 for item in forbidden))
         service_class.assert_not_called()
 
-    def test_router_contains_only_step_6e_a_b_and_c_routes(self) -> None:
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_admin_deletes_block_with_aware_query_token_and_empty_response(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        response = self.client.delete(
+            f"/api/v1/question-editor/revisions/{revision_id}/blocks/{block_id}",
+            params={"expected_revision_updated_at": NOW.isoformat()},
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.content, b"")
+        service_class.assert_called_once_with(self.db)
+        service_class.return_value.delete_block.assert_called_once_with(
+            revision_id=revision_id,
+            block_id=block_id,
+            expected_revision_updated_at=NOW,
+        )
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_delete_validates_ids_required_timestamp_and_timezone(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        cases = (
+            ("not-a-uuid", str(block_id), {"expected_revision_updated_at": NOW.isoformat()}, None),
+            (str(revision_id), "not-a-uuid", {"expected_revision_updated_at": NOW.isoformat()}, None),
+            (str(revision_id), str(block_id), {}, None),
+            (str(revision_id), str(block_id), {"expected_revision_updated_at": "bad"}, None),
+            (
+                str(revision_id), str(block_id),
+                {"expected_revision_updated_at": "2026-08-16T12:00:00"},
+                "Concurrency timestamp must include a timezone.",
+            ),
+        )
+        for revision_path, block_path, params, detail in cases:
+            with self.subTest(params=params):
+                response = self.client.delete(
+                    "/api/v1/question-editor/revisions/"
+                    f"{revision_path}/blocks/{block_path}",
+                    params=params,
+                )
+                self.assertEqual(response.status_code, 422)
+                if detail is not None:
+                    self.assertEqual(response.json(), {"detail": detail})
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_delete_maps_known_service_errors(
+        self, service_class: MagicMock,
+    ) -> None:
+        cases = (
+            (RevisionNotFoundError(), 404, "Question revision was not found."),
+            (RevisionNotEditableError(), 409, "Question revision is not editable."),
+            (
+                RevisionConflictError(), 409,
+                "Question revision was modified by another request.",
+            ),
+            (EditorBlockNotFoundError(), 404, "Content block was not found."),
+        )
+        for error, status_code, detail in cases:
+            with self.subTest(error=type(error).__name__):
+                service_class.reset_mock()
+                service_class.return_value.delete_block.side_effect = error
+                response = self.client.delete(
+                    "/api/v1/question-editor/revisions/"
+                    f"{uuid.uuid4()}/blocks/{uuid.uuid4()}",
+                    params={"expected_revision_updated_at": NOW.isoformat()},
+                )
+                self.assertEqual(response.status_code, status_code)
+                self.assertEqual(response.json(), {"detail": detail})
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_admin_reorders_exact_ids_and_empty_set_with_204(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
+        response = self.client.put(
+            f"/api/v1/question-editor/revisions/{revision_id}/blocks/order",
+            json=self._reorder_request(block_ids),
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.content, b"")
+        call = service_class.return_value.reorder_blocks.call_args
+        self.assertEqual(call.kwargs["revision_id"], revision_id)
+        self.assertIsInstance(call.kwargs["request"], BlockOrderRequest)
+        self.assertEqual(call.kwargs["request"].block_ids, block_ids)
+        self.assertEqual(call.kwargs["request"].expected_revision_updated_at, NOW)
+
+        service_class.reset_mock()
+        response = self.client.put(
+            f"/api/v1/question-editor/revisions/{revision_id}/blocks/order",
+            json=self._reorder_request([]),
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(
+            service_class.return_value.reorder_blocks.call_args.kwargs[
+                "request"
+            ].block_ids,
+            [],
+        )
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_reorder_rejects_invalid_path_body_and_extra_fields(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        valid = self._reorder_request([block_id])
+        cases = (
+            ("not-a-uuid", valid),
+            (
+                str(revision_id),
+                self._reorder_request([block_id, block_id]),
+            ),
+            (
+                str(revision_id),
+                {**valid, "expected_revision_updated_at": "2026-08-16T12:00:00"},
+            ),
+            (
+                str(revision_id),
+                {**valid, "expected_revision_updated_at": "bad"},
+            ),
+            (str(revision_id), {**valid, "sort_order": 1000}),
+            (str(revision_id), {**valid, "payload": {}}),
+        )
+        for revision_path, body in cases:
+            with self.subTest(body=body):
+                response = self.client.put(
+                    f"/api/v1/question-editor/revisions/{revision_path}/blocks/order",
+                    json=body,
+                )
+                self.assertEqual(response.status_code, 422)
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_reorder_maps_known_service_errors(
+        self, service_class: MagicMock,
+    ) -> None:
+        cases = (
+            (RevisionNotFoundError(), 404, "Question revision was not found."),
+            (RevisionNotEditableError(), 409, "Question revision is not editable."),
+            (
+                RevisionConflictError(), 409,
+                "Question revision was modified by another request.",
+            ),
+            (
+                BlockOrderSetMismatchError(), 409,
+                "Block order does not match the active block set.",
+            ),
+            (
+                ContentBlockOrderConflictError(), 409,
+                "Content block order conflict.",
+            ),
+        )
+        for error, status_code, detail in cases:
+            with self.subTest(error=type(error).__name__):
+                service_class.reset_mock()
+                service_class.return_value.reorder_blocks.side_effect = error
+                response = self.client.put(
+                    f"/api/v1/question-editor/revisions/{uuid.uuid4()}/blocks/order",
+                    json=self._reorder_request([]),
+                )
+                self.assertEqual(response.status_code, status_code)
+                self.assertEqual(response.json(), {"detail": detail})
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_delete_and_reorder_require_authentication_before_service(
+        self, service_class: MagicMock,
+    ) -> None:
+        del app.dependency_overrides[get_current_active_user]
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        responses = (
+            self.client.delete(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/{block_id}",
+                params={"expected_revision_updated_at": NOW.isoformat()},
+            ),
+            self.client.put(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/order",
+                json=self._reorder_request([]),
+            ),
+        )
+        self.assertTrue(all(response.status_code == 401 for response in responses))
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_delete_and_reorder_reject_non_admin_before_service(
+        self, service_class: MagicMock,
+    ) -> None:
+        self.db.scalar.return_value = RoleName.TEACHER.value
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        responses = (
+            self.client.delete(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/{block_id}",
+                params={"expected_revision_updated_at": NOW.isoformat()},
+            ),
+            self.client.put(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/order",
+                json=self._reorder_request([]),
+            ),
+        )
+        self.assertTrue(all(response.status_code == 403 for response in responses))
+        service_class.assert_not_called()
+
+    def test_router_contains_exactly_all_eight_step_6e_routes(self) -> None:
         route_methods = {
             (method, route.path)
             for route in question_editor_router.routes
@@ -796,6 +1015,11 @@ class QuestionEditorApiTest(unittest.TestCase):
                 "PATCH",
                 "/question-editor/revisions/{revision_id}/blocks/{block_id}/formula",
             ),
+            (
+                "DELETE",
+                "/question-editor/revisions/{revision_id}/blocks/{block_id}",
+            ),
+            ("PUT", "/question-editor/revisions/{revision_id}/blocks/order"),
         })
 
 

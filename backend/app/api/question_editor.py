@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,6 +12,7 @@ from app.core.enums import RoleName
 from app.database.session import get_db
 from app.models.user import User
 from app.schemas.question_editor import (
+    BlockOrderRequest,
     FormulaBlockCreate,
     FormulaBlockRead,
     FormulaBlockUpdate,
@@ -22,6 +24,7 @@ from app.schemas.question_editor import (
     TextBlockUpdate,
 )
 from app.services.question_editor_service import (
+    BlockOrderSetMismatchError,
     ContentBlockOrderConflictError,
     EditorBlockContentMissingError,
     EditorBlockNotFoundError,
@@ -43,6 +46,15 @@ router = APIRouter(
     prefix="/question-editor",
     tags=["Question Editor"],
 )
+
+
+def _require_aware_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Concurrency timestamp must include a timezone.",
+        )
+    return value
 
 
 @router.post(
@@ -317,4 +329,100 @@ def update_text_block(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Structured text format version is unsupported.",
+        ) from exc
+
+
+@router.delete(
+    "/revisions/{revision_id}/blocks/{block_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a content block",
+)
+def delete_block(
+    revision_id: uuid.UUID,
+    block_id: uuid.UUID,
+    expected_revision_updated_at: datetime,
+    _current_user: Annotated[
+        User,
+        Depends(require_roles(RoleName.ADMIN)),
+    ],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Soft-delete one content block from an editable draft revision."""
+
+    expected_updated_at = _require_aware_datetime(
+        expected_revision_updated_at,
+    )
+    try:
+        QuestionEditorService(db).delete_block(
+            revision_id=revision_id,
+            block_id=block_id,
+            expected_revision_updated_at=expected_updated_at,
+        )
+    except RevisionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question revision was not found.",
+        ) from exc
+    except RevisionNotEditableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Question revision is not editable.",
+        ) from exc
+    except RevisionConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Question revision was modified by another request.",
+        ) from exc
+    except EditorBlockNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Content block was not found.",
+        ) from exc
+
+
+@router.put(
+    "/revisions/{revision_id}/blocks/order",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Reorder content blocks",
+)
+def reorder_blocks(
+    revision_id: uuid.UUID,
+    request: BlockOrderRequest,
+    _current_user: Annotated[
+        User,
+        Depends(require_roles(RoleName.ADMIN)),
+    ],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Replace the complete active block order of a draft revision."""
+
+    try:
+        QuestionEditorService(db).reorder_blocks(
+            revision_id=revision_id,
+            request=request,
+        )
+    except RevisionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question revision was not found.",
+        ) from exc
+    except RevisionNotEditableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Question revision is not editable.",
+        ) from exc
+    except RevisionConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Question revision was modified by another request.",
+        ) from exc
+    except BlockOrderSetMismatchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Block order does not match the active block set.",
+        ) from exc
+    except ContentBlockOrderConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Content block order conflict.",
         ) from exc
