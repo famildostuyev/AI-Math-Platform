@@ -24,5 +24,8 @@ htmlcov/
 
 # Windows
 Thumbs.db
+
+# Runtime media
+backend/data/media/
 # Local backup archives
 *.zip

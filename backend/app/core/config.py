@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # API
     API_V1_PREFIX: str = "/api/v1"
 
+    # Local media ingestion
+    MEDIA_ROOT: Path = PROJECT_ROOT / "backend" / "data" / "media"
+    MEDIA_MAX_IMAGE_BYTES: int = Field(default=10 * 1024 * 1024, ge=1)
+    MEDIA_MAX_IMAGE_PIXELS: int = Field(default=40_000_000, ge=1)
+
     # Database
     DATABASE_URL: str = Field(..., min_length=1)
     DATABASE_POOL_SIZE: int = Field(default=10, ge=1, le=100)
