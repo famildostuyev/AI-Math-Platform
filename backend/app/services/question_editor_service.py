@@ -16,6 +16,7 @@ from app.core.enums import (
 )
 from app.models.content_block import ContentBlock
 from app.models.formula_block_content import FormulaBlockContent
+from app.models.geometry_block_content import GeometryBlockContent
 from app.models.image_block_content import ImageBlockContent
 from app.models.media_asset import MediaAsset
 from app.models.purpose import Purpose
@@ -33,8 +34,10 @@ from app.schemas.question_editor import (
     FormulaBlockPayloadRead,
     FormulaBlockRead,
     FormulaBlockUpdate,
+    GeometryBlockCreate,
     GeometryBlockPayloadRead,
     GeometryBlockRead,
+    GeometryBlockUpdate,
     ImageBlockCreate,
     ImageBlockPayloadRead,
     ImageBlockRead,
@@ -536,6 +539,90 @@ class QuestionEditorService:
             self.db.rollback()
             raise
 
+    def create_geometry_block(
+        self,
+        *,
+        revision_id: uuid.UUID,
+        request: GeometryBlockCreate,
+    ) -> GeometryBlockRead:
+        """Append one opaque geometry block to an editable draft revision."""
+
+        try:
+            revision = self.db.scalar(
+                select(QuestionRevision)
+                .join(
+                    QuestionForm,
+                    QuestionForm.id == QuestionRevision.question_form_id,
+                )
+                .join(
+                    QuestionFamily,
+                    QuestionFamily.id == QuestionForm.question_family_id,
+                )
+                .where(
+                    QuestionRevision.id == revision_id,
+                    QuestionRevision.deleted_at.is_(None),
+                    QuestionForm.is_active.is_(True),
+                    QuestionForm.deleted_at.is_(None),
+                    QuestionFamily.is_active.is_(True),
+                    QuestionFamily.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if revision is None:
+                raise RevisionNotFoundError(
+                    "Question revision was not found."
+                )
+
+            self.ensure_revision_editable(revision)
+            self.ensure_revision_timestamp_matches(
+                revision,
+                request.expected_revision_updated_at,
+            )
+
+            maximum_sort_order = self.db.scalar(
+                select(func.max(ContentBlock.sort_order)).where(
+                    ContentBlock.question_revision_id == revision.id,
+                    ContentBlock.deleted_at.is_(None),
+                )
+            )
+            sort_order = (maximum_sort_order or 0) + 1000
+
+            block = ContentBlock(
+                question_revision_id=revision.id,
+                block_type=ContentBlockType.GEOMETRY,
+                sort_order=sort_order,
+            )
+            self.db.add(block)
+            self.db.flush()
+
+            content = GeometryBlockContent(
+                content_block_id=block.id,
+                source_data=request.payload.source_data,
+                format_version=request.payload.format_version,
+            )
+            self.db.add(content)
+            revision.updated_at = _utc_now()
+
+            self.db.commit()
+
+            return GeometryBlockRead(
+                id=block.id,
+                block_type=ContentBlockType.GEOMETRY,
+                sort_order=block.sort_order,
+                payload=GeometryBlockPayloadRead(
+                    source_data=content.source_data,
+                    format_version=content.format_version,
+                ),
+            )
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise ContentBlockOrderConflictError(
+                "The active block append position is no longer available."
+            ) from exc
+        except Exception:
+            self.db.rollback()
+            raise
+
     def ensure_revision_editable(self, revision: QuestionRevision) -> None:
         """Require the only currently editable revision state: draft."""
 
@@ -808,6 +895,90 @@ class QuestionEditorService:
                 payload=ImageBlockPayloadRead(
                     media_asset_id=content.media_asset_id,
                     alt_text=content.alt_text,
+                ),
+            )
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def update_geometry_block(
+        self,
+        *,
+        revision_id: uuid.UUID,
+        block_id: uuid.UUID,
+        request: GeometryBlockUpdate,
+    ) -> GeometryBlockRead:
+        """Replace one geometry payload without changing block identity or order."""
+
+        try:
+            revision = self.db.scalar(
+                select(QuestionRevision)
+                .join(
+                    QuestionForm,
+                    QuestionForm.id == QuestionRevision.question_form_id,
+                )
+                .join(
+                    QuestionFamily,
+                    QuestionFamily.id == QuestionForm.question_family_id,
+                )
+                .where(
+                    QuestionRevision.id == revision_id,
+                    QuestionRevision.deleted_at.is_(None),
+                    QuestionForm.is_active.is_(True),
+                    QuestionForm.deleted_at.is_(None),
+                    QuestionFamily.is_active.is_(True),
+                    QuestionFamily.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if revision is None:
+                raise RevisionNotFoundError(
+                    "Question revision was not found."
+                )
+
+            self.ensure_revision_editable(revision)
+            self.ensure_revision_timestamp_matches(
+                revision,
+                request.expected_revision_updated_at,
+            )
+
+            block = self.db.scalar(
+                select(ContentBlock)
+                .where(
+                    ContentBlock.id == block_id,
+                    ContentBlock.question_revision_id == revision.id,
+                    ContentBlock.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if block is None:
+                raise EditorBlockNotFoundError(
+                    "Content block was not found in the revision."
+                )
+            if block.block_type != ContentBlockType.GEOMETRY:
+                raise EditorBlockTypeMismatchError(
+                    "Content block is not a geometry block."
+                )
+
+            content = block.geometry_content
+            if content is None:
+                raise EditorBlockContentMissingError(
+                    "Geometry block content is missing."
+                )
+
+            content.source_data = request.source_data
+            content.format_version = request.format_version
+            revision.updated_at = _utc_now()
+
+            self.db.commit()
+
+            return GeometryBlockRead(
+                id=block.id,
+                block_type=ContentBlockType.GEOMETRY,
+                sort_order=block.sort_order,
+                payload=GeometryBlockPayloadRead(
+                    source_data=content.source_data,
+                    format_version=content.format_version,
                 ),
             )
         except Exception:

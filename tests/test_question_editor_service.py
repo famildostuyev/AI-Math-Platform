@@ -29,6 +29,7 @@ from app.models.question_revision_purpose import QuestionRevisionPurpose
 from app.models.question_revision_related_topic import QuestionRevisionRelatedTopic
 from app.models.content_block import ContentBlock
 from app.models.formula_block_content import FormulaBlockContent
+from app.models.geometry_block_content import GeometryBlockContent
 from app.models.image_block_content import ImageBlockContent
 from app.models.text_block_content import TextBlockContent
 from app.schemas.question_editor import (
@@ -36,6 +37,9 @@ from app.schemas.question_editor import (
     FormulaBlockCreate,
     FormulaBlockRead,
     FormulaBlockUpdate,
+    GeometryBlockCreate,
+    GeometryBlockRead,
+    GeometryBlockUpdate,
     ImageBlockCreate,
     ImageBlockRead,
     ImageBlockUpdate,
@@ -76,6 +80,83 @@ def scalar_result(values: list[object]) -> MagicMock:
 
 
 class QuestionEditorServiceTest(unittest.TestCase):
+    def _geometry_block_request(
+        self,
+        source_data: dict[str, object] | None = None,
+    ) -> GeometryBlockCreate:
+        return GeometryBlockCreate.model_validate({
+            "block_type": "geometry",
+            "payload": {
+                "source_data": {} if source_data is None else source_data,
+                "format_version": 1,
+            },
+            "expected_revision_updated_at": NOW,
+        })
+
+    def _geometry_create_db(
+        self,
+        *,
+        status: QuestionRevisionStatus = QuestionRevisionStatus.DRAFT,
+        updated_at: datetime = NOW,
+        maximum_sort_order: int | None = None,
+    ) -> tuple[MagicMock, SimpleNamespace]:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(), status=status, updated_at=updated_at,
+        )
+        db = MagicMock()
+        db.scalar.side_effect = [revision, maximum_sort_order]
+
+        def assign_block_id() -> None:
+            block = db.add.call_args.args[0]
+            if isinstance(block, ContentBlock):
+                block.id = uuid.uuid4()
+
+        db.flush.side_effect = assign_block_id
+        return db, revision
+
+    def _geometry_block_update_request(
+        self,
+        source_data: dict[str, object] | None = None,
+    ) -> GeometryBlockUpdate:
+        return GeometryBlockUpdate.model_validate({
+            "source_data": {} if source_data is None else source_data,
+            "format_version": 1,
+            "expected_revision_updated_at": NOW,
+        })
+
+    def _geometry_update_db(
+        self,
+        *,
+        revision_status: QuestionRevisionStatus = QuestionRevisionStatus.DRAFT,
+        revision_updated_at: datetime = NOW,
+        block_type: ContentBlockType = ContentBlockType.GEOMETRY,
+        include_content: bool = True,
+    ) -> tuple[MagicMock, SimpleNamespace, SimpleNamespace, object | None]:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(),
+            status=revision_status,
+            updated_at=revision_updated_at,
+        )
+        content = (
+            SimpleNamespace(
+                content_block_id=uuid.uuid4(),
+                source_data={"objects": [{"type": "original"}]},
+                format_version=1,
+            )
+            if include_content
+            else None
+        )
+        block = SimpleNamespace(
+            id=(content.content_block_id if content else uuid.uuid4()),
+            question_revision_id=revision.id,
+            block_type=block_type,
+            sort_order=3000,
+            geometry_content=content,
+        )
+        db = MagicMock()
+        db.scalar.side_effect = [revision, block]
+        return db, revision, block, content
+
     def _image_block_request(
         self,
         media_asset_id: uuid.UUID | None = None,
@@ -2064,6 +2145,356 @@ class QuestionEditorServiceTest(unittest.TestCase):
                 revision_id=revision.id,
                 block_id=block.id,
                 request=self._image_block_update_request(media.id),
+            )
+        self.assertIs(raised.exception, failure)
+        db.rollback.assert_called_once_with()
+        db.commit.assert_called_once_with()
+
+    def test_create_geometry_persists_opaque_payload_and_typed_response(self) -> None:
+        source_data = {
+            "objects": [{"type": "future-shape", "points": [0, 1.5, -2]}],
+            "metadata": {
+                "visible": True,
+                "optional": None,
+                "markup": "<svg><script>inert</script></svg>",
+            },
+        }
+        db, revision = self._geometry_create_db()
+        updated_at = NOW + timedelta(seconds=1)
+        with patch(
+            "app.services.question_editor_service._utc_now",
+            return_value=updated_at,
+        ):
+            response = QuestionEditorService(db).create_geometry_block(
+                revision_id=revision.id,
+                request=self._geometry_block_request(source_data),
+            )
+
+        block, content = [call.args[0] for call in db.add.call_args_list]
+        self.assertIsInstance(block, ContentBlock)
+        self.assertEqual(block.question_revision_id, revision.id)
+        self.assertEqual(block.block_type, ContentBlockType.GEOMETRY)
+        self.assertEqual(block.sort_order, 1000)
+        self.assertIsInstance(content, GeometryBlockContent)
+        self.assertEqual(content.content_block_id, block.id)
+        self.assertEqual(content.source_data, source_data)
+        self.assertEqual(content.format_version, 1)
+        self.assertIsInstance(response, GeometryBlockRead)
+        self.assertEqual(response.id, block.id)
+        self.assertEqual(response.block_type, ContentBlockType.GEOMETRY)
+        self.assertEqual(response.sort_order, 1000)
+        self.assertEqual(response.payload.source_data, source_data)
+        self.assertEqual(response.payload.format_version, 1)
+        self.assertEqual(revision.updated_at, updated_at)
+        db.flush.assert_called_once_with()
+        db.commit.assert_called_once_with()
+        db.rollback.assert_not_called()
+
+    def test_create_geometry_preserves_empty_object(self) -> None:
+        db, revision = self._geometry_create_db()
+        response = QuestionEditorService(db).create_geometry_block(
+            revision_id=revision.id,
+            request=self._geometry_block_request({}),
+        )
+        content = db.add.call_args_list[1].args[0]
+        self.assertEqual(content.source_data, {})
+        self.assertEqual(response.payload.source_data, {})
+
+    def test_create_geometry_uses_active_maximum_sort_order(self) -> None:
+        for maximum, expected in ((None, 1000), (1000, 2000), (5000, 6000)):
+            with self.subTest(maximum=maximum):
+                db, revision = self._geometry_create_db(
+                    maximum_sort_order=maximum,
+                )
+                response = QuestionEditorService(db).create_geometry_block(
+                    revision_id=revision.id,
+                    request=self._geometry_block_request(),
+                )
+                self.assertEqual(response.sort_order, expected)
+                statement = str(db.scalar.call_args_list[1].args[0])
+                self.assertIn("max(content_blocks.sort_order)", statement)
+                self.assertIn("content_blocks.question_revision_id", statement)
+                self.assertIn("content_blocks.deleted_at IS NULL", statement)
+                self.assertEqual(db.scalar.call_count, 2)
+
+    def test_create_geometry_locks_eligible_revision(self) -> None:
+        db, revision = self._geometry_create_db()
+        QuestionEditorService(db).create_geometry_block(
+            revision_id=revision.id,
+            request=self._geometry_block_request(),
+        )
+        statement = str(db.scalar.call_args_list[0].args[0])
+        self.assertIn("question_revisions.deleted_at IS NULL", statement)
+        self.assertIn("question_forms.is_active IS true", statement)
+        self.assertIn("question_forms.deleted_at IS NULL", statement)
+        self.assertIn("question_families.is_active IS true", statement)
+        self.assertIn("question_families.deleted_at IS NULL", statement)
+        self.assertIn("FOR UPDATE", statement)
+
+    def test_create_geometry_flushes_block_before_shared_pk_payload(self) -> None:
+        db, revision = self._geometry_create_db()
+        QuestionEditorService(db).create_geometry_block(
+            revision_id=revision.id,
+            request=self._geometry_block_request(),
+        )
+        names = [call[0] for call in db.method_calls]
+        first_add = names.index("add")
+        flush = names.index("flush")
+        second_add = names.index("add", first_add + 1)
+        self.assertLess(first_add, flush)
+        self.assertLess(flush, second_add)
+        block = db.add.call_args_list[0].args[0]
+        content = db.add.call_args_list[1].args[0]
+        self.assertEqual(content.content_block_id, block.id)
+        db.flush.assert_called_once_with()
+
+    def test_create_geometry_revision_failures_roll_back_before_persistence(self) -> None:
+        cases = (
+            (None, RevisionNotFoundError),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(), status=QuestionRevisionStatus.APPROVED,
+                    updated_at=NOW,
+                ),
+                RevisionNotEditableError,
+            ),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(), status=QuestionRevisionStatus.DRAFT,
+                    updated_at=NOW + timedelta(seconds=1),
+                ),
+                RevisionConflictError,
+            ),
+        )
+        for revision, error in cases:
+            with self.subTest(error=error.__name__):
+                db = MagicMock()
+                db.scalar.return_value = revision
+                with self.assertRaises(error):
+                    QuestionEditorService(db).create_geometry_block(
+                        revision_id=(revision.id if revision else uuid.uuid4()),
+                        request=self._geometry_block_request(),
+                    )
+                self.assertEqual(db.scalar.call_count, 1)
+                db.add.assert_not_called()
+                db.flush.assert_not_called()
+                db.commit.assert_not_called()
+                db.rollback.assert_called_once_with()
+
+    def test_create_geometry_failures_roll_back_and_integrity_is_translated(self) -> None:
+        db, revision = self._geometry_create_db()
+        db.add.side_effect = lambda value: (
+            (_ for _ in ()).throw(RuntimeError("geometry payload insert failed"))
+            if isinstance(value, GeometryBlockContent)
+            else None
+        )
+        with self.assertRaises(RuntimeError):
+            QuestionEditorService(db).create_geometry_block(
+                revision_id=revision.id,
+                request=self._geometry_block_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+
+        db, revision = self._geometry_create_db()
+        failure = IntegrityError(
+            "insert", {}, Exception("active geometry order conflict"),
+        )
+        db.commit.side_effect = failure
+        with self.assertRaises(ContentBlockOrderConflictError) as raised:
+            QuestionEditorService(db).create_geometry_block(
+                revision_id=revision.id,
+                request=self._geometry_block_request(),
+            )
+        self.assertIs(raised.exception.__cause__, failure)
+        db.rollback.assert_called_once_with()
+        db.commit.assert_called_once_with()
+
+    def test_update_geometry_replaces_opaque_payload_in_place(self) -> None:
+        source_data = {
+            "objects": [{"type": "future-shape", "points": [0, 1.5, -2]}],
+            "metadata": {
+                "visible": True,
+                "optional": None,
+                "markup": "<svg><script>inert</script></svg>",
+            },
+        }
+        db, revision, block, content = self._geometry_update_db()
+        original = (
+            block.id,
+            block.question_revision_id,
+            block.block_type,
+            block.sort_order,
+            content.content_block_id,
+            id(content),
+        )
+        updated_at = NOW + timedelta(seconds=1)
+        with patch(
+            "app.services.question_editor_service._utc_now",
+            return_value=updated_at,
+        ):
+            response = QuestionEditorService(db).update_geometry_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._geometry_block_update_request(source_data),
+            )
+
+        self.assertEqual(content.source_data, source_data)
+        self.assertEqual(content.format_version, 1)
+        self.assertEqual(
+            (
+                block.id,
+                block.question_revision_id,
+                block.block_type,
+                block.sort_order,
+                content.content_block_id,
+                id(content),
+            ),
+            original,
+        )
+        self.assertIsInstance(response, GeometryBlockRead)
+        self.assertEqual(response.id, block.id)
+        self.assertEqual(response.block_type, ContentBlockType.GEOMETRY)
+        self.assertEqual(response.sort_order, block.sort_order)
+        self.assertEqual(response.payload.source_data, source_data)
+        self.assertEqual(response.payload.format_version, 1)
+        self.assertEqual(revision.updated_at, updated_at)
+        db.add.assert_not_called()
+        db.flush.assert_not_called()
+        db.commit.assert_called_once_with()
+        db.rollback.assert_not_called()
+        self.assertEqual(db.scalar.call_count, 2)
+
+    def test_update_geometry_preserves_empty_object(self) -> None:
+        db, revision, block, content = self._geometry_update_db()
+        response = QuestionEditorService(db).update_geometry_block(
+            revision_id=revision.id,
+            block_id=block.id,
+            request=self._geometry_block_update_request({}),
+        )
+        self.assertEqual(content.source_data, {})
+        self.assertEqual(response.payload.source_data, {})
+
+    def test_update_geometry_queries_revision_and_block_with_locks(self) -> None:
+        db, revision, block, _content = self._geometry_update_db()
+        QuestionEditorService(db).update_geometry_block(
+            revision_id=revision.id,
+            block_id=block.id,
+            request=self._geometry_block_update_request(),
+        )
+        revision_statement = str(db.scalar.call_args_list[0].args[0])
+        self.assertIn("question_revisions.deleted_at IS NULL", revision_statement)
+        self.assertIn("question_forms.is_active IS true", revision_statement)
+        self.assertIn("question_forms.deleted_at IS NULL", revision_statement)
+        self.assertIn("question_families.is_active IS true", revision_statement)
+        self.assertIn("question_families.deleted_at IS NULL", revision_statement)
+        self.assertIn("FOR UPDATE", revision_statement)
+        block_statement = str(db.scalar.call_args_list[1].args[0])
+        self.assertIn("content_blocks.id", block_statement)
+        self.assertIn("content_blocks.question_revision_id", block_statement)
+        self.assertIn("content_blocks.deleted_at IS NULL", block_statement)
+        self.assertIn("FOR UPDATE", block_statement)
+
+    def test_update_geometry_revision_failures_prevent_block_lookup(self) -> None:
+        cases = (
+            (None, RevisionNotFoundError),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(), status=QuestionRevisionStatus.APPROVED,
+                    updated_at=NOW,
+                ),
+                RevisionNotEditableError,
+            ),
+            (
+                SimpleNamespace(
+                    id=uuid.uuid4(), status=QuestionRevisionStatus.DRAFT,
+                    updated_at=NOW + timedelta(seconds=1),
+                ),
+                RevisionConflictError,
+            ),
+        )
+        for revision, error in cases:
+            with self.subTest(error=error.__name__):
+                db = MagicMock()
+                db.scalar.return_value = revision
+                with self.assertRaises(error):
+                    QuestionEditorService(db).update_geometry_block(
+                        revision_id=(revision.id if revision else uuid.uuid4()),
+                        block_id=uuid.uuid4(),
+                        request=self._geometry_block_update_request(),
+                    )
+                self.assertEqual(db.scalar.call_count, 1)
+                db.add.assert_not_called()
+                db.flush.assert_not_called()
+                db.commit.assert_not_called()
+                db.rollback.assert_called_once_with()
+
+    def test_update_geometry_missing_scoped_or_deleted_block_is_rejected(self) -> None:
+        revision = SimpleNamespace(
+            id=uuid.uuid4(), status=QuestionRevisionStatus.DRAFT,
+            updated_at=NOW,
+        )
+        db = MagicMock()
+        db.scalar.side_effect = [revision, None]
+        with self.assertRaises(EditorBlockNotFoundError):
+            QuestionEditorService(db).update_geometry_block(
+                revision_id=revision.id,
+                block_id=uuid.uuid4(),
+                request=self._geometry_block_update_request(),
+            )
+        statement = str(db.scalar.call_args_list[1].args[0])
+        self.assertIn("content_blocks.question_revision_id", statement)
+        self.assertIn("content_blocks.deleted_at IS NULL", statement)
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+
+    def test_update_geometry_rejects_wrong_type_and_missing_payload(self) -> None:
+        for block_type in (
+            ContentBlockType.TEXT,
+            ContentBlockType.FORMULA,
+            ContentBlockType.IMAGE,
+            ContentBlockType.GRAPH,
+        ):
+            with self.subTest(block_type=block_type):
+                db, revision, block, content = self._geometry_update_db(
+                    block_type=block_type,
+                )
+                original = (content.source_data, content.format_version)
+                with self.assertRaises(EditorBlockTypeMismatchError):
+                    QuestionEditorService(db).update_geometry_block(
+                        revision_id=revision.id,
+                        block_id=block.id,
+                        request=self._geometry_block_update_request({}),
+                    )
+                self.assertEqual(
+                    (content.source_data, content.format_version), original,
+                )
+                db.rollback.assert_called_once_with()
+                db.commit.assert_not_called()
+
+        db, revision, block, _content = self._geometry_update_db(
+            include_content=False,
+        )
+        with self.assertRaises(EditorBlockContentMissingError):
+            QuestionEditorService(db).update_geometry_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._geometry_block_update_request(),
+            )
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()
+
+    def test_update_geometry_integrity_error_rolls_back_and_propagates(self) -> None:
+        db, revision, block, _content = self._geometry_update_db()
+        failure = IntegrityError(
+            "update", {}, Exception("geometry persistence conflict"),
+        )
+        db.commit.side_effect = failure
+        with self.assertRaises(IntegrityError) as raised:
+            QuestionEditorService(db).update_geometry_block(
+                revision_id=revision.id,
+                block_id=block.id,
+                request=self._geometry_block_update_request(),
             )
         self.assertIs(raised.exception, failure)
         db.rollback.assert_called_once_with()
