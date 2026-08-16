@@ -17,6 +17,7 @@ from app.models.question_form import QuestionForm
 from app.models.question_revision import QuestionRevision
 from app.models.question_revision_purpose import QuestionRevisionPurpose
 from app.models.question_revision_related_topic import QuestionRevisionRelatedTopic
+from app.models.question_source import QuestionSource
 from app.models.question_type import QuestionType
 from app.models.role import Role
 from app.models.role_permission import RolePermission
@@ -50,6 +51,7 @@ __all__ = [
     "QuestionRevision",
     "QuestionRevisionPurpose",
     "QuestionRevisionRelatedTopic",
+    "QuestionSource",
     "QuestionType",
     "Role",
     "RolePermission",

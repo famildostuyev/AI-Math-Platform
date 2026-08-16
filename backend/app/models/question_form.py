@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -8,6 +9,7 @@ from sqlalchemy import (
     Enum as SQLEnum,
     ForeignKey,
     Index,
+    Text,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -15,6 +17,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import OpenResponseMode, QuestionFormDerivationKind
 from app.database.base_model import BaseModel
+
+if TYPE_CHECKING:
+    from app.models.question_source import QuestionSource
 
 
 class QuestionForm(BaseModel):
@@ -61,6 +66,18 @@ class QuestionForm(BaseModel):
         ForeignKey("question_forms.id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
+    )
+
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("question_sources.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+
+    source_detail: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
     )
 
     derivation_kind: Mapped[QuestionFormDerivationKind] = mapped_column(
@@ -111,6 +128,12 @@ class QuestionForm(BaseModel):
     question_type: Mapped["QuestionType"] = relationship(
         "QuestionType",
         foreign_keys=[question_type_id],
+    )
+
+    source: Mapped["QuestionSource | None"] = relationship(
+        "QuestionSource",
+        foreign_keys=[source_id],
+        back_populates="question_forms",
     )
 
     source_form: Mapped["QuestionForm | None"] = relationship(

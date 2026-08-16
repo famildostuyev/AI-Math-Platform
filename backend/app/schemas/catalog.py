@@ -37,3 +37,15 @@ class QuestionTypeCatalogResponse(BaseModel):
     display_name: str
     description: str | None
     sort_order: int
+
+
+class QuestionSourceCatalogResponse(BaseModel):
+    """Public read model for an active question-source catalog entry."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    display_name: str
+    description: str | None
+    sort_order: int

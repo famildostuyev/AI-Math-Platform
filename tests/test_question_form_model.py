@@ -4,14 +4,14 @@ import sys
 import unittest
 from pathlib import Path
 
-from sqlalchemy import CheckConstraint, Enum as SQLEnum
+from sqlalchemy import CheckConstraint, Enum as SQLEnum, Text
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
 from app.database.base import Base
-from app.models import QuestionFamily, QuestionForm, QuestionType
+from app.models import QuestionFamily, QuestionForm, QuestionSource, QuestionType
 
 
 class QuestionFormModelMetadataTest(unittest.TestCase):
@@ -26,6 +26,8 @@ class QuestionFormModelMetadataTest(unittest.TestCase):
                 "question_family_id",
                 "question_type_id",
                 "source_form_id",
+                "source_id",
+                "source_detail",
                 "derivation_kind",
                 "open_response_mode",
                 "is_original",
@@ -40,6 +42,7 @@ class QuestionFormModelMetadataTest(unittest.TestCase):
             "question_family_id": ("question_families.id", "RESTRICT", False),
             "question_type_id": ("question_types.id", "RESTRICT", False),
             "source_form_id": ("question_forms.id", "RESTRICT", True),
+            "source_id": ("question_sources.id", "RESTRICT", True),
         }
         for column_name, (target, ondelete, nullable) in expected_fks.items():
             column = table.c[column_name]
@@ -50,6 +53,8 @@ class QuestionFormModelMetadataTest(unittest.TestCase):
             self.assertEqual(foreign_key.ondelete, ondelete)
 
         self.assertFalse(table.c.derivation_kind.nullable)
+        self.assertIsInstance(table.c.source_detail.type, Text)
+        self.assertTrue(table.c.source_detail.nullable)
         self.assertIsInstance(table.c.derivation_kind.type, SQLEnum)
         self.assertFalse(table.c.derivation_kind.type.native_enum)
         self.assertTrue(table.c.derivation_kind.type.create_constraint)
@@ -114,10 +119,14 @@ class QuestionFormModelMetadataTest(unittest.TestCase):
         relationships = QuestionForm.__mapper__.relationships
         self.assertEqual(
             set(relationships.keys()),
-            {"question_family", "question_type", "source_form", "derived_forms"},
+            {
+                "question_family", "question_type", "source", "source_form",
+                "derived_forms",
+            },
         )
         self.assertFalse(relationships.question_family.uselist)
         self.assertFalse(relationships.question_type.uselist)
+        self.assertFalse(relationships.source.uselist)
         self.assertFalse(relationships.source_form.uselist)
         self.assertTrue(relationships.derived_forms.uselist)
         self.assertEqual(relationships.source_form.remote_side, {table.c.id})
@@ -128,6 +137,7 @@ class QuestionFormModelMetadataTest(unittest.TestCase):
 
         self.assertEqual(QuestionType.__table__.name, "question_types")
         self.assertEqual(QuestionFamily.__table__.name, "question_families")
+        self.assertEqual(QuestionSource.__table__.name, "question_sources")
         for excluded_table in {
             "answer_options",
             "accepted_answers",

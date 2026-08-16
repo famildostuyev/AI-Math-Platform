@@ -8,10 +8,12 @@ from app.api.deps import CurrentUser
 from app.database.session import get_db
 from app.models.grade import Grade
 from app.models.purpose import Purpose
+from app.models.question_source import QuestionSource
 from app.models.question_type import QuestionType
 from app.schemas.catalog import (
     GradeCatalogResponse,
     PurposeCatalogResponse,
+    QuestionSourceCatalogResponse,
     QuestionTypeCatalogResponse,
 )
 
@@ -118,4 +120,35 @@ def list_question_types(
     return [
         QuestionTypeCatalogResponse.model_validate(question_type)
         for question_type in question_types
+    ]
+
+
+@router.get(
+    "/question-sources",
+    response_model=list[QuestionSourceCatalogResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List active question sources",
+)
+def list_question_sources(
+    _current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[QuestionSourceCatalogResponse]:
+    """Return active, non-deleted question sources in deterministic order."""
+
+    question_sources = db.scalars(
+        select(QuestionSource)
+        .where(
+            QuestionSource.is_active.is_(True),
+            QuestionSource.deleted_at.is_(None),
+        )
+        .order_by(
+            QuestionSource.sort_order,
+            QuestionSource.display_name,
+            QuestionSource.id,
+        )
+    ).all()
+
+    return [
+        QuestionSourceCatalogResponse.model_validate(question_source)
+        for question_source in question_sources
     ]
