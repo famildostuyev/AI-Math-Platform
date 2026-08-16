@@ -34,6 +34,9 @@ from app.core.enums import RoleName
 from app.database.session import get_db
 from app.main import app
 from app.schemas.question_editor import (
+    FormulaBlockCreate,
+    FormulaBlockRead,
+    FormulaBlockUpdate,
     QuestionDraftCreate,
     QuestionDraftRead,
     QuestionRevisionEditorRead,
@@ -150,6 +153,40 @@ class QuestionEditorApiTest(unittest.TestCase):
             "payload": {
                 "source_text": "Solve this",
                 "document": self._document(),
+                "format_version": 1,
+            },
+        })
+
+    def _formula_create_request(
+        self, source_latex: str = "  x^2 + 1  ",
+    ) -> dict[str, object]:
+        return {
+            "block_type": "formula",
+            "payload": {
+                "source_latex": source_latex,
+                "format_version": 1,
+            },
+            "expected_revision_updated_at": NOW.isoformat(),
+        }
+
+    def _formula_update_request(
+        self, source_latex: str = "  y^2 - 1  ",
+    ) -> dict[str, object]:
+        return {
+            "source_latex": source_latex,
+            "format_version": 1,
+            "expected_revision_updated_at": NOW.isoformat(),
+        }
+
+    def _formula_response(
+        self, source_latex: str = "  x^2 + 1  ",
+    ) -> FormulaBlockRead:
+        return FormulaBlockRead.model_validate({
+            "id": uuid.uuid4(),
+            "block_type": "formula",
+            "sort_order": 1000,
+            "payload": {
+                "source_latex": source_latex,
                 "format_version": 1,
             },
         })
@@ -506,7 +543,241 @@ class QuestionEditorApiTest(unittest.TestCase):
         self.assertTrue(all(response.status_code == 403 for response in responses))
         service_class.assert_not_called()
 
-    def test_router_contains_only_step_6e_a_and_b_routes(self) -> None:
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_admin_creates_formula_with_exact_source_and_concurrency_token(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        source_latex = "  \\frac{x}{2} + y  "
+        expected = self._formula_response(source_latex)
+        service_class.return_value.create_formula_block.return_value = expected
+        response = self.client.post(
+            f"/api/v1/question-editor/revisions/{revision_id}/blocks/formula",
+            json=self._formula_create_request(source_latex),
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json(), expected.model_dump(mode="json"))
+        call = service_class.return_value.create_formula_block.call_args
+        self.assertEqual(call.kwargs["revision_id"], revision_id)
+        self.assertIsInstance(call.kwargs["request"], FormulaBlockCreate)
+        self.assertEqual(call.kwargs["request"].payload.source_latex, source_latex)
+        self.assertEqual(
+            call.kwargs["request"].expected_revision_updated_at, NOW,
+        )
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_formula_accepts_empty_source_latex(
+        self, service_class: MagicMock,
+    ) -> None:
+        service_class.return_value.create_formula_block.return_value = (
+            self._formula_response("")
+        )
+        response = self.client.post(
+            f"/api/v1/question-editor/revisions/{uuid.uuid4()}/blocks/formula",
+            json=self._formula_create_request(""),
+        )
+        self.assertEqual(response.status_code, 201)
+        request = service_class.return_value.create_formula_block.call_args.kwargs[
+            "request"
+        ]
+        self.assertEqual(request.payload.source_latex, "")
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_formula_rejects_invalid_path_and_internal_fields(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        valid = self._formula_create_request()
+        cases = (
+            ("not-a-uuid", valid),
+            (str(revision_id), {"block_type": "formula"}),
+            (str(revision_id), {**valid, "sort_order": 1000}),
+            (str(revision_id), {**valid, "revision_id": str(revision_id)}),
+            (str(revision_id), {**valid, "rendered_html": "<math />"}),
+            (str(revision_id), {**valid, "rendered_svg": "<svg />"}),
+            (str(revision_id), {**valid, "rendered_mathml": "<math />"}),
+            (str(revision_id), {**valid, "deleted_at": NOW.isoformat()}),
+        )
+        for path_id, body in cases:
+            with self.subTest(path_id=path_id, body=body):
+                response = self.client.post(
+                    f"/api/v1/question-editor/revisions/{path_id}/blocks/formula",
+                    json=body,
+                )
+                self.assertEqual(response.status_code, 422)
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_formula_maps_known_service_errors(
+        self, service_class: MagicMock,
+    ) -> None:
+        cases = (
+            (RevisionNotFoundError(), 404, "Question revision was not found."),
+            (RevisionNotEditableError(), 409, "Question revision is not editable."),
+            (
+                RevisionConflictError(), 409,
+                "Question revision was modified by another request.",
+            ),
+            (
+                ContentBlockOrderConflictError(), 409,
+                "Content block order conflict.",
+            ),
+        )
+        for error, status_code, detail in cases:
+            with self.subTest(error=type(error).__name__):
+                service_class.reset_mock()
+                service_class.return_value.create_formula_block.side_effect = error
+                response = self.client.post(
+                    f"/api/v1/question-editor/revisions/{uuid.uuid4()}/blocks/formula",
+                    json=self._formula_create_request(),
+                )
+                self.assertEqual(response.status_code, status_code)
+                self.assertEqual(response.json(), {"detail": detail})
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_admin_updates_formula_with_exact_source_and_ids(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        source_latex = "  y = mx + b  "
+        expected = self._formula_response(source_latex)
+        service_class.return_value.update_formula_block.return_value = expected
+        response = self.client.patch(
+            "/api/v1/question-editor/revisions/"
+            f"{revision_id}/blocks/{block_id}/formula",
+            json=self._formula_update_request(source_latex),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), expected.model_dump(mode="json"))
+        call = service_class.return_value.update_formula_block.call_args
+        self.assertEqual(call.kwargs["revision_id"], revision_id)
+        self.assertEqual(call.kwargs["block_id"], block_id)
+        self.assertIsInstance(call.kwargs["request"], FormulaBlockUpdate)
+        self.assertEqual(call.kwargs["request"].source_latex, source_latex)
+        self.assertEqual(call.kwargs["request"].expected_revision_updated_at, NOW)
+        self.assertEqual(
+            set(response.json()), {"id", "block_type", "sort_order", "payload"},
+        )
+        self.assertEqual(
+            set(response.json()["payload"]), {"source_latex", "format_version"},
+        )
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_formula_accepts_empty_source_latex(
+        self, service_class: MagicMock,
+    ) -> None:
+        service_class.return_value.update_formula_block.return_value = (
+            self._formula_response("")
+        )
+        response = self.client.patch(
+            "/api/v1/question-editor/revisions/"
+            f"{uuid.uuid4()}/blocks/{uuid.uuid4()}/formula",
+            json=self._formula_update_request(""),
+        )
+        self.assertEqual(response.status_code, 200)
+        request = service_class.return_value.update_formula_block.call_args.kwargs[
+            "request"
+        ]
+        self.assertEqual(request.source_latex, "")
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_formula_rejects_invalid_paths_and_internal_fields(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        valid = self._formula_update_request()
+        cases = (
+            ("not-a-uuid", str(block_id), valid),
+            (str(revision_id), "not-a-uuid", valid),
+            (str(revision_id), str(block_id), {}),
+            (str(revision_id), str(block_id), {**valid, "block_type": "formula"}),
+            (str(revision_id), str(block_id), {**valid, "sort_order": 1000}),
+            (str(revision_id), str(block_id), {**valid, "block_id": str(block_id)}),
+            (str(revision_id), str(block_id), {**valid, "revision_id": str(revision_id)}),
+            (str(revision_id), str(block_id), {**valid, "deleted_at": NOW.isoformat()}),
+            (str(revision_id), str(block_id), {**valid, "rendered_html": "html"}),
+            (str(revision_id), str(block_id), {**valid, "rendered_svg": "svg"}),
+            (str(revision_id), str(block_id), {**valid, "rendered_mathml": "mathml"}),
+        )
+        for revision_path, block_path, body in cases:
+            with self.subTest(body=body):
+                response = self.client.patch(
+                    "/api/v1/question-editor/revisions/"
+                    f"{revision_path}/blocks/{block_path}/formula",
+                    json=body,
+                )
+                self.assertEqual(response.status_code, 422)
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_formula_maps_known_service_errors(
+        self, service_class: MagicMock,
+    ) -> None:
+        cases = (
+            (RevisionNotFoundError(), 404, "Question revision was not found."),
+            (RevisionNotEditableError(), 409, "Question revision is not editable."),
+            (
+                RevisionConflictError(), 409,
+                "Question revision was modified by another request.",
+            ),
+            (EditorBlockNotFoundError(), 404, "Content block was not found."),
+            (
+                EditorBlockTypeMismatchError(), 409,
+                "Content block type does not match the requested operation.",
+            ),
+            (
+                EditorBlockContentMissingError(), 409,
+                "Content block payload is unavailable.",
+            ),
+        )
+        for error, status_code, detail in cases:
+            with self.subTest(error=type(error).__name__):
+                service_class.reset_mock()
+                service_class.return_value.update_formula_block.side_effect = error
+                response = self.client.patch(
+                    "/api/v1/question-editor/revisions/"
+                    f"{uuid.uuid4()}/blocks/{uuid.uuid4()}/formula",
+                    json=self._formula_update_request(),
+                )
+                self.assertEqual(response.status_code, status_code)
+                self.assertEqual(response.json(), {"detail": detail})
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_formula_routes_enforce_authentication_and_admin_role(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        del app.dependency_overrides[get_current_active_user]
+        unauthenticated = (
+            self.client.post(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/formula",
+                json=self._formula_create_request(),
+            ),
+            self.client.patch(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/{block_id}/formula",
+                json=self._formula_update_request(),
+            ),
+        )
+        self.assertTrue(all(item.status_code == 401 for item in unauthenticated))
+        app.dependency_overrides[get_current_active_user] = lambda: self.current_user
+        self.db.scalar.return_value = RoleName.TEACHER.value
+        forbidden = (
+            self.client.post(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/formula",
+                json=self._formula_create_request(),
+            ),
+            self.client.patch(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/{block_id}/formula",
+                json=self._formula_update_request(),
+            ),
+        )
+        self.assertTrue(all(item.status_code == 403 for item in forbidden))
+        service_class.assert_not_called()
+
+    def test_router_contains_only_step_6e_a_b_and_c_routes(self) -> None:
         route_methods = {
             (method, route.path)
             for route in question_editor_router.routes
@@ -519,6 +790,11 @@ class QuestionEditorApiTest(unittest.TestCase):
             (
                 "PATCH",
                 "/question-editor/revisions/{revision_id}/blocks/{block_id}/text",
+            ),
+            ("POST", "/question-editor/revisions/{revision_id}/blocks/formula"),
+            (
+                "PATCH",
+                "/question-editor/revisions/{revision_id}/blocks/{block_id}/formula",
             ),
         })
 
