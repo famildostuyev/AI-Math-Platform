@@ -38,6 +38,9 @@ from app.schemas.question_editor import (
     FormulaBlockCreate,
     FormulaBlockRead,
     FormulaBlockUpdate,
+    ImageBlockCreate,
+    ImageBlockRead,
+    ImageBlockUpdate,
     QuestionDraftCreate,
     QuestionDraftRead,
     QuestionRevisionEditorRead,
@@ -51,6 +54,7 @@ from app.services.question_editor_service import (
     EditorBlockContentMissingError,
     EditorBlockNotFoundError,
     EditorBlockTypeMismatchError,
+    MediaAssetNotFoundError,
     PurposeNotFoundError,
     QuestionTypeNotFoundError,
     RevisionNotFoundError,
@@ -190,6 +194,46 @@ class QuestionEditorApiTest(unittest.TestCase):
             "payload": {
                 "source_latex": source_latex,
                 "format_version": 1,
+            },
+        })
+
+    def _image_create_request(
+        self,
+        media_asset_id: uuid.UUID | None = None,
+        alt_text: str | None = "Coordinate graph",
+    ) -> dict[str, object]:
+        return {
+            "block_type": "image",
+            "payload": {
+                "media_asset_id": str(media_asset_id or uuid.uuid4()),
+                "alt_text": alt_text,
+            },
+            "expected_revision_updated_at": NOW.isoformat(),
+        }
+
+    def _image_update_request(
+        self,
+        media_asset_id: uuid.UUID | None = None,
+        alt_text: str | None = "Updated graph",
+    ) -> dict[str, object]:
+        return {
+            "media_asset_id": str(media_asset_id or uuid.uuid4()),
+            "alt_text": alt_text,
+            "expected_revision_updated_at": NOW.isoformat(),
+        }
+
+    def _image_response(
+        self,
+        media_asset_id: uuid.UUID,
+        alt_text: str | None,
+    ) -> ImageBlockRead:
+        return ImageBlockRead.model_validate({
+            "id": uuid.uuid4(),
+            "block_type": "image",
+            "sort_order": 1000,
+            "payload": {
+                "media_asset_id": media_asset_id,
+                "alt_text": alt_text,
             },
         })
 
@@ -996,7 +1040,260 @@ class QuestionEditorApiTest(unittest.TestCase):
         self.assertTrue(all(response.status_code == 403 for response in responses))
         service_class.assert_not_called()
 
-    def test_router_contains_exactly_all_eight_step_6e_routes(self) -> None:
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_admin_creates_image_with_exact_public_contract(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        media_asset_id = uuid.uuid4()
+        expected = self._image_response(media_asset_id, "  Graph  ")
+        service_class.return_value.create_image_block.return_value = expected
+        response = self.client.post(
+            f"/api/v1/question-editor/revisions/{revision_id}/blocks/image",
+            json=self._image_create_request(media_asset_id, "  Graph  "),
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json(), expected.model_dump(mode="json"))
+        call = service_class.return_value.create_image_block.call_args
+        self.assertEqual(call.kwargs["revision_id"], revision_id)
+        self.assertIsInstance(call.kwargs["request"], ImageBlockCreate)
+        self.assertEqual(call.kwargs["request"].payload.media_asset_id, media_asset_id)
+        self.assertEqual(call.kwargs["request"].payload.alt_text, "  Graph  ")
+        self.assertEqual(call.kwargs["request"].expected_revision_updated_at, NOW)
+        self.assertEqual(
+            set(response.json()), {"id", "block_type", "sort_order", "payload"},
+        )
+        self.assertEqual(
+            set(response.json()["payload"]), {"media_asset_id", "alt_text"},
+        )
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_image_accepts_none_and_empty_alt_text(
+        self, service_class: MagicMock,
+    ) -> None:
+        for alt_text in (None, ""):
+            with self.subTest(alt_text=alt_text):
+                service_class.reset_mock()
+                media_asset_id = uuid.uuid4()
+                service_class.return_value.create_image_block.return_value = (
+                    self._image_response(media_asset_id, alt_text)
+                )
+                response = self.client.post(
+                    f"/api/v1/question-editor/revisions/{uuid.uuid4()}/blocks/image",
+                    json=self._image_create_request(media_asset_id, alt_text),
+                )
+                self.assertEqual(response.status_code, 201)
+                request = service_class.return_value.create_image_block.call_args.kwargs[
+                    "request"
+                ]
+                self.assertEqual(request.payload.alt_text, alt_text)
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_image_rejects_invalid_and_internal_fields(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        valid = self._image_create_request()
+        payload = valid["payload"]
+        cases = (
+            ("not-a-uuid", valid),
+            (str(revision_id), {**valid, "payload": {"alt_text": None}}),
+            (str(revision_id), {**valid, "payload": {**payload, "media_asset_id": "bad"}}),
+            (str(revision_id), {**valid, "block_type": "formula"}),
+            (str(revision_id), {**valid, "sort_order": 1000}),
+            (str(revision_id), {**valid, "revision_id": str(revision_id)}),
+            (str(revision_id), {**valid, "deleted_at": None}),
+            (str(revision_id), {**valid, "payload": {**payload, "storage_key": "secret"}}),
+            (str(revision_id), {**valid, "payload": {**payload, "mime_type": "image/png"}}),
+            (str(revision_id), {**valid, "payload": {**payload, "upload": "bytes"}}),
+            (str(revision_id), {**valid, "payload": {**payload, "url": "https://x"}}),
+            (str(revision_id), {**valid, "payload": {**payload, "path": "local"}}),
+        )
+        for path_id, body in cases:
+            with self.subTest(body=body):
+                response = self.client.post(
+                    f"/api/v1/question-editor/revisions/{path_id}/blocks/image",
+                    json=body,
+                )
+                self.assertEqual(response.status_code, 422)
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_create_image_maps_known_service_errors(
+        self, service_class: MagicMock,
+    ) -> None:
+        cases = (
+            (RevisionNotFoundError(), 404, "Question revision was not found."),
+            (RevisionNotEditableError(), 409, "Question revision is not editable."),
+            (
+                RevisionConflictError(), 409,
+                "Question revision was modified by another request.",
+            ),
+            (MediaAssetNotFoundError(), 404, "Media asset was not found."),
+            (
+                ContentBlockOrderConflictError(), 409,
+                "Content block order conflict.",
+            ),
+        )
+        for error, status_code, detail in cases:
+            with self.subTest(error=type(error).__name__):
+                service_class.reset_mock()
+                service_class.return_value.create_image_block.side_effect = error
+                response = self.client.post(
+                    f"/api/v1/question-editor/revisions/{uuid.uuid4()}/blocks/image",
+                    json=self._image_create_request(),
+                )
+                self.assertEqual(response.status_code, status_code)
+                self.assertEqual(response.json(), {"detail": detail})
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_admin_updates_image_with_exact_public_contract(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        media_asset_id = uuid.uuid4()
+        expected = self._image_response(media_asset_id, "Replacement")
+        service_class.return_value.update_image_block.return_value = expected
+        response = self.client.patch(
+            "/api/v1/question-editor/revisions/"
+            f"{revision_id}/blocks/{block_id}/image",
+            json=self._image_update_request(media_asset_id, "Replacement"),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), expected.model_dump(mode="json"))
+        call = service_class.return_value.update_image_block.call_args
+        self.assertEqual(call.kwargs["revision_id"], revision_id)
+        self.assertEqual(call.kwargs["block_id"], block_id)
+        self.assertIsInstance(call.kwargs["request"], ImageBlockUpdate)
+        self.assertEqual(call.kwargs["request"].media_asset_id, media_asset_id)
+        self.assertEqual(call.kwargs["request"].alt_text, "Replacement")
+        self.assertEqual(call.kwargs["request"].expected_revision_updated_at, NOW)
+        self.assertEqual(
+            set(response.json()["payload"]), {"media_asset_id", "alt_text"},
+        )
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_image_accepts_none_and_empty_alt_text(
+        self, service_class: MagicMock,
+    ) -> None:
+        for alt_text in (None, ""):
+            with self.subTest(alt_text=alt_text):
+                service_class.reset_mock()
+                media_asset_id = uuid.uuid4()
+                service_class.return_value.update_image_block.return_value = (
+                    self._image_response(media_asset_id, alt_text)
+                )
+                response = self.client.patch(
+                    "/api/v1/question-editor/revisions/"
+                    f"{uuid.uuid4()}/blocks/{uuid.uuid4()}/image",
+                    json=self._image_update_request(media_asset_id, alt_text),
+                )
+                self.assertEqual(response.status_code, 200)
+                request = service_class.return_value.update_image_block.call_args.kwargs[
+                    "request"
+                ]
+                self.assertEqual(request.alt_text, alt_text)
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_image_rejects_invalid_and_internal_fields(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        valid = self._image_update_request()
+        cases = (
+            ("not-a-uuid", str(block_id), valid),
+            (str(revision_id), "not-a-uuid", valid),
+            (str(revision_id), str(block_id), {**valid, "media_asset_id": "bad"}),
+            (str(revision_id), str(block_id), {**valid, "block_type": "image"}),
+            (str(revision_id), str(block_id), {**valid, "storage_key": "secret"}),
+            (str(revision_id), str(block_id), {**valid, "sort_order": 1000}),
+            (str(revision_id), str(block_id), {**valid, "deleted_at": None}),
+            (str(revision_id), str(block_id), {**valid, "mime_type": "image/png"}),
+            (str(revision_id), str(block_id), {**valid, "checksum": "hash"}),
+            (str(revision_id), str(block_id), {**valid, "upload": "bytes"}),
+            (str(revision_id), str(block_id), {**valid, "url": "https://x"}),
+            (str(revision_id), str(block_id), {**valid, "path": "local"}),
+        )
+        for revision_path, block_path, body in cases:
+            with self.subTest(body=body):
+                response = self.client.patch(
+                    "/api/v1/question-editor/revisions/"
+                    f"{revision_path}/blocks/{block_path}/image",
+                    json=body,
+                )
+                self.assertEqual(response.status_code, 422)
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_update_image_maps_known_service_errors(
+        self, service_class: MagicMock,
+    ) -> None:
+        cases = (
+            (RevisionNotFoundError(), 404, "Question revision was not found."),
+            (RevisionNotEditableError(), 409, "Question revision is not editable."),
+            (
+                RevisionConflictError(), 409,
+                "Question revision was modified by another request.",
+            ),
+            (EditorBlockNotFoundError(), 404, "Content block was not found."),
+            (
+                EditorBlockTypeMismatchError(), 409,
+                "Content block type does not match the requested operation.",
+            ),
+            (
+                EditorBlockContentMissingError(), 409,
+                "Content block payload is unavailable.",
+            ),
+            (MediaAssetNotFoundError(), 404, "Media asset was not found."),
+        )
+        for error, status_code, detail in cases:
+            with self.subTest(error=type(error).__name__):
+                service_class.reset_mock()
+                service_class.return_value.update_image_block.side_effect = error
+                response = self.client.patch(
+                    "/api/v1/question-editor/revisions/"
+                    f"{uuid.uuid4()}/blocks/{uuid.uuid4()}/image",
+                    json=self._image_update_request(),
+                )
+                self.assertEqual(response.status_code, status_code)
+                self.assertEqual(response.json(), {"detail": detail})
+
+    @patch("app.api.question_editor.QuestionEditorService")
+    def test_image_routes_enforce_authentication_and_admin_role(
+        self, service_class: MagicMock,
+    ) -> None:
+        revision_id = uuid.uuid4()
+        block_id = uuid.uuid4()
+        del app.dependency_overrides[get_current_active_user]
+        unauthenticated = (
+            self.client.post(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/image",
+                json=self._image_create_request(),
+            ),
+            self.client.patch(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/{block_id}/image",
+                json=self._image_update_request(),
+            ),
+        )
+        self.assertTrue(all(item.status_code == 401 for item in unauthenticated))
+        app.dependency_overrides[get_current_active_user] = lambda: self.current_user
+        self.db.scalar.return_value = RoleName.TEACHER.value
+        forbidden = (
+            self.client.post(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/image",
+                json=self._image_create_request(),
+            ),
+            self.client.patch(
+                f"/api/v1/question-editor/revisions/{revision_id}/blocks/{block_id}/image",
+                json=self._image_update_request(),
+            ),
+        )
+        self.assertTrue(all(item.status_code == 403 for item in forbidden))
+        service_class.assert_not_called()
+
+    def test_router_contains_exactly_ten_routes_without_upload_or_geometry_write(self) -> None:
         route_methods = {
             (method, route.path)
             for route in question_editor_router.routes
@@ -1020,6 +1317,11 @@ class QuestionEditorApiTest(unittest.TestCase):
                 "/question-editor/revisions/{revision_id}/blocks/{block_id}",
             ),
             ("PUT", "/question-editor/revisions/{revision_id}/blocks/order"),
+            ("POST", "/question-editor/revisions/{revision_id}/blocks/image"),
+            (
+                "PATCH",
+                "/question-editor/revisions/{revision_id}/blocks/{block_id}/image",
+            ),
         })
 
 

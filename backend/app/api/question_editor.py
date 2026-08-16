@@ -16,6 +16,9 @@ from app.schemas.question_editor import (
     FormulaBlockCreate,
     FormulaBlockRead,
     FormulaBlockUpdate,
+    ImageBlockCreate,
+    ImageBlockRead,
+    ImageBlockUpdate,
     QuestionDraftCreate,
     QuestionDraftRead,
     QuestionRevisionEditorRead,
@@ -29,6 +32,7 @@ from app.services.question_editor_service import (
     EditorBlockContentMissingError,
     EditorBlockNotFoundError,
     EditorBlockTypeMismatchError,
+    MediaAssetNotFoundError,
     PurposeNotFoundError,
     QuestionEditorService,
     QuestionTypeNotFoundError,
@@ -425,4 +429,114 @@ def reorder_blocks(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Content block order conflict.",
+        ) from exc
+
+
+@router.post(
+    "/revisions/{revision_id}/blocks/image",
+    response_model=ImageBlockRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an image block",
+)
+def create_image_block(
+    revision_id: uuid.UUID,
+    request: ImageBlockCreate,
+    _current_user: Annotated[
+        User,
+        Depends(require_roles(RoleName.ADMIN)),
+    ],
+    db: Annotated[Session, Depends(get_db)],
+) -> ImageBlockRead:
+    """Append an image block referencing an existing media asset."""
+
+    try:
+        return QuestionEditorService(db).create_image_block(
+            revision_id=revision_id,
+            request=request,
+        )
+    except RevisionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question revision was not found.",
+        ) from exc
+    except RevisionNotEditableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Question revision is not editable.",
+        ) from exc
+    except RevisionConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Question revision was modified by another request.",
+        ) from exc
+    except MediaAssetNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Media asset was not found.",
+        ) from exc
+    except ContentBlockOrderConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Content block order conflict.",
+        ) from exc
+
+
+@router.patch(
+    "/revisions/{revision_id}/blocks/{block_id}/image",
+    response_model=ImageBlockRead,
+    status_code=status.HTTP_200_OK,
+    summary="Update an image block",
+)
+def update_image_block(
+    revision_id: uuid.UUID,
+    block_id: uuid.UUID,
+    request: ImageBlockUpdate,
+    _current_user: Annotated[
+        User,
+        Depends(require_roles(RoleName.ADMIN)),
+    ],
+    db: Annotated[Session, Depends(get_db)],
+) -> ImageBlockRead:
+    """Replace an image block's media reference and alt text."""
+
+    try:
+        return QuestionEditorService(db).update_image_block(
+            revision_id=revision_id,
+            block_id=block_id,
+            request=request,
+        )
+    except RevisionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question revision was not found.",
+        ) from exc
+    except RevisionNotEditableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Question revision is not editable.",
+        ) from exc
+    except RevisionConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Question revision was modified by another request.",
+        ) from exc
+    except EditorBlockNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Content block was not found.",
+        ) from exc
+    except EditorBlockTypeMismatchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Content block type does not match the requested operation.",
+        ) from exc
+    except EditorBlockContentMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Content block payload is unavailable.",
+        ) from exc
+    except MediaAssetNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Media asset was not found.",
         ) from exc
