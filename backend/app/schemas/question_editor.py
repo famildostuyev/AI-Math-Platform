@@ -148,6 +148,11 @@ class FormulaBlockWritePayload(StrictEditorSchema):
     format_version: Literal[1] = 1
 
 
+class ImageBlockWritePayload(StrictEditorSchema):
+    media_asset_id: uuid.UUID
+    alt_text: str | None
+
+
 class TextBlockCreate(StrictEditorSchema):
     block_type: Literal[ContentBlockType.TEXT]
     payload: TextBlockWritePayload
@@ -174,8 +179,21 @@ class FormulaBlockCreate(StrictEditorSchema):
         return _require_aware_datetime(value)
 
 
+class ImageBlockCreate(StrictEditorSchema):
+    block_type: Literal[ContentBlockType.IMAGE]
+    payload: ImageBlockWritePayload
+    expected_revision_updated_at: datetime
+
+    @field_validator("expected_revision_updated_at")
+    @classmethod
+    def validate_expected_revision_updated_at(
+        cls, value: datetime,
+    ) -> datetime:
+        return _require_aware_datetime(value)
+
+
 ContentBlockCreate = Annotated[
-    Union[TextBlockCreate, FormulaBlockCreate],
+    Union[TextBlockCreate, FormulaBlockCreate, ImageBlockCreate],
     Field(discriminator="block_type"),
 ]
 
@@ -206,7 +224,24 @@ class FormulaBlockUpdate(StrictEditorSchema):
         return _require_aware_datetime(value)
 
 
-ContentBlockUpdate = Union[TextBlockUpdate, FormulaBlockUpdate]
+class ImageBlockUpdate(StrictEditorSchema):
+    media_asset_id: uuid.UUID
+    alt_text: str | None
+    expected_revision_updated_at: datetime
+
+    @field_validator("expected_revision_updated_at")
+    @classmethod
+    def validate_expected_revision_updated_at(
+        cls, value: datetime,
+    ) -> datetime:
+        return _require_aware_datetime(value)
+
+
+ContentBlockUpdate = Union[
+    TextBlockUpdate,
+    FormulaBlockUpdate,
+    ImageBlockUpdate,
+]
 
 
 class BlockOrderRequest(StrictEditorSchema):

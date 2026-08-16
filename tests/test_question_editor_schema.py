@@ -22,7 +22,9 @@ from app.schemas.question_editor import (
     FormulaBlockRead,
     FormulaBlockUpdate,
     GeometryBlockRead,
+    ImageBlockCreate,
     ImageBlockRead,
+    ImageBlockUpdate,
     QuestionDraftCreate,
     QuestionDraftRead,
     QuestionRevisionEditorRead,
@@ -174,12 +176,54 @@ class QuestionEditorSchemaTest(unittest.TestCase):
                 },
             ))
 
-    def test_image_write_is_not_supported(self) -> None:
-        with self.assertRaises(ValidationError):
-            TypeAdapter(ContentBlockCreate).validate_python({
-                "block_type": "image", "payload": {},
-                "expected_revision_updated_at": NOW,
-            })
+    def test_valid_image_create_and_create_union(self) -> None:
+        media_asset_id = uuid.uuid4()
+        for alt_text in ("Coordinate graph", None, ""):
+            with self.subTest(alt_text=alt_text):
+                value = TypeAdapter(ContentBlockCreate).validate_python({
+                    "block_type": "image",
+                    "payload": {
+                        "media_asset_id": str(media_asset_id),
+                        "alt_text": alt_text,
+                    },
+                    "expected_revision_updated_at": NOW,
+                })
+                self.assertIsInstance(value, ImageBlockCreate)
+                self.assertEqual(value.block_type, ContentBlockType.IMAGE)
+                self.assertEqual(value.payload.media_asset_id, media_asset_id)
+                self.assertEqual(value.payload.alt_text, alt_text)
+                self.assertEqual(value.expected_revision_updated_at, NOW)
+
+    def test_image_create_rejects_invalid_contract_fields(self) -> None:
+        media_asset_id = uuid.uuid4()
+        valid = {
+            "block_type": "image",
+            "payload": {
+                "media_asset_id": str(media_asset_id),
+                "alt_text": None,
+            },
+            "expected_revision_updated_at": NOW,
+        }
+        cases = (
+            {**valid, "payload": {"alt_text": None}},
+            {**valid, "payload": {"media_asset_id": "bad", "alt_text": None}},
+            {**valid, "block_type": "geometry"},
+            {**valid, "expected_revision_updated_at": datetime(2026, 8, 15)},
+            {**valid, "sort_order": 1000},
+            {**valid, "id": str(uuid.uuid4())},
+            {**valid, "block_id": str(uuid.uuid4())},
+            {**valid, "revision_id": str(uuid.uuid4())},
+            {**valid, "deleted_at": None},
+            {**valid, "created_at": NOW},
+            {**valid, "updated_at": NOW},
+            {**valid, "payload": {**valid["payload"], "storage_key": "secret"}},
+            {**valid, "payload": {**valid["payload"], "sha256": "hash"}},
+            {**valid, "payload": {**valid["payload"], "upload": "bytes"}},
+            {**valid, "payload": {**valid["payload"], "url": "https://example.test"}},
+        )
+        for value in cases:
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                ImageBlockCreate.model_validate(value)
 
     def test_valid_geometry_read(self) -> None:
         value = TypeAdapter(ContentBlockRead).validate_python(block_base(
@@ -228,6 +272,88 @@ class QuestionEditorSchemaTest(unittest.TestCase):
             "expected_revision_updated_at": NOW,
         })
         self.assertIsInstance(value, FormulaBlockUpdate)
+
+    def test_valid_image_update_and_update_union(self) -> None:
+        first_asset_id = uuid.uuid4()
+        replacement_asset_id = uuid.uuid4()
+        first = ImageBlockUpdate.model_validate({
+            "media_asset_id": first_asset_id,
+            "alt_text": "Original",
+            "expected_revision_updated_at": NOW,
+        })
+        replacement = TypeAdapter(ContentBlockUpdate).validate_python({
+            "media_asset_id": str(replacement_asset_id),
+            "alt_text": None,
+            "expected_revision_updated_at": NOW,
+        })
+        empty_alt = ImageBlockUpdate.model_validate({
+            "media_asset_id": replacement_asset_id,
+            "alt_text": "",
+            "expected_revision_updated_at": NOW,
+        })
+        self.assertEqual(first.media_asset_id, first_asset_id)
+        self.assertIsInstance(replacement, ImageBlockUpdate)
+        self.assertEqual(replacement.media_asset_id, replacement_asset_id)
+        self.assertIsNone(replacement.alt_text)
+        self.assertEqual(empty_alt.alt_text, "")
+        self.assertEqual(replacement.expected_revision_updated_at, NOW)
+
+    def test_image_update_rejects_invalid_contract_fields(self) -> None:
+        valid = {
+            "media_asset_id": str(uuid.uuid4()),
+            "alt_text": None,
+            "expected_revision_updated_at": NOW,
+        }
+        cases = (
+            {
+                "alt_text": None,
+                "expected_revision_updated_at": NOW,
+            },
+            {**valid, "media_asset_id": "bad"},
+            {**valid, "expected_revision_updated_at": datetime(2026, 8, 15)},
+            {**valid, "block_type": "image"},
+            {**valid, "id": str(uuid.uuid4())},
+            {**valid, "block_id": str(uuid.uuid4())},
+            {**valid, "revision_id": str(uuid.uuid4())},
+            {**valid, "sort_order": 1000},
+            {**valid, "deleted_at": None},
+            {**valid, "storage_key": "secret"},
+            {**valid, "checksum": "hash"},
+            {**valid, "file": "bytes"},
+            {**valid, "path": "local/path"},
+            {**valid, "url": "https://example.test"},
+        )
+        for value in cases:
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                ImageBlockUpdate.model_validate(value)
+
+    def test_geometry_update_remains_unsupported(self) -> None:
+        with self.assertRaises(ValidationError):
+            TypeAdapter(ContentBlockUpdate).validate_python({
+                "source_data": {"objects": []},
+                "format_version": 1,
+                "expected_revision_updated_at": NOW,
+            })
+
+    def test_image_read_public_shape_remains_unchanged(self) -> None:
+        media_asset_id = uuid.uuid4()
+        value = ImageBlockRead.model_validate(block_base(
+            "image",
+            {"media_asset_id": media_asset_id, "alt_text": "Graph"},
+        ))
+        self.assertEqual(
+            set(value.model_dump()["payload"]),
+            {"media_asset_id", "alt_text"},
+        )
+        with self.assertRaises(ValidationError):
+            ImageBlockRead.model_validate(block_base(
+                "image",
+                {
+                    "media_asset_id": media_asset_id,
+                    "alt_text": "Graph",
+                    "mime_type": "image/png",
+                },
+            ))
 
     def test_update_rejects_block_type(self) -> None:
         with self.assertRaises(ValidationError):
