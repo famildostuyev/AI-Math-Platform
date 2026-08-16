@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+import math
 import uuid
 from datetime import datetime
 from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing_extensions import TypeAliasType
 
 from app.core.enums import (
     ContentBlockType,
@@ -16,6 +19,64 @@ from app.schemas.structured_text import StructuredTextDocument
 
 class StrictEditorSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+JsonValue = TypeAliasType(
+    "JsonValue",
+    Union[
+        str,
+        int,
+        float,
+        bool,
+        None,
+        list["JsonValue"],
+        dict[str, "JsonValue"],
+    ],
+)
+
+_GEOMETRY_MAX_JSON_BYTES = 1_048_576
+_GEOMETRY_MAX_JSON_DEPTH = 32
+
+
+def _validate_geometry_source_data(value: object) -> object:
+    """Require JSON values; the outer object has container depth one."""
+
+    if not isinstance(value, dict):
+        raise ValueError("Geometry source_data must be a JSON object.")
+    stack: list[tuple[object, int]] = [(value, 1)]
+    while stack:
+        current, depth = stack.pop()
+        if isinstance(current, dict):
+            if depth > _GEOMETRY_MAX_JSON_DEPTH:
+                raise ValueError("Geometry source_data exceeds maximum depth.")
+            for key, nested in current.items():
+                if not isinstance(key, str):
+                    raise ValueError("Geometry JSON object keys must be strings.")
+                stack.append((nested, depth + 1))
+        elif isinstance(current, list):
+            if depth > _GEOMETRY_MAX_JSON_DEPTH:
+                raise ValueError("Geometry source_data exceeds maximum depth.")
+            stack.extend((nested, depth + 1) for nested in current)
+        elif isinstance(current, float):
+            if not math.isfinite(current):
+                raise ValueError("Geometry source_data numbers must be finite.")
+        elif current is None or isinstance(current, (str, int, bool)):
+            continue
+        else:
+            raise ValueError("Geometry source_data must contain only JSON values.")
+
+    try:
+        encoded = json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("Geometry source_data is not valid JSON.") from exc
+    if len(encoded) > _GEOMETRY_MAX_JSON_BYTES:
+        raise ValueError("Geometry source_data exceeds maximum encoded size.")
+    return value
 
 
 def _require_unique_ids(values: list[uuid.UUID], field_name: str) -> list[uuid.UUID]:
@@ -153,6 +214,16 @@ class ImageBlockWritePayload(StrictEditorSchema):
     alt_text: str | None
 
 
+class GeometryBlockWritePayload(StrictEditorSchema):
+    source_data: dict[str, JsonValue]
+    format_version: Literal[1] = 1
+
+    @field_validator("source_data", mode="before")
+    @classmethod
+    def validate_source_data(cls, value: object) -> object:
+        return _validate_geometry_source_data(value)
+
+
 class TextBlockCreate(StrictEditorSchema):
     block_type: Literal[ContentBlockType.TEXT]
     payload: TextBlockWritePayload
@@ -192,8 +263,26 @@ class ImageBlockCreate(StrictEditorSchema):
         return _require_aware_datetime(value)
 
 
+class GeometryBlockCreate(StrictEditorSchema):
+    block_type: Literal[ContentBlockType.GEOMETRY]
+    payload: GeometryBlockWritePayload
+    expected_revision_updated_at: datetime
+
+    @field_validator("expected_revision_updated_at")
+    @classmethod
+    def validate_expected_revision_updated_at(
+        cls, value: datetime,
+    ) -> datetime:
+        return _require_aware_datetime(value)
+
+
 ContentBlockCreate = Annotated[
-    Union[TextBlockCreate, FormulaBlockCreate, ImageBlockCreate],
+    Union[
+        TextBlockCreate,
+        FormulaBlockCreate,
+        ImageBlockCreate,
+        GeometryBlockCreate,
+    ],
     Field(discriminator="block_type"),
 ]
 
@@ -237,10 +326,29 @@ class ImageBlockUpdate(StrictEditorSchema):
         return _require_aware_datetime(value)
 
 
+class GeometryBlockUpdate(StrictEditorSchema):
+    source_data: dict[str, JsonValue]
+    format_version: Literal[1] = 1
+    expected_revision_updated_at: datetime
+
+    @field_validator("source_data", mode="before")
+    @classmethod
+    def validate_source_data(cls, value: object) -> object:
+        return _validate_geometry_source_data(value)
+
+    @field_validator("expected_revision_updated_at")
+    @classmethod
+    def validate_expected_revision_updated_at(
+        cls, value: datetime,
+    ) -> datetime:
+        return _require_aware_datetime(value)
+
+
 ContentBlockUpdate = Union[
     TextBlockUpdate,
     FormulaBlockUpdate,
     ImageBlockUpdate,
+    GeometryBlockUpdate,
 ]
 
 
