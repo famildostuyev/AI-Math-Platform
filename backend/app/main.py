@@ -3,6 +3,7 @@
 from app.api.auth import router as auth_router
 from app.api.catalog import router as catalog_router
 from app.api.media import router as media_router
+from app.api.question_bank import router as question_bank_router
 from app.api.question_editor import router as question_editor_router
 from app.api.teacher import router as teacher_router
 
@@ -29,6 +30,11 @@ app.include_router(
 
 app.include_router(
     question_editor_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    question_bank_router,
     prefix="/api/v1",
 )
 
