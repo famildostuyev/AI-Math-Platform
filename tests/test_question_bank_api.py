@@ -66,13 +66,25 @@ class QuestionBankApiTest(unittest.TestCase):
         app.dependency_overrides.clear()
 
     @staticmethod
-    def _response(*, with_topic: bool = False) -> QuestionBankPageRead:
+    def _response(
+        *,
+        with_topic: bool = False,
+        with_source: bool = False,
+    ) -> QuestionBankPageRead:
         primary_topic = None
         if with_topic:
             primary_topic = {
                 "id": uuid.uuid4(),
                 "name": "algebra",
                 "display_name": "Algebra",
+            }
+        source = None
+        if with_source:
+            source = {
+                "id": uuid.uuid4(),
+                "name": "dim",
+                "display_name": "DİM",
+                "detail": "2025 buraxılış imtahanı",
             }
         return QuestionBankPageRead.model_validate({
             "items": [{
@@ -89,6 +101,7 @@ class QuestionBankApiTest(unittest.TestCase):
                 },
                 "difficulty": None,
                 "primary_topic": primary_topic,
+                "source": source,
                 "block_count": 2,
                 "text_preview": "Solve the equation.",
                 "updated_at": NOW,
@@ -118,12 +131,31 @@ class QuestionBankApiTest(unittest.TestCase):
             "question_family_id", "question_form_id", "revision_id",
             "revision_number", "status", "is_current_approved",
             "question_type", "difficulty", "primary_topic", "block_count",
-            "text_preview", "updated_at",
+            "source", "text_preview", "updated_at",
         })
         self.assertEqual(set(item["question_type"]), {
             "id", "name", "display_name",
         })
         self.assertIsNone(item["primary_topic"])
+        self.assertIsNone(item["source"])
+
+    @patch("app.api.question_bank.QuestionBankService")
+    def test_response_exposes_exact_optional_source_shape(
+        self,
+        service_class: MagicMock,
+    ) -> None:
+        expected = self._response(with_source=True)
+        service_class.return_value.list_questions.return_value = expected
+
+        response = self.client.get("/api/v1/question-bank/questions")
+
+        self.assertEqual(response.status_code, 200)
+        source = response.json()["items"][0]["source"]
+        self.assertEqual(
+            source,
+            expected.model_dump(mode="json")["items"][0]["source"],
+        )
+        self.assertEqual(set(source), {"id", "name", "display_name", "detail"})
 
     @patch("app.api.question_bank.QuestionBankService")
     def test_defaults_reach_service_as_typed_query(
@@ -137,6 +169,7 @@ class QuestionBankApiTest(unittest.TestCase):
         query = service_class.return_value.list_questions.call_args.kwargs["query"]
         self.assertIsInstance(query, QuestionBankListQuery)
         self.assertIsNone(query.q)
+        self.assertIsNone(query.source_id)
         self.assertEqual((query.page, query.page_size), (1, 25))
         self.assertEqual(query.sort, QuestionBankSort.UPDATED_DESC)
 
@@ -150,6 +183,7 @@ class QuestionBankApiTest(unittest.TestCase):
         )
         question_type_id = uuid.uuid4()
         purpose_id = uuid.uuid4()
+        source_id = uuid.uuid4()
 
         response = self.client.get(
             "/api/v1/question-bank/questions",
@@ -159,6 +193,7 @@ class QuestionBankApiTest(unittest.TestCase):
                 "status": "approved",
                 "difficulty": "hard",
                 "purpose_id": str(purpose_id),
+                "source_id": str(source_id),
                 "page": "2",
                 "page_size": "10",
                 "sort": "created_desc",
@@ -172,6 +207,7 @@ class QuestionBankApiTest(unittest.TestCase):
         self.assertEqual(query.status, QuestionRevisionStatus.APPROVED)
         self.assertEqual(query.difficulty, QuestionDifficulty.HARD)
         self.assertEqual(query.purpose_id, purpose_id)
+        self.assertEqual(query.source_id, source_id)
         self.assertEqual((query.page, query.page_size), (2, 10))
         self.assertEqual(query.sort, QuestionBankSort.CREATED_DESC)
 
@@ -200,6 +236,7 @@ class QuestionBankApiTest(unittest.TestCase):
             {"page_size": "0"},
             {"page_size": "101"},
             {"question_type_id": "not-a-uuid"},
+            {"source_id": "not-a-uuid"},
             {"status": "archived"},
             {"difficulty": "extreme"},
             {"sort": "difficulty"},

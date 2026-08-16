@@ -13,6 +13,7 @@ from app.models.question_family import QuestionFamily
 from app.models.question_form import QuestionForm
 from app.models.question_revision import QuestionRevision
 from app.models.question_revision_purpose import QuestionRevisionPurpose
+from app.models.question_source import QuestionSource
 from app.models.question_type import QuestionType
 from app.models.text_block_content import TextBlockContent
 from app.models.topic import Topic
@@ -21,6 +22,7 @@ from app.schemas.question_bank import (
     QuestionBankListQuery,
     QuestionBankPageRead,
     QuestionBankPrimaryTopicRead,
+    QuestionBankSourceRead,
     QuestionBankQuestionTypeRead,
     QuestionBankSort,
 )
@@ -107,6 +109,10 @@ class QuestionBankService:
             primary_topic.id.label("primary_topic_id"),
             primary_topic.name.label("primary_topic_name"),
             primary_topic.display_name.label("primary_topic_display_name"),
+            QuestionSource.id.label("source_id"),
+            QuestionSource.name.label("source_name"),
+            QuestionSource.display_name.label("source_display_name"),
+            QuestionForm.source_detail.label("source_detail"),
             block_count.label("block_count"),
             text_preview.label("text_preview"),
             QuestionRevision.updated_at,
@@ -141,6 +147,14 @@ class QuestionBankService:
                     primary_topic.id == QuestionRevision.primary_topic_id,
                     primary_topic.is_active.is_(True),
                     primary_topic.deleted_at.is_(None),
+                ),
+            )
+            .outerjoin(
+                QuestionSource,
+                and_(
+                    QuestionSource.id == QuestionForm.source_id,
+                    QuestionSource.is_active.is_(True),
+                    QuestionSource.deleted_at.is_(None),
                 ),
             )
             .where(
@@ -220,6 +234,11 @@ class QuestionBankService:
                 )
             )
             statement = statement.where(purpose_match)
+        if query.source_id is not None:
+            statement = statement.where(
+                QuestionForm.source_id == query.source_id,
+                QuestionSource.id == query.source_id,
+            )
         if query.q is not None:
             pattern = _literal_ilike_pattern(query.q)
             text_match = exists(
@@ -277,6 +296,14 @@ class QuestionBankService:
                 name=row.primary_topic_name,
                 display_name=row.primary_topic_display_name,
             )
+        source = None
+        if row.source_id is not None:
+            source = QuestionBankSourceRead(
+                id=row.source_id,
+                name=row.source_name,
+                display_name=row.source_display_name,
+                detail=row.source_detail,
+            )
         return QuestionBankItemRead(
             question_family_id=row.question_family_id,
             question_form_id=row.question_form_id,
@@ -291,6 +318,7 @@ class QuestionBankService:
             ),
             difficulty=row.difficulty,
             primary_topic=topic,
+            source=source,
             block_count=row.block_count,
             text_preview=row.text_preview,
             updated_at=row.updated_at,

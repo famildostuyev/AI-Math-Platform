@@ -42,6 +42,7 @@ class QuestionBankSchemaTest(unittest.TestCase):
             },
             "difficulty": None,
             "primary_topic": None,
+            "source": None,
             "block_count": 0,
             "text_preview": None,
             "updated_at": datetime.now(timezone.utc),
@@ -84,15 +85,23 @@ class QuestionBankSchemaTest(unittest.TestCase):
             QuestionBankListQuery(q="x" * 201)
 
     def test_uuid_filters_are_typed(self) -> None:
-        identifiers = [str(uuid.uuid4()) for _ in range(2)]
+        identifiers = [str(uuid.uuid4()) for _ in range(3)]
         query = QuestionBankListQuery(
-            question_type_id=identifiers[0], purpose_id=identifiers[1]
+            question_type_id=identifiers[0],
+            purpose_id=identifiers[1],
+            source_id=identifiers[2],
         )
 
         self.assertEqual(str(query.question_type_id), identifiers[0])
         self.assertEqual(str(query.purpose_id), identifiers[1])
+        self.assertEqual(str(query.source_id), identifiers[2])
         with self.assertRaises(ValidationError):
             QuestionBankListQuery(question_type_id="not-a-uuid")
+
+    def test_source_id_defaults_to_none_and_rejects_invalid_uuid(self) -> None:
+        self.assertIsNone(QuestionBankListQuery().source_id)
+        with self.assertRaises(ValidationError):
+            QuestionBankListQuery(source_id="not-a-uuid")
 
     def test_status_and_difficulty_use_domain_enums(self) -> None:
         query = QuestionBankListQuery(status="approved", difficulty="hard")
@@ -110,6 +119,7 @@ class QuestionBankSchemaTest(unittest.TestCase):
         item = QuestionBankItemRead.model_validate(self._item())
 
         self.assertIsNone(item.primary_topic)
+        self.assertIsNone(item.source)
         self.assertIsNone(item.text_preview)
         self.assertEqual(
             set(item.model_dump()),
@@ -117,9 +127,40 @@ class QuestionBankSchemaTest(unittest.TestCase):
                 "question_family_id", "question_form_id", "revision_id",
                 "revision_number", "status", "is_current_approved",
                 "question_type", "difficulty", "primary_topic", "block_count",
-                "text_preview", "updated_at",
+                "source", "text_preview", "updated_at",
             },
         )
+
+    def test_item_accepts_nullable_source_and_exact_public_source_shape(self) -> None:
+        source_id = uuid.uuid4()
+        with_source = QuestionBankItemRead.model_validate(self._item(source={
+            "id": source_id,
+            "name": "dim",
+            "display_name": "DİM",
+            "detail": "2025 buraxılış imtahanı",
+        }))
+        without_detail = QuestionBankItemRead.model_validate(self._item(source={
+            "id": source_id,
+            "name": "dim",
+            "display_name": "DİM",
+            "detail": None,
+        }))
+
+        self.assertEqual(with_source.source.id, source_id)
+        self.assertEqual(with_source.source.detail, "2025 buraxılış imtahanı")
+        self.assertIsNone(without_detail.source.detail)
+        self.assertEqual(
+            set(with_source.source.model_dump()),
+            {"id", "name", "display_name", "detail"},
+        )
+        with self.assertRaises(ValidationError):
+            QuestionBankItemRead.model_validate(self._item(source={
+                "id": source_id,
+                "name": "dim",
+                "display_name": "DİM",
+                "detail": None,
+                "description": "not public",
+            }))
 
     def test_item_accepts_minimal_primary_topic_metadata(self) -> None:
         topic_id = uuid.uuid4()

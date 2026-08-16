@@ -41,6 +41,10 @@ class QuestionBankServiceTest(unittest.TestCase):
             "primary_topic_id": None,
             "primary_topic_name": None,
             "primary_topic_display_name": None,
+            "source_id": None,
+            "source_name": None,
+            "source_display_name": None,
+            "source_detail": None,
             "block_count": 2,
             "text_preview": "Solve the equation.",
             "updated_at": datetime.now(timezone.utc),
@@ -251,6 +255,63 @@ class QuestionBankServiceTest(unittest.TestCase):
         self.assertEqual(response.items[1].primary_topic.id, topic_id)
         self.assertIn("primary_topic.is_active IS true", list_sql)
         self.assertIn("primary_topic.deleted_at IS NULL", list_sql)
+
+    def test_optional_source_metadata_is_serialized_exactly(self) -> None:
+        source_id = uuid.uuid4()
+        rows = [
+            self._row(),
+            self._row(
+                source_id=source_id,
+                source_name="dim",
+                source_display_name="DİM",
+                source_detail="2025 buraxılış imtahanı",
+            ),
+            self._row(
+                source_id=uuid.uuid4(),
+                source_name="book",
+                source_display_name="Riyaziyyat 7",
+                source_detail=None,
+            ),
+        ]
+        _db, response, _count_sql, _list_sql = self._run(rows=rows)
+
+        self.assertIsNone(response.items[0].source)
+        self.assertEqual(response.items[1].source.id, source_id)
+        self.assertEqual(response.items[1].source.name, "dim")
+        self.assertEqual(response.items[1].source.display_name, "DİM")
+        self.assertEqual(
+            response.items[1].source.detail,
+            "2025 buraxılış imtahanı",
+        )
+        self.assertIsNone(response.items[2].source.detail)
+
+    def test_source_join_is_optional_and_hides_inactive_or_deleted_sources(self) -> None:
+        _db, _response, count_sql, list_sql = self._run()
+
+        for sql in (count_sql, list_sql):
+            self.assertIn("LEFT OUTER JOIN question_sources", sql)
+            self.assertIn("question_sources.is_active IS true", sql)
+            self.assertIn("question_sources.deleted_at IS NULL", sql)
+        self.assertNotIn("question_forms.source_id IS NOT NULL", list_sql)
+
+    def test_source_filter_matches_only_the_requested_visible_source(self) -> None:
+        source_id = uuid.uuid4()
+        _db, _response, count_sql, list_sql = self._run(
+            query=QuestionBankListQuery(source_id=source_id)
+        )
+
+        for sql in (count_sql, list_sql):
+            self.assertIn(f"question_forms.source_id = '{source_id}'", sql)
+            self.assertIn(f"question_sources.id = '{source_id}'", sql)
+            self.assertIn("question_sources.is_active IS true", sql)
+            self.assertIn("question_sources.deleted_at IS NULL", sql)
+
+    def test_source_join_does_not_change_representative_revision_or_multiply_rows(self) -> None:
+        _db, response, _count_sql, list_sql = self._run(rows=[self._row()])
+
+        self.assertEqual(len(response.items), 1)
+        self.assertEqual(list_sql.count("JOIN question_sources"), 1)
+        self.assertIn("max(question_revisions.revision_number)", list_sql)
 
     def test_pagination_metadata_offset_limit_and_zero_results(self) -> None:
         query = QuestionBankListQuery(page=3, page_size=10)

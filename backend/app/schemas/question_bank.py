@@ -24,6 +24,7 @@ class QuestionBankListQuery(StrictQuestionBankSchema):
     status: QuestionRevisionStatus | None = None
     difficulty: QuestionDifficulty | None = None
     purpose_id: uuid.UUID | None = None
+    source_id: uuid.UUID | None = None
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=25, ge=1, le=100)
     sort: QuestionBankSort = QuestionBankSort.UPDATED_DESC
@@ -51,6 +52,13 @@ class QuestionBankPrimaryTopicRead(StrictQuestionBankSchema):
     display_name: str
 
 
+class QuestionBankSourceRead(StrictQuestionBankSchema):
+    id: uuid.UUID
+    name: str
+    display_name: str
+    detail: str | None
+
+
 class QuestionBankItemRead(StrictQuestionBankSchema):
     question_family_id: uuid.UUID
     question_form_id: uuid.UUID
@@ -61,6 +69,7 @@ class QuestionBankItemRead(StrictQuestionBankSchema):
     question_type: QuestionBankQuestionTypeRead
     difficulty: QuestionDifficulty | None
     primary_topic: QuestionBankPrimaryTopicRead | None
+    source: QuestionBankSourceRead | None
     block_count: int = Field(ge=0)
     text_preview: str | None
     updated_at: datetime
