@@ -10618,6 +10618,37 @@ button {
   .admin-question-bank-pagination > span button:not([aria-current='page']) { display: none; }
 }
 
+/* Role-aware Admin shell */
+.sidebar--admin {
+  border-right-color: #e3e6ed;
+  background: #fff;
+}
+
+.sidebar__nav--admin {
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.sidebar__nav--admin .nav-item {
+  min-height: 48px;
+  border-radius: 9px;
+}
+
+.sidebar__nav--admin .nav-item.active {
+  color: #4d31d8;
+  background: linear-gradient(90deg, #eeeafe, #f5f2ff);
+}
+
+.sidebar__nav--admin .admin-nav-item--disabled {
+  color: #737b8d;
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.sidebar__nav--admin .admin-nav-item--disabled:hover {
+  background: transparent;
+}
+
 /* Admin Question Bank — approved content-area visual alignment */
 .admin-question-bank-content {
   max-width: 1480px;

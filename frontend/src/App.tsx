@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import './App.css'
 import LoginScreen from './components/LoginScreen'
+import AdminDashboard from './components/AdminDashboard'
 import AdminQuestionEditor from './components/AdminQuestionEditor'
 import AdminQuestionBank from './components/AdminQuestionBank'
 import { getCurrentUser, logout, refreshTokens } from './api/auth'
@@ -59,12 +60,15 @@ import {
   PlayCircle,
   XCircle,
   FileText,
+  FolderInput,
+  MessageSquareWarning,
   X,
   Timer,
   BookOpen,
 } from 'lucide-react'
 
-type Screen = 'dashboard' | 'test-builder' | 'online-tests' | 'online-test-details' | 'active-test-details' | 'admin-question-bank' | 'admin-question-editor'
+type Screen = 'dashboard' | 'test-builder' | 'online-tests' | 'online-test-details' | 'active-test-details' | 'admin-dashboard' | 'admin-question-bank' | 'admin-question-editor'
+type AdminEditorOrigin = 'dashboard' | 'question-bank'
 type BuilderStep = 'purpose' | 'class' | 'section' | 'topics' | 'parameters' | 'review'
 type PreparationStage = 'review' | 'use-mode' | 'online-students' | 'online-time' | 'online-presentation' | 'online-activation' | 'preview' | 'design' | 'final' | 'export'
 
@@ -296,6 +300,7 @@ const onlineGroups: OnlineGroup[] = [
 function Sidebar({
   screen,
   onHome,
+  onAdminHome,
   onOpenOnlineTests,
   onOpenQuestionBank,
   isAdmin,
@@ -307,6 +312,7 @@ function Sidebar({
 }: {
   screen: Screen
   onHome: () => void
+  onAdminHome: () => void
   onOpenOnlineTests: () => void
   onOpenQuestionBank: () => void
   isAdmin: boolean
@@ -329,56 +335,81 @@ function Sidebar({
     .toLocaleUpperCase()
 
   return (
-    <aside className="sidebar">
+    <aside className={isAdmin ? 'sidebar sidebar--admin' : 'sidebar'}>
       <div className="brand">
         <div className="brand__mark"><Sparkles size={24} /></div>
         <div><strong>AI Riyaziyyat</strong><span>Platforması</span></div>
       </div>
 
-      <nav className="sidebar__nav" aria-label="Əsas naviqasiya">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const active =
-            (item.label === 'Əsas səhifə' && screen === 'dashboard') ||
-            (item.label === 'Onlayn testlərim' && (screen === 'online-tests' || screen === 'online-test-details' || screen === 'active-test-details'))
-
-          return (
+      <nav className={isAdmin ? 'sidebar__nav sidebar__nav--admin' : 'sidebar__nav'} aria-label={isAdmin ? 'Admin naviqasiyası' : 'Əsas naviqasiya'}>
+        {isAdmin ? (
+          <>
             <button
-              className={active ? 'nav-item active' : 'nav-item'}
-              key={item.label}
+              className={screen === 'admin-dashboard' ? 'nav-item active' : 'nav-item'}
               type="button"
-              onClick={
-                item.label === 'Əsas səhifə'
-                  ? onHome
-                  : item.label === 'Onlayn testlərim'
-                    ? onOpenOnlineTests
-                    : undefined
-              }
+              onClick={onAdminHome}
             >
-              <Icon size={21} /><span>{item.label}</span>
+              <Home size={21} /><span>Ana səhifə</span>
             </button>
-          )
-        })}
-        {isAdmin && (
-          <button
-            className={screen === 'admin-question-bank' || screen === 'admin-question-editor' ? 'nav-item active' : 'nav-item'}
-            type="button"
-            onClick={onOpenQuestionBank}
-          >
-            <FileText size={21} /><span>Sual bazası</span>
-          </button>
+            <button className="nav-item admin-nav-item--disabled" type="button" disabled><Users size={21} /><span>İstifadəçilər</span></button>
+            <button className="nav-item admin-nav-item--disabled" type="button" disabled><ShieldCheck size={21} /><span>Rollar</span></button>
+            <button className="nav-item admin-nav-item--disabled" type="button" disabled><FolderInput size={21} /><span>Mənbələr</span></button>
+            <button
+              className={screen === 'admin-question-bank' || screen === 'admin-question-editor' ? 'nav-item active' : 'nav-item'}
+              type="button"
+              onClick={onOpenQuestionBank}
+            >
+              <FileText size={21} /><span>Sual bazası</span>
+            </button>
+            <button className="nav-item admin-nav-item--disabled" type="button" disabled><BookOpen size={21} /><span>Kateqoriyalar</span></button>
+            <button className="nav-item admin-nav-item--disabled" type="button" disabled><Puzzle size={21} /><span>Sistem təsnifatı</span></button>
+            <button className="nav-item admin-nav-item--disabled" type="button" disabled><MessageSquareWarning size={21} /><span>Təklif və iradlar</span></button>
+            <button className="nav-item admin-nav-item--disabled" type="button" disabled><BarChart3 size={21} /><span>Hesabatlar</span></button>
+            <button className="nav-item admin-nav-item--disabled" type="button" disabled><Settings size={21} /><span>Parametrlər</span></button>
+          </>
+        ) : (
+          navItems.map((item) => {
+            const Icon = item.icon
+            const active =
+              (item.label === 'Əsas səhifə' && screen === 'dashboard') ||
+              (item.label === 'Onlayn testlərim' && (screen === 'online-tests' || screen === 'online-test-details' || screen === 'active-test-details'))
+
+            return (
+              <button
+                className={active ? 'nav-item active' : 'nav-item'}
+                key={item.label}
+                type="button"
+                onClick={
+                  item.label === 'Əsas səhifə'
+                    ? onHome
+                    : item.label === 'Onlayn testlərim'
+                      ? onOpenOnlineTests
+                      : undefined
+                }
+              >
+                <Icon size={21} /><span>{item.label}</span>
+              </button>
+            )
+          })
         )}
       </nav>
 
-      <div className="sidebar__secondary">
-        <button className="nav-item" type="button"><Settings size={21} /><span>Parametrlər</span></button>
-        <button className="nav-item" type="button"><HelpCircle size={21} /><span>Kömək və dəstək</span></button>
-      </div>
+      {!isAdmin && (
+        <>
+          <div className="sidebar__secondary">
+            <button className="nav-item" type="button"><Settings size={21} /><span>Parametrlər</span></button>
+            <button className="nav-item" type="button"><HelpCircle size={21} /><span>Kömək və dəstək</span></button>
+          </div>
 
-      <button className="notification-item" type="button">
-        <span className="notification-icon-wrap"><Bell size={21} /><b>3</b></span>
-        <span>Bildirişlər</span>
-      </button>
+          <button
+            className="notification-item"
+            type="button"
+          >
+            <span className="notification-icon-wrap"><Bell size={21} /><b>3</b></span>
+            <span>Bildirişlər</span>
+          </button>
+        </>
+      )}
 
       <div className="sidebar__bottom">
         <button className="profile-card" type="button">
@@ -5138,6 +5169,7 @@ function TestBuilder({
 
 function App() {
   const [screen, setScreen] = useState<Screen>('dashboard')
+  const [adminDashboardDateTime, setAdminDashboardDateTime] = useState('')
   const [startInOnlineMode, setStartInOnlineMode] = useState(false)
   const [tokens, setTokens] = useState<TokenResponse | null>(null)
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null)
@@ -5157,6 +5189,8 @@ function App() {
   })
   const [selectedQuestionRevisionId, setSelectedQuestionRevisionId] =
     useState<string | null>(null)
+  const [adminEditorOrigin, setAdminEditorOrigin] =
+    useState<AdminEditorOrigin>('question-bank')
   const latestTokensRef = useRef<TokenResponse | null>(null)
   const refreshPromiseRef = useRef<Promise<TokenResponse> | null>(null)
   const gradeLoadPromiseRef =
@@ -5248,6 +5282,20 @@ function App() {
       latestTokensRef.current = loginTokens
       setTokens(loginTokens)
       setCurrentUser(authenticatedUser)
+      setAdminDashboardDateTime(
+        new Intl.DateTimeFormat('az-AZ', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }).format(new Date()),
+      )
+      setScreen(
+        authenticatedUser.active_role.name === 'admin'
+          ? 'admin-dashboard'
+          : 'dashboard',
+      )
     } catch (error) {
       latestTokensRef.current = null
       refreshPromiseRef.current = null
@@ -5371,9 +5419,23 @@ function App() {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />
   }
 
+  const isAdmin = currentUser.active_role.name === 'admin'
+  const isAdminScreen =
+    screen === 'admin-dashboard'
+    || screen === 'admin-question-bank'
+    || screen === 'admin-question-editor'
+  const activeScreen = isAdmin
+    ? (isAdminScreen ? screen : 'admin-dashboard')
+    : (isAdminScreen ? 'dashboard' : screen)
+
   const openDashboard = () => {
     setStartInOnlineMode(false)
     setScreen('dashboard')
+  }
+
+  const openAdminDashboard = () => {
+    setSelectedQuestionRevisionId(null)
+    setScreen('admin-dashboard')
   }
 
   const openTestBuilder = () => {
@@ -5399,25 +5461,34 @@ function App() {
   const openActiveTestDetails = () => setScreen('active-test-details')
   const openQuestionBank = () => {
     setSelectedQuestionRevisionId(null)
+    setAdminEditorOrigin('question-bank')
     setScreen('admin-question-bank')
   }
-  const createQuestion = () => {
+  const createQuestionFromQuestionBank = () => {
     setSelectedQuestionRevisionId(null)
+    setAdminEditorOrigin('question-bank')
+    setScreen('admin-question-editor')
+  }
+  const createQuestionFromDashboard = () => {
+    setSelectedQuestionRevisionId(null)
+    setAdminEditorOrigin('dashboard')
     setScreen('admin-question-editor')
   }
   const editQuestion = (revisionId: string) => {
     setSelectedQuestionRevisionId(revisionId)
+    setAdminEditorOrigin('question-bank')
     setScreen('admin-question-editor')
   }
 
   return (
     <div className="app-shell">
       <Sidebar
-        screen={screen}
+        screen={activeScreen}
         onHome={openDashboard}
+        onAdminHome={openAdminDashboard}
         onOpenOnlineTests={openOnlineTests}
         onOpenQuestionBank={openQuestionBank}
-        isAdmin={currentUser.active_role.name === 'admin'}
+        isAdmin={isAdmin}
         firstName={currentUser.first_name}
         lastName={currentUser.last_name}
         roleDisplayName={currentUser.active_role.display_name}
@@ -5425,7 +5496,7 @@ function App() {
         isLogoutPending={isLogoutPending}
       />
 
-      {screen === 'dashboard' && (
+      {activeScreen === 'dashboard' && (
         <Dashboard
           onOpenTestBuilder={openTestBuilder}
           firstName={currentUser.first_name}
@@ -5433,19 +5504,19 @@ function App() {
         />
       )}
 
-      {screen === 'online-tests' && (
+      {activeScreen === 'online-tests' && (
         <OnlineTestsPage onCreateOnlineTest={createOnlineTest} onOpenDetails={openOnlineTestDetails} onOpenActiveDetails={openActiveTestDetails} />
       )}
 
-      {screen === 'online-test-details' && (
+      {activeScreen === 'online-test-details' && (
         <PlannedOnlineTestDetails onBack={openOnlineTests} />
       )}
 
-      {screen === 'active-test-details' && (
+      {activeScreen === 'active-test-details' && (
         <ActiveOnlineTestDetails onBack={openOnlineTests} />
       )}
 
-      {screen === 'test-builder' && (
+      {activeScreen === 'test-builder' && (
         <TestBuilder
           onBack={openDashboard}
           onOpenOnlineTests={openOnlineTests}
@@ -5461,21 +5532,29 @@ function App() {
         />
       )}
 
-      {screen === 'admin-question-editor' && (
+      {isAdmin && activeScreen === 'admin-dashboard' && (
+        <AdminDashboard
+          adminName={currentUser.first_name.trim() || 'Admin'}
+          formattedDateTime={adminDashboardDateTime}
+          onCreateQuestion={createQuestionFromDashboard}
+        />
+      )}
+
+      {isAdmin && activeScreen === 'admin-question-editor' && (
         <AdminQuestionEditor
           authenticatedRequest={authenticatedRequest}
-          onBack={openQuestionBank}
+          onBack={adminEditorOrigin === 'dashboard' ? openAdminDashboard : openQuestionBank}
           initialRevisionId={selectedQuestionRevisionId ?? undefined}
         />
       )}
 
-      {screen === 'admin-question-bank' && (
+      {isAdmin && activeScreen === 'admin-question-bank' && (
         <AdminQuestionBank
           authenticatedRequest={authenticatedRequest}
           query={questionBankQuery}
           onQueryChange={setQuestionBankQuery}
           onOpenQuestion={editQuestion}
-          onCreateQuestion={createQuestion}
+          onCreateQuestion={createQuestionFromQuestionBank}
         />
       )}
     </div>
