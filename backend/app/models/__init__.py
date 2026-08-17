@@ -24,6 +24,7 @@ from app.models.role_permission import RolePermission
 from app.models.section import Section
 from app.models.source_document import SourceDocument
 from app.models.source_document_page import SourceDocumentPage
+from app.models.source_pre_analysis_finding import SourcePreAnalysisFinding
 from app.models.source_pre_analysis_run import SourcePreAnalysisRun
 from app.models.source_pre_analysis_result import SourcePreAnalysisResult
 from app.models.subject import Subject
@@ -62,6 +63,7 @@ __all__ = [
     "Section",
     "SourceDocument",
     "SourceDocumentPage",
+    "SourcePreAnalysisFinding",
     "SourcePreAnalysisRun",
     "SourcePreAnalysisResult",
     "Subject",
