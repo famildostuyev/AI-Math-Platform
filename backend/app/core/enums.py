@@ -107,3 +107,10 @@ class ContentBlockType(str, Enum):
     GRAPH = "graph"
     TABLE = "table"
     DIAGRAM = "diagram"
+
+
+class SourcePreAnalysisRunStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
