@@ -25,6 +25,7 @@ from app.models.section import Section
 from app.models.source_document import SourceDocument
 from app.models.source_document_page import SourceDocumentPage
 from app.models.source_pre_analysis_run import SourcePreAnalysisRun
+from app.models.source_pre_analysis_result import SourcePreAnalysisResult
 from app.models.subject import Subject
 from app.models.topic import Topic
 from app.models.text_block_content import TextBlockContent
@@ -62,6 +63,7 @@ __all__ = [
     "SourceDocument",
     "SourceDocumentPage",
     "SourcePreAnalysisRun",
+    "SourcePreAnalysisResult",
     "Subject",
     "Topic",
     "TextBlockContent",
