@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   ArrowDown,
   ArrowLeft,
@@ -42,6 +42,7 @@ type AuthenticatedRequest = <T>(
 type AdminQuestionEditorProps = {
   authenticatedRequest: AuthenticatedRequest
   onBack: () => void
+  initialRevisionId?: string
 }
 
 type MutationName = 'text-create' | 'text-update' | 'formula-create'
@@ -133,7 +134,7 @@ function BlockCard({
             <button type="button" onClick={() => onSaveEdit(block)} disabled={disabled}>
               Yadda saxla
             </button>
-            <button type="button" className="secondary" onClick={onCancelEdit} disabled={disabled}>
+            <button type="button" className="secondary" onClick={onCancelEdit}>
               <X size={15} /> Ləğv et
             </button>
           </div>
@@ -194,6 +195,7 @@ function BlockCard({
 export default function AdminQuestionEditor({
   authenticatedRequest,
   onBack,
+  initialRevisionId,
 }: AdminQuestionEditorProps) {
   const [revisionInput, setRevisionInput] = useState('')
   const [revision, setRevision] = useState<QuestionRevisionEditorRead | null>(null)
@@ -210,6 +212,8 @@ export default function AdminQuestionEditor({
   const [newFormula, setNewFormula] = useState('')
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
+  const runAuthenticatedRequest = useEffectEvent(authenticatedRequest)
+  const initialRevisionLoadId = useRef<string | null>(null)
 
   useEffect(() => {
     let isCurrent = true
@@ -232,6 +236,47 @@ export default function AdminQuestionEditor({
     void loadQuestionTypes()
     return () => { isCurrent = false }
   }, [authenticatedRequest])
+
+  useEffect(() => {
+    if (!initialRevisionId || initialRevisionLoadId.current === initialRevisionId) return
+    initialRevisionLoadId.current = initialRevisionId
+    let isCurrent = true
+    let completed = false
+    setRevisionInput(initialRevisionId)
+    setIsLoading(true)
+    setError(null)
+
+    const loadInitialRevision = async () => {
+      try {
+        const loaded = await runAuthenticatedRequest((token) =>
+          getQuestionRevisionForEditor(token, initialRevisionId),
+        )
+        if (!isCurrent) return
+        setRevision(loaded)
+        setRevisionInput(loaded.revision_id)
+        setIsStale(false)
+        setEditingBlockId(null)
+        setEditingValue('')
+      } catch (loadError: unknown) {
+        if (!isCurrent) return
+        setRevision(null)
+        setError(editorErrorMessage(loadError))
+      } finally {
+        if (isCurrent) {
+          completed = true
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void loadInitialRevision()
+    return () => {
+      isCurrent = false
+      if (!completed && initialRevisionLoadId.current === initialRevisionId) {
+        initialRevisionLoadId.current = null
+      }
+    }
+  }, [initialRevisionId])
 
   const fetchRevision = async (revisionId: string) => {
     const loaded = await authenticatedRequest((token) =>
@@ -291,7 +336,14 @@ export default function AdminQuestionEditor({
     afterReload?: () => void,
   ) => {
     const current = revision
-    if (current === null || mutationPending || isLoading || isCreatingDraft || isStale) return
+    if (
+      current === null
+      || current.status !== 'draft'
+      || mutationPending
+      || isLoading
+      || isCreatingDraft
+      || isStale
+    ) return
     setMutationPending(name)
     setError(null)
     try {
@@ -321,7 +373,12 @@ export default function AdminQuestionEditor({
     }
   }
 
-  const mutationDisabled = mutationPending !== null || isLoading || isCreatingDraft || isStale
+  const revisionReadOnly = revision !== null && revision.status !== 'draft'
+  const mutationDisabled = mutationPending !== null
+    || isLoading
+    || isCreatingDraft
+    || isStale
+    || revisionReadOnly
 
   const startEditing = (block: ContentBlockRead) => {
     if (block.block_type === 'text') setEditingValue(block.payload.source_text)
@@ -410,6 +467,12 @@ export default function AdminQuestionEditor({
           <section className="admin-editor-metadata" aria-label="Reviziya məlumatları">
             <div><span>Reviziya</span><strong>#{revision.revision_number}</strong></div><div><span>Status</span><strong>{revision.status}</strong></div><div><span>Sual tipi ID</span><strong title={revision.question_type_id}>{revision.question_type_id}</strong></div><div><span>Çətinlik</span><strong>{revision.difficulty ?? 'Təyin edilməyib'}</strong></div><div><span>Yenilənib</span><strong>{formatUpdatedAt(revision.updated_at)}</strong></div>
           </section>
+
+          {revisionReadOnly && (
+            <div className="admin-editor-read-only" role="status">
+              Bu reviziya qaralama statusunda deyil və yalnız baxış üçün açılıb.
+            </div>
+          )}
 
           <section className="admin-editor-authoring" aria-label="Yeni kontent bloku">
             <form onSubmit={(event) => { event.preventDefault(); void runMutation('text-create', (token, current) => createTextBlock(token, current.revision_id, { block_type: 'text', payload: { document: simpleTextDocument(newText), format_version: 1 }, expected_revision_updated_at: current.updated_at }), () => setNewText('')) }}>

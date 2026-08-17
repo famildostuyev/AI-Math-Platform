@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import './App.css'
 import LoginScreen from './components/LoginScreen'
 import AdminQuestionEditor from './components/AdminQuestionEditor'
+import AdminQuestionBank from './components/AdminQuestionBank'
 import { getCurrentUser, logout, refreshTokens } from './api/auth'
 import type { CurrentUserResponse, TokenResponse } from './api/auth'
 import { ApiError } from './api/client'
@@ -11,6 +12,7 @@ import type {
   PurposeCatalogResponse,
 } from './api/catalog'
 import type { LucideIcon } from 'lucide-react'
+import type { QuestionBankListQuery } from './api/questionBank'
 
 import {
   Archive,
@@ -62,7 +64,7 @@ import {
   BookOpen,
 } from 'lucide-react'
 
-type Screen = 'dashboard' | 'test-builder' | 'online-tests' | 'online-test-details' | 'active-test-details' | 'admin-question-editor'
+type Screen = 'dashboard' | 'test-builder' | 'online-tests' | 'online-test-details' | 'active-test-details' | 'admin-question-bank' | 'admin-question-editor'
 type BuilderStep = 'purpose' | 'class' | 'section' | 'topics' | 'parameters' | 'review'
 type PreparationStage = 'review' | 'use-mode' | 'online-students' | 'online-time' | 'online-presentation' | 'online-activation' | 'preview' | 'design' | 'final' | 'export'
 
@@ -295,7 +297,7 @@ function Sidebar({
   screen,
   onHome,
   onOpenOnlineTests,
-  onOpenQuestionEditor,
+  onOpenQuestionBank,
   isAdmin,
   firstName,
   lastName,
@@ -306,7 +308,7 @@ function Sidebar({
   screen: Screen
   onHome: () => void
   onOpenOnlineTests: () => void
-  onOpenQuestionEditor: () => void
+  onOpenQuestionBank: () => void
   isAdmin: boolean
   firstName: string
   lastName: string
@@ -359,11 +361,11 @@ function Sidebar({
         })}
         {isAdmin && (
           <button
-            className={screen === 'admin-question-editor' ? 'nav-item active' : 'nav-item'}
+            className={screen === 'admin-question-bank' || screen === 'admin-question-editor' ? 'nav-item active' : 'nav-item'}
             type="button"
-            onClick={onOpenQuestionEditor}
+            onClick={onOpenQuestionBank}
           >
-            <FileText size={21} /><span>Sual redaktoru</span>
+            <FileText size={21} /><span>Sual bazası</span>
           </button>
         )}
       </nav>
@@ -5148,6 +5150,13 @@ function App() {
   const [gradesLoading, setGradesLoading] = useState(false)
   const [gradesLoaded, setGradesLoaded] = useState(false)
   const [gradesError, setGradesError] = useState<string | null>(null)
+  const [questionBankQuery, setQuestionBankQuery] = useState<QuestionBankListQuery>({
+    page: 1,
+    page_size: 25,
+    sort: 'updated_desc',
+  })
+  const [selectedQuestionRevisionId, setSelectedQuestionRevisionId] =
+    useState<string | null>(null)
   const latestTokensRef = useRef<TokenResponse | null>(null)
   const refreshPromiseRef = useRef<Promise<TokenResponse> | null>(null)
   const gradeLoadPromiseRef =
@@ -5388,7 +5397,18 @@ function App() {
 
   const openOnlineTestDetails = () => setScreen('online-test-details')
   const openActiveTestDetails = () => setScreen('active-test-details')
-  const openQuestionEditor = () => setScreen('admin-question-editor')
+  const openQuestionBank = () => {
+    setSelectedQuestionRevisionId(null)
+    setScreen('admin-question-bank')
+  }
+  const createQuestion = () => {
+    setSelectedQuestionRevisionId(null)
+    setScreen('admin-question-editor')
+  }
+  const editQuestion = (revisionId: string) => {
+    setSelectedQuestionRevisionId(revisionId)
+    setScreen('admin-question-editor')
+  }
 
   return (
     <div className="app-shell">
@@ -5396,7 +5416,7 @@ function App() {
         screen={screen}
         onHome={openDashboard}
         onOpenOnlineTests={openOnlineTests}
-        onOpenQuestionEditor={openQuestionEditor}
+        onOpenQuestionBank={openQuestionBank}
         isAdmin={currentUser.active_role.name === 'admin'}
         firstName={currentUser.first_name}
         lastName={currentUser.last_name}
@@ -5444,7 +5464,18 @@ function App() {
       {screen === 'admin-question-editor' && (
         <AdminQuestionEditor
           authenticatedRequest={authenticatedRequest}
-          onBack={openDashboard}
+          onBack={openQuestionBank}
+          initialRevisionId={selectedQuestionRevisionId ?? undefined}
+        />
+      )}
+
+      {screen === 'admin-question-bank' && (
+        <AdminQuestionBank
+          authenticatedRequest={authenticatedRequest}
+          query={questionBankQuery}
+          onQueryChange={setQuestionBankQuery}
+          onOpenQuestion={editQuestion}
+          onCreateQuestion={createQuestion}
         />
       )}
     </div>
