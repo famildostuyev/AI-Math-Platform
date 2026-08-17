@@ -23,6 +23,7 @@ from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.section import Section
 from app.models.source_document import SourceDocument
+from app.models.source_document_page import SourceDocumentPage
 from app.models.subject import Subject
 from app.models.topic import Topic
 from app.models.text_block_content import TextBlockContent
@@ -58,6 +59,7 @@ __all__ = [
     "RolePermission",
     "Section",
     "SourceDocument",
+    "SourceDocumentPage",
     "Subject",
     "Topic",
     "TextBlockContent",
