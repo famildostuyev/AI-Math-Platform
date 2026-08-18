@@ -4,7 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from sqlalchemy import CheckConstraint, DateTime, Integer, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID
 
 
@@ -24,7 +24,9 @@ class SourcePreAnalysisResultModelMetadataTest(unittest.TestCase):
             set(table.columns.keys()),
             {
                 "id", "source_pre_analysis_run_id", "schema_version",
-                "page_count", "created_at", "updated_at", "deleted_at",
+                "page_count", "processor_name", "processor_version",
+                "provider_name", "model_name", "prompt_version",
+                "created_at", "updated_at", "deleted_at",
             },
         )
         self.assertIsInstance(table.c.id.type, UUID)
@@ -44,6 +46,21 @@ class SourcePreAnalysisResultModelMetadataTest(unittest.TestCase):
         self.assertEqual(str(table.c.schema_version.server_default.arg), "1")
         self.assertIsInstance(table.c.page_count.type, Integer)
         self.assertTrue(table.c.page_count.nullable)
+        provenance_lengths = {
+            "processor_name": 100,
+            "processor_version": 100,
+            "provider_name": 100,
+            "model_name": 200,
+            "prompt_version": 100,
+        }
+        for name, length in provenance_lengths.items():
+            with self.subTest(name=name):
+                column = table.c[name]
+                self.assertIsInstance(column.type, String)
+                self.assertEqual(column.type.length, length)
+                self.assertTrue(column.nullable)
+                self.assertIsNone(column.default)
+                self.assertIsNone(column.server_default)
 
     def test_constraints_and_index_policy_match_result_contract(self) -> None:
         table = SourcePreAnalysisResult.__table__
@@ -59,6 +76,23 @@ class SourcePreAnalysisResultModelMetadataTest(unittest.TestCase):
                     "schema_version > 0",
                 "ck_source_pre_analysis_results_page_count_non_negative":
                     "page_count IS NULL OR page_count >= 0",
+                "ck_source_pre_analysis_results_processor_identity_paired":
+                    "(processor_name IS NULL AND processor_version IS NULL) OR "
+                    "(processor_name IS NOT NULL AND processor_version IS NOT NULL)",
+                "ck_source_pre_analysis_results_processor_name_nonblank":
+                    "processor_name IS NULL OR "
+                    "char_length(btrim(processor_name)) > 0",
+                "ck_source_pre_analysis_results_processor_version_nonblank":
+                    "processor_version IS NULL OR "
+                    "char_length(btrim(processor_version)) > 0",
+                "ck_source_pre_analysis_results_provider_name_nonblank":
+                    "provider_name IS NULL OR "
+                    "char_length(btrim(provider_name)) > 0",
+                "ck_source_pre_analysis_results_model_name_nonblank":
+                    "model_name IS NULL OR char_length(btrim(model_name)) > 0",
+                "ck_source_pre_analysis_results_prompt_version_nonblank":
+                    "prompt_version IS NULL OR "
+                    "char_length(btrim(prompt_version)) > 0",
             },
         )
         uniques = {
@@ -104,9 +138,12 @@ class SourcePreAnalysisResultModelMetadataTest(unittest.TestCase):
                 "image_count", "formula_count", "has_formula",
                 "has_possible_answer_section", "warning_count",
                 "quality_score", "confidence", "uncertainty", "observations",
-                "parser_name", "parser_version", "processor_name",
-                "processor_version", "provider", "model_version",
-                "prompt_version", "ocr_text", "raw_source_text",
+                "parser_name", "parser_version", "provider",
+                "model_version", "prompt_text", "system_prompt",
+                "raw_provider_request", "raw_provider_response", "api_key",
+                "secret", "token", "filesystem_path", "storage_key",
+                "source_content", "ocr_text", "exception_stack_trace",
+                "model_reasoning", "execution_payload", "raw_source_text",
                 "source_document_page_id", "question_id", "question_form_id",
                 "question_revision_id", "content_block_id",
             }.isdisjoint(table.c.keys())
