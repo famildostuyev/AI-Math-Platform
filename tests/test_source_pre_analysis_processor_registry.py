@@ -4,6 +4,7 @@ import os
 import sys
 import unittest
 import uuid
+import zipfile
 from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
@@ -30,6 +31,13 @@ from pypdf import PdfWriter
 from PIL import Image
 
 from app.core.enums import SourcePreAnalysisFindingSeverity
+from app.services.docx_source_pre_analysis_processor import (
+    DOCX_MIME_TYPE,
+    DOCX_NO_TEXT_CONTENT,
+    DOCX_PROCESSOR_NAME,
+    DOCX_PROCESSOR_VERSION,
+    DocxSourcePreAnalysisProcessor,
+)
 from app.services.pdf_source_pre_analysis_processor import (
     PDF_PAGE_NO_EXTRACTABLE_TEXT,
     PDF_PROCESSOR_NAME,
@@ -64,6 +72,29 @@ from app.services.source_pre_analysis_service import (
 
 class SourcePreAnalysisProcessorRegistryTest(unittest.TestCase):
     @staticmethod
+    def _docx_without_text() -> bytes:
+        stream = BytesIO()
+        with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(
+                "[Content_Types].xml",
+                b'<Types xmlns="http://schemas.openxmlformats.org/package/'
+                b'2006/content-types"><Override PartName="/word/document.xml" '
+                b'ContentType="application/vnd.openxmlformats-officedocument.'
+                b'wordprocessingml.document.main+xml"/></Types>',
+            )
+            archive.writestr(
+                "_rels/.rels",
+                b'<Relationships xmlns="http://schemas.openxmlformats.org/'
+                b'package/2006/relationships"/>',
+            )
+            archive.writestr(
+                "word/document.xml",
+                b'<w:document xmlns:w="http://schemas.openxmlformats.org/'
+                b'wordprocessingml/2006/main"><w:body/></w:document>',
+            )
+        return stream.getvalue()
+
+    @staticmethod
     def _blank_pdf() -> bytes:
         writer = PdfWriter()
         writer.add_blank_page(width=72, height=72)
@@ -71,7 +102,7 @@ class SourcePreAnalysisProcessorRegistryTest(unittest.TestCase):
         writer.write(stream)
         return stream.getvalue()
 
-    def test_factory_registers_pdf_and_images_with_fresh_state(self) -> None:
+    def test_factory_registers_all_ingested_types_with_fresh_state(self) -> None:
         first = build_source_pre_analysis_processor_selector()
         second = build_source_pre_analysis_processor_selector()
 
@@ -104,15 +135,14 @@ class SourcePreAnalysisProcessorRegistryTest(unittest.TestCase):
                 )
                 self.assertIsNot(first_image, second_image)
 
-        unsupported = (
-            "application/vnd.openxmlformats-officedocument."
-            "wordprocessingml.document",
-        )
-        for mime_type in unsupported:
-            with self.subTest(mime_type=mime_type), self.assertRaises(
-                SourcePreAnalysisUnsupportedMimeError,
-            ):
-                first.select(mime_type=mime_type)
+        first_docx = first.select(mime_type=DOCX_MIME_TYPE)
+        second_docx = second.select(mime_type=DOCX_MIME_TYPE)
+        self.assertIsInstance(first_docx, DocxSourcePreAnalysisProcessor)
+        self.assertIsInstance(second_docx, DocxSourcePreAnalysisProcessor)
+        self.assertIsNot(first_docx, second_docx)
+
+        with self.assertRaises(SourcePreAnalysisUnsupportedMimeError):
+            first.select(mime_type="application/zip")
 
     def test_existing_selector_rejects_duplicate_pdf_ownership(self) -> None:
         with self.assertRaises(SourcePreAnalysisProcessorDeclarationError):
@@ -128,6 +158,14 @@ class SourcePreAnalysisProcessorRegistryTest(unittest.TestCase):
                 processors=(
                     ImageSourcePreAnalysisProcessor(),
                     ImageSourcePreAnalysisProcessor(),
+                ),
+            )
+
+        with self.assertRaises(SourcePreAnalysisProcessorDeclarationError):
+            RegisteredSourcePreAnalysisProcessorSelector(
+                processors=(
+                    DocxSourcePreAnalysisProcessor(),
+                    DocxSourcePreAnalysisProcessor(),
                 ),
             )
 
@@ -288,6 +326,89 @@ class SourcePreAnalysisProcessorRegistryTest(unittest.TestCase):
         provenance = delegated["provenance"]
         self.assertEqual(provenance.processor_name, IMAGE_PROCESSOR_NAME)
         self.assertEqual(provenance.processor_version, IMAGE_PROCESSOR_VERSION)
+        self.assertIsNone(provenance.provider_name)
+        self.assertIsNone(provenance.model_name)
+        self.assertIsNone(provenance.prompt_version)
+        lifecycle.mark_failed.assert_not_called()
+        self.assertTrue(stream.closed)
+
+    def test_real_docx_processor_runs_through_trusted_execution_service(
+        self,
+    ) -> None:
+        run_id = uuid.uuid4()
+        content = self._docx_without_text()
+        stream = BytesIO(content)
+        source = ResolvedSourceBinary(
+            source_document_id=uuid.uuid4(),
+            media_asset_id=uuid.uuid4(),
+            mime_type=DOCX_MIME_TYPE,
+            original_filename="questions.docx",
+            size_bytes=len(content),
+            width_px=None,
+            height_px=None,
+            stream=stream,
+        )
+        lifecycle = MagicMock()
+        source_service = MagicMock()
+        output_service = MagicMock()
+        prepared_finding = SourcePreAnalysisFindingInput(
+            source_document_page_id=None,
+            finding_code=DOCX_NO_TEXT_CONTENT,
+            severity=SourcePreAnalysisFindingSeverity.WARNING,
+            confidence=None,
+            message="No extractable text was detected in the main document.",
+        )
+        prepared = SourcePreAnalysisPreparedOutput(
+            result=SourcePreAnalysisResultInput(
+                schema_version=1,
+                page_count=None,
+            ),
+            findings=(prepared_finding,),
+        )
+        finalization = object()
+
+        @contextmanager
+        def opened_source():
+            try:
+                yield source
+            finally:
+                stream.close()
+
+        source_service.open_for_run.return_value = opened_source()
+
+        def prepare_output(**kwargs):
+            self.assertTrue(stream.closed)
+            result = kwargs["processor_result"]
+            self.assertEqual(result.schema_version, 1)
+            self.assertIsNone(result.page_count)
+            self.assertEqual(len(result.findings), 1)
+            finding = result.findings[0]
+            self.assertEqual(finding.finding_code, DOCX_NO_TEXT_CONTENT)
+            self.assertIsNone(finding.page_number)
+            return prepared
+
+        output_service.prepare_finalization_inputs.side_effect = prepare_output
+        lifecycle.finalize_success.return_value = finalization
+
+        returned = SourcePreAnalysisExecutionService(
+            MagicMock(),
+            processor_selector=build_source_pre_analysis_processor_selector(),
+            lifecycle_service=lifecycle,
+            source_service=source_service,
+            output_service=output_service,
+        ).execute_run(run_id=run_id)
+
+        self.assertIs(returned, finalization)
+        lifecycle.start_run.assert_called_once_with(run_id=run_id)
+        source_service.open_for_run.assert_called_once_with(run_id=run_id)
+        output_service.prepare_finalization_inputs.assert_called_once()
+        delegated = lifecycle.finalize_success.call_args.kwargs
+        self.assertEqual(delegated["run_id"], run_id)
+        self.assertIs(delegated["result"], prepared.result)
+        self.assertIs(delegated["findings"], prepared.findings)
+        provenance = delegated["provenance"]
+        self.assertEqual(provenance.processor_name, DOCX_PROCESSOR_NAME)
+        self.assertEqual(provenance.processor_version, DOCX_PROCESSOR_VERSION)
         self.assertIsNone(provenance.provider_name)
         self.assertIsNone(provenance.model_name)
         self.assertIsNone(provenance.prompt_version)

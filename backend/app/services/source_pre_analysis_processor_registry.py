@@ -6,6 +6,9 @@ from app.services.pdf_source_pre_analysis_processor import (
 from app.services.image_source_pre_analysis_processor import (
     ImageSourcePreAnalysisProcessor,
 )
+from app.services.docx_source_pre_analysis_processor import (
+    DocxSourcePreAnalysisProcessor,
+)
 from app.services.source_pre_analysis_processor import (
     RegisteredSourcePreAnalysisProcessorSelector,
 )
@@ -19,5 +22,6 @@ def build_source_pre_analysis_processor_selector(
         processors=(
             PdfSourcePreAnalysisProcessor(),
             ImageSourcePreAnalysisProcessor(),
+            DocxSourcePreAnalysisProcessor(),
         ),
     )
