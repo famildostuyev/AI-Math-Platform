@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     MEDIA_ROOT: Path = PROJECT_ROOT / "backend" / "data" / "media"
     MEDIA_MAX_IMAGE_BYTES: int = Field(default=10 * 1024 * 1024, ge=1)
     MEDIA_MAX_IMAGE_PIXELS: int = Field(default=40_000_000, ge=1)
+    MEDIA_MAX_SOURCE_BYTES: int = Field(default=10 * 1024 * 1024, ge=1)
+    MEDIA_MAX_DOCX_MEMBERS: int = Field(default=1024, ge=1)
+    MEDIA_MAX_DOCX_EXPANDED_BYTES: int = Field(
+        default=10 * 1024 * 1024,
+        ge=1,
+    )
 
     # Database
     DATABASE_URL: str = Field(..., min_length=1)
