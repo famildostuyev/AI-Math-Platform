@@ -25,6 +25,9 @@ from app.core.enums import (
 from app.models.source_pre_analysis_finding import SourcePreAnalysisFinding
 from app.models.source_pre_analysis_result import SourcePreAnalysisResult
 from app.models.source_pre_analysis_run import SourcePreAnalysisRun
+from app.services.source_pre_analysis_processor import (
+    SourcePreAnalysisProcessorProvenance,
+)
 from app.services.source_pre_analysis_service import (
     SourcePreAnalysisActiveRunExistsError,
     SourcePreAnalysisFinalization,
@@ -44,6 +47,10 @@ from app.services.source_pre_analysis_service import (
 
 
 NOW = datetime(2026, 8, 18, 10, 30, tzinfo=timezone.utc)
+VALID_PROVENANCE = SourcePreAnalysisProcessorProvenance(
+    processor_name="test-processor",
+    processor_version="1",
+)
 
 
 class SourcePreAnalysisServiceStartRunTest(unittest.TestCase):
@@ -252,6 +259,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                     schema_version=2, page_count=None,
                 ),
                 findings=[],
+                provenance=VALID_PROVENANCE,
             )
 
         self.assertIsInstance(finalized, SourcePreAnalysisFinalization)
@@ -285,6 +293,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                     confidence=Decimal("1"), message="Second",
                 ),
             ],
+            provenance=VALID_PROVENANCE,
         )
 
         self.assertEqual(finalized.result.page_count, 0)
@@ -329,6 +338,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                 self._finding(page_id=first_id, code="two"),
                 self._finding(page_id=second_id, code="three"),
             ],
+            provenance=VALID_PROVENANCE,
         )
 
         self.assertEqual(
@@ -345,6 +355,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
         db, run = self._db()
         SourcePreAnalysisService(db).finalize_success(
             run_id=run.id, result=SourcePreAnalysisResultInput(), findings=[],
+            provenance=VALID_PROVENANCE,
         )
 
         run_query = str(db.scalar.call_args_list[0].args[0])
@@ -373,6 +384,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                     SourcePreAnalysisService(db).finalize_success(
                         run_id=run.id,
                         result=SourcePreAnalysisResultInput(), findings=[],
+                        provenance=VALID_PROVENANCE,
                     )
                 db.add.assert_not_called()
                 db.flush.assert_not_called()
@@ -392,6 +404,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                     SourcePreAnalysisService(db).finalize_success(
                         run_id=run.id,
                         result=SourcePreAnalysisResultInput(), findings=[],
+                        provenance=VALID_PROVENANCE,
                     )
                 self.assertEqual(db.scalar.call_count, 1)
                 db.add.assert_not_called()
@@ -417,6 +430,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                         run_id=run.id,
                         result=SourcePreAnalysisResultInput(),
                         findings=[self._finding(page_id=page_id)],
+                        provenance=VALID_PROVENANCE,
                     )
                 db.add.assert_not_called()
                 db.flush.assert_not_called()
@@ -439,6 +453,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                 with self.assertRaises(SourcePreAnalysisValidationError):
                     SourcePreAnalysisService(db).finalize_success(
                         run_id=uuid.uuid4(), result=result, findings=[],
+                        provenance=VALID_PROVENANCE,
                     )
                 db.scalar.assert_not_called()
                 db.add.assert_not_called()
@@ -464,6 +479,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                         run_id=uuid.uuid4(),
                         result=SourcePreAnalysisResultInput(),
                         findings=[self._finding(code="valid"), finding],
+                        provenance=VALID_PROVENANCE,
                     )
                 db.scalar.assert_not_called()
                 db.add.assert_not_called()
@@ -478,6 +494,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
             SourcePreAnalysisService(db).finalize_success(
                 run_id=uuid.uuid4(), result=SourcePreAnalysisResultInput(),
                 findings=[finding],
+                provenance=VALID_PROVENANCE,
             )
         db.scalar.assert_not_called()
         db.add.assert_not_called()
@@ -497,6 +514,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                     SourcePreAnalysisService(db).finalize_success(
                         run_id=run.id,
                         result=SourcePreAnalysisResultInput(), findings=[],
+                        provenance=VALID_PROVENANCE,
                     )
                 self.assertIs(raised.exception.__cause__, failure)
                 db.rollback.assert_called_once_with()
@@ -510,6 +528,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
         with self.assertRaises(RuntimeError) as raised:
             SourcePreAnalysisService(db).finalize_success(
                 run_id=run.id, result=SourcePreAnalysisResultInput(), findings=[],
+                provenance=VALID_PROVENANCE,
             )
         self.assertIs(raised.exception, failure)
         self.assertEqual((old_result.value, old_finding.value), (

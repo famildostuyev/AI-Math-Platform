@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Sequence
@@ -20,6 +21,9 @@ from app.models.source_pre_analysis_finding import SourcePreAnalysisFinding
 from app.models.source_pre_analysis_result import SourcePreAnalysisResult
 from app.models.source_pre_analysis_run import SourcePreAnalysisRun
 from app.models.user import User
+from app.services.source_pre_analysis_processor import (
+    SourcePreAnalysisProcessorProvenance,
+)
 
 
 class SourcePreAnalysisServiceError(Exception):
@@ -243,6 +247,114 @@ class SourcePreAnalysisService:
         return run
 
     @staticmethod
+    def _normalize_provenance(
+        provenance: SourcePreAnalysisProcessorProvenance,
+    ) -> SourcePreAnalysisProcessorProvenance:
+        if not isinstance(provenance, SourcePreAnalysisProcessorProvenance):
+            raise SourcePreAnalysisValidationError(
+                "Processor provenance is invalid."
+            )
+
+        identifier = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+        version_identifier = re.compile(
+            r"^[A-Za-z0-9]+(?:[._:+/-][A-Za-z0-9]+)*$"
+        )
+
+        def required_identifier(
+            value: object,
+            *,
+            label: str,
+            maximum_length: int,
+        ) -> str:
+            if not isinstance(value, str):
+                raise SourcePreAnalysisValidationError(
+                    f"{label} must be a string."
+                )
+            normalized = value.strip()
+            if (
+                not normalized
+                or len(normalized) > maximum_length
+                or identifier.fullmatch(normalized) is None
+            ):
+                raise SourcePreAnalysisValidationError(f"{label} is invalid.")
+            return normalized
+
+        def optional_text(
+            value: object,
+            *,
+            label: str,
+            maximum_length: int,
+        ) -> str | None:
+            if value is None:
+                return None
+            if not isinstance(value, str):
+                raise SourcePreAnalysisValidationError(
+                    f"{label} must be a string or null."
+                )
+            normalized = value.strip()
+            if (
+                not normalized
+                or len(normalized) > maximum_length
+                or any(character in normalized for character in "\r\n")
+            ):
+                raise SourcePreAnalysisValidationError(f"{label} is invalid.")
+            return normalized
+
+        def optional_version_identifier(
+            value: object,
+            *,
+            label: str,
+            maximum_length: int,
+        ) -> str | None:
+            normalized = optional_text(
+                value,
+                label=label,
+                maximum_length=maximum_length,
+            )
+            if (
+                normalized is not None
+                and version_identifier.fullmatch(normalized) is None
+            ):
+                raise SourcePreAnalysisValidationError(f"{label} is invalid.")
+            return normalized
+
+        processor_version = optional_text(
+            provenance.processor_version,
+            label="Processor version",
+            maximum_length=100,
+        )
+        if processor_version is None:
+            raise SourcePreAnalysisValidationError(
+                "Processor version is required."
+            )
+        provider_name = None
+        if provenance.provider_name is not None:
+            provider_name = required_identifier(
+                provenance.provider_name,
+                label="Provider name",
+                maximum_length=100,
+            )
+        return SourcePreAnalysisProcessorProvenance(
+            processor_name=required_identifier(
+                provenance.processor_name,
+                label="Processor name",
+                maximum_length=100,
+            ),
+            processor_version=processor_version,
+            provider_name=provider_name,
+            model_name=optional_text(
+                provenance.model_name,
+                label="Model name",
+                maximum_length=200,
+            ),
+            prompt_version=optional_version_identifier(
+                provenance.prompt_version,
+                label="Prompt version",
+                maximum_length=100,
+            ),
+        )
+
+    @staticmethod
     def _validate_result_input(
         result: SourcePreAnalysisResultInput,
     ) -> None:
@@ -355,12 +467,14 @@ class SourcePreAnalysisService:
         run_id: uuid.UUID,
         result: SourcePreAnalysisResultInput,
         findings: Sequence[SourcePreAnalysisFindingInput],
+        provenance: SourcePreAnalysisProcessorProvenance,
     ) -> SourcePreAnalysisFinalization:
         """Atomically persist complete output and mark a running run succeeded."""
 
         try:
             self._validate_result_input(result)
             normalized_findings = self._normalize_findings(findings)
+            normalized_provenance = self._normalize_provenance(provenance)
 
             run = self._get_active_run_for_update(run_id=run_id)
             if run.status != SourcePreAnalysisRunStatus.RUNNING:
@@ -411,6 +525,11 @@ class SourcePreAnalysisService:
                 source_pre_analysis_run_id=run.id,
                 schema_version=result.schema_version,
                 page_count=result.page_count,
+                processor_name=normalized_provenance.processor_name,
+                processor_version=normalized_provenance.processor_version,
+                provider_name=normalized_provenance.provider_name,
+                model_name=normalized_provenance.model_name,
+                prompt_version=normalized_provenance.prompt_version,
             )
             self.db.add(result_model)
             self.db.flush()

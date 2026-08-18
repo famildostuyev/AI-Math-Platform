@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import BinaryIO, Protocol
@@ -32,6 +33,12 @@ class SourcePreAnalysisProcessorFindingError(
     """Raised when one processor finding is invalid."""
 
 
+class SourcePreAnalysisProcessorProvenanceError(
+    SourcePreAnalysisProcessorError
+):
+    """Raised when execution provenance violates the processor contract."""
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedSourceBinary:
     source_document_id: uuid.UUID
@@ -60,16 +67,29 @@ class SourcePreAnalysisProcessorResult:
     findings: tuple[SourcePreAnalysisProcessorFinding, ...]
 
 
-class SourcePreAnalysisProcessor(Protocol):
+@dataclass(frozen=True, slots=True)
+class SourcePreAnalysisProcessorProvenance:
     processor_name: str
     processor_version: str
+    provider_name: str | None = None
+    model_name: str | None = None
+    prompt_version: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SourcePreAnalysisProcessorExecution:
+    result: SourcePreAnalysisProcessorResult
+    provenance: SourcePreAnalysisProcessorProvenance
+
+
+class SourcePreAnalysisProcessor(Protocol):
     supported_mime_types: frozenset[str]
 
     def process(
         self,
         *,
         source: ResolvedSourceBinary,
-    ) -> SourcePreAnalysisProcessorResult:
+    ) -> SourcePreAnalysisProcessorExecution:
         ...
 
 
@@ -95,16 +115,10 @@ class RegisteredSourcePreAnalysisProcessorSelector:
 
     @staticmethod
     def _validate_processor(processor: SourcePreAnalysisProcessor) -> None:
-        processor_name = getattr(processor, "processor_name", None)
-        processor_version = getattr(processor, "processor_version", None)
         supported_mime_types = getattr(processor, "supported_mime_types", None)
         process = getattr(processor, "process", None)
         if (
-            not isinstance(processor_name, str)
-            or not processor_name.strip()
-            or not isinstance(processor_version, str)
-            or not processor_version.strip()
-            or not isinstance(supported_mime_types, frozenset)
+            not isinstance(supported_mime_types, frozenset)
             or not supported_mime_types
             or not callable(process)
         ):
@@ -132,6 +146,138 @@ class RegisteredSourcePreAnalysisProcessorSelector:
                 "No processor supports the supplied MIME type."
             )
         return processor
+
+
+_STABLE_IDENTIFIER = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+_VERSION_IDENTIFIER = re.compile(
+    r"^[A-Za-z0-9]+(?:[._:+/-][A-Za-z0-9]+)*$"
+)
+
+
+def _normalize_required_identifier(
+    value: object,
+    *,
+    label: str,
+    maximum_length: int,
+) -> str:
+    if not isinstance(value, str):
+        raise SourcePreAnalysisProcessorProvenanceError(
+            f"{label} must be a string."
+        )
+    normalized = value.strip()
+    if (
+        not normalized
+        or len(normalized) > maximum_length
+        or _STABLE_IDENTIFIER.fullmatch(normalized) is None
+    ):
+        raise SourcePreAnalysisProcessorProvenanceError(
+            f"{label} is invalid."
+        )
+    return normalized
+
+
+def _normalize_optional_text(
+    value: object,
+    *,
+    label: str,
+    maximum_length: int,
+) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise SourcePreAnalysisProcessorProvenanceError(
+            f"{label} must be a string or null."
+        )
+    normalized = value.strip()
+    if (
+        not normalized
+        or len(normalized) > maximum_length
+        or any(character in normalized for character in "\r\n")
+    ):
+        raise SourcePreAnalysisProcessorProvenanceError(
+            f"{label} is invalid."
+        )
+    return normalized
+
+
+def _normalize_optional_version_identifier(
+    value: object,
+    *,
+    label: str,
+    maximum_length: int,
+) -> str | None:
+    normalized = _normalize_optional_text(
+        value,
+        label=label,
+        maximum_length=maximum_length,
+    )
+    if normalized is not None and _VERSION_IDENTIFIER.fullmatch(normalized) is None:
+        raise SourcePreAnalysisProcessorProvenanceError(
+            f"{label} is invalid."
+        )
+    return normalized
+
+
+def validate_processor_provenance(
+    provenance: SourcePreAnalysisProcessorProvenance,
+) -> SourcePreAnalysisProcessorProvenance:
+    """Validate and normalize immutable provenance for one execution."""
+
+    if not isinstance(provenance, SourcePreAnalysisProcessorProvenance):
+        raise SourcePreAnalysisProcessorProvenanceError(
+            "Processor provenance has an invalid type."
+        )
+    processor_name = _normalize_required_identifier(
+        provenance.processor_name,
+        label="Processor name",
+        maximum_length=100,
+    )
+    processor_version = _normalize_optional_text(
+        provenance.processor_version,
+        label="Processor version",
+        maximum_length=100,
+    )
+    if processor_version is None:
+        raise SourcePreAnalysisProcessorProvenanceError(
+            "Processor version is required."
+        )
+    provider_name = None
+    if provenance.provider_name is not None:
+        provider_name = _normalize_required_identifier(
+            provenance.provider_name,
+            label="Provider name",
+            maximum_length=100,
+        )
+    return SourcePreAnalysisProcessorProvenance(
+        processor_name=processor_name,
+        processor_version=processor_version,
+        provider_name=provider_name,
+        model_name=_normalize_optional_text(
+            provenance.model_name,
+            label="Model name",
+            maximum_length=200,
+        ),
+        prompt_version=_normalize_optional_version_identifier(
+            provenance.prompt_version,
+            label="Prompt version",
+            maximum_length=100,
+        ),
+    )
+
+
+def validate_processor_execution(
+    execution: SourcePreAnalysisProcessorExecution,
+) -> SourcePreAnalysisProcessorExecution:
+    """Validate and normalize the result and provenance of one execution."""
+
+    if not isinstance(execution, SourcePreAnalysisProcessorExecution):
+        raise SourcePreAnalysisProcessorProvenanceError(
+            "Processor execution has an invalid type."
+        )
+    return SourcePreAnalysisProcessorExecution(
+        result=validate_processor_result(execution.result),
+        provenance=validate_processor_provenance(execution.provenance),
+    )
 
 
 def validate_processor_result(

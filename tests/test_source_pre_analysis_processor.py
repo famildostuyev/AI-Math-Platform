@@ -20,12 +20,17 @@ from app.services.source_pre_analysis_processor import (
     RegisteredSourcePreAnalysisProcessorSelector,
     ResolvedSourceBinary,
     SourcePreAnalysisProcessorDeclarationError,
+    SourcePreAnalysisProcessorExecution,
     SourcePreAnalysisProcessorFinding,
     SourcePreAnalysisProcessorFindingError,
+    SourcePreAnalysisProcessorProvenance,
+    SourcePreAnalysisProcessorProvenanceError,
     SourcePreAnalysisProcessorResult,
     SourcePreAnalysisProcessorResultError,
     SourcePreAnalysisUnsupportedMimeError,
     validate_processor_result,
+    validate_processor_execution,
+    validate_processor_provenance,
 )
 
 
@@ -78,9 +83,11 @@ class SourcePreAnalysisProcessorContractTest(unittest.TestCase):
 
     def test_registry_selects_exact_mime_and_rejects_unsupported(self) -> None:
         pdf = SimpleNamespace(
-            processor_name="pdf", processor_version="1",
             supported_mime_types=frozenset({"application/pdf"}),
-            process=lambda **_: self._result(),
+            process=lambda **_: SourcePreAnalysisProcessorExecution(
+                result=self._result(),
+                provenance=SourcePreAnalysisProcessorProvenance("pdf", "1"),
+            ),
         )
         selector = RegisteredSourcePreAnalysisProcessorSelector((pdf,))
         self.assertIs(selector.select(mime_type="application/pdf"), pdf)
@@ -92,26 +99,21 @@ class SourcePreAnalysisProcessorContractTest(unittest.TestCase):
 
     def test_duplicate_or_invalid_processor_declaration_is_rejected(self) -> None:
         first = SimpleNamespace(
-            processor_name="first", processor_version="1",
             supported_mime_types=frozenset({"application/pdf"}),
+            process=lambda **_: None,
         )
         second = SimpleNamespace(
-            processor_name="second", processor_version="1",
             supported_mime_types=frozenset({"application/pdf"}),
+            process=lambda **_: None,
         )
         with self.assertRaises(SourcePreAnalysisProcessorDeclarationError):
             RegisteredSourcePreAnalysisProcessorSelector((first, second))
         for invalid in (
-            SimpleNamespace(processor_name="", processor_version="1",
-                            supported_mime_types=frozenset({"image/png"})),
-            SimpleNamespace(processor_name="image", processor_version="",
-                            supported_mime_types=frozenset({"image/png"})),
-            SimpleNamespace(processor_name="image", processor_version="1",
-                            supported_mime_types={"image/png"}),
-            SimpleNamespace(processor_name="image", processor_version="1",
-                            supported_mime_types=frozenset()),
-            SimpleNamespace(processor_name="image", processor_version="1",
-                            supported_mime_types=frozenset({" image/png"})),
+            SimpleNamespace(supported_mime_types={"image/png"}, process=lambda: None),
+            SimpleNamespace(supported_mime_types=frozenset(), process=lambda: None),
+            SimpleNamespace(supported_mime_types=frozenset({" image/png"}),
+                            process=lambda: None),
+            SimpleNamespace(supported_mime_types=frozenset({"image/png"})),
             SimpleNamespace(),
         ):
             with self.subTest(invalid=invalid), self.assertRaises(
@@ -190,6 +192,111 @@ class SourcePreAnalysisProcessorContractTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertNotIn("FindingCode", module)
         self.assertNotIn("allowed_finding", module.lower())
+
+    def test_provenance_and_execution_dtos_are_exact_frozen_slotted(self) -> None:
+        provenance = SourcePreAnalysisProcessorProvenance(
+            processor_name="pdf-pre-analysis",
+            processor_version="1",
+        )
+        execution = SourcePreAnalysisProcessorExecution(
+            result=self._result(), provenance=provenance,
+        )
+        self.assertEqual(
+            tuple(field.name for field in fields(provenance)),
+            ("processor_name", "processor_version", "provider_name",
+             "model_name", "prompt_version"),
+        )
+        self.assertEqual(
+            tuple(field.name for field in fields(execution)),
+            ("result", "provenance"),
+        )
+        self.assertFalse(hasattr(provenance, "__dict__"))
+        self.assertFalse(hasattr(execution, "__dict__"))
+        with self.assertRaises(FrozenInstanceError):
+            provenance.processor_name = "changed"  # type: ignore[misc]
+
+    def test_valid_provenance_combinations_normalize_without_mutation(self) -> None:
+        cases = (
+            {},
+            {"provider_name": " openai "},
+            {"model_name": " local/model:v1 "},
+            {"prompt_version": " prompt-v2 "},
+            {"provider_name": " local-ai ", "model_name": " Model/X ",
+             "prompt_version": " config.3 "},
+        )
+        for optional in cases:
+            with self.subTest(optional=optional):
+                original = SourcePreAnalysisProcessorProvenance(
+                    processor_name=" pdf-pre-analysis ",
+                    processor_version=" v1+build.2 ",
+                    **optional,
+                )
+                normalized = validate_processor_provenance(original)
+                self.assertIsNot(normalized, original)
+                self.assertEqual(normalized.processor_name, "pdf-pre-analysis")
+                self.assertEqual(normalized.processor_version, "v1+build.2")
+                self.assertEqual(original.processor_name, " pdf-pre-analysis ")
+                for field_name, value in optional.items():
+                    self.assertEqual(
+                        getattr(normalized, field_name), value.strip(),
+                    )
+
+    def test_invalid_provenance_fields_are_rejected_strictly(self) -> None:
+        cases = (
+            {"processor_name": 1}, {"processor_name": ""},
+            {"processor_name": " "}, {"processor_name": "x" * 101},
+            {"processor_name": "PDF"}, {"processor_name": "bad name"},
+            {"processor_name": "bad/slug"}, {"processor_version": 1},
+            {"processor_version": ""}, {"processor_version": " "},
+            {"processor_version": "x" * 101}, {"provider_name": 1},
+            {"provider_name": ""}, {"provider_name": " "},
+            {"provider_name": "x" * 101}, {"provider_name": "OpenAI"},
+            {"provider_name": "bad provider"}, {"model_name": 1},
+            {"model_name": ""}, {"model_name": " "},
+            {"model_name": "x" * 201}, {"prompt_version": 1},
+            {"prompt_version": ""}, {"prompt_version": " "},
+            {"prompt_version": "x" * 101},
+            {"prompt_version": "version\nprompt body"},
+            {"prompt_version": "actual prompt text"},
+        )
+        defaults: dict[str, object] = {
+            "processor_name": "test-processor",
+            "processor_version": "1",
+        }
+        for changes in cases:
+            values = {**defaults, **changes}
+            with self.subTest(changes=changes), self.assertRaises(
+                SourcePreAnalysisProcessorProvenanceError
+            ):
+                validate_processor_provenance(
+                    SourcePreAnalysisProcessorProvenance(**values)  # type: ignore[arg-type]
+                )
+
+    def test_execution_validation_normalizes_both_contracts(self) -> None:
+        execution = SourcePreAnalysisProcessorExecution(
+            result=self._result(),
+            provenance=SourcePreAnalysisProcessorProvenance(
+                " test-processor ", " 1 ", provider_name=" local-ai ",
+            ),
+        )
+        normalized = validate_processor_execution(execution)
+        self.assertIsNot(normalized, execution)
+        self.assertEqual(
+            normalized.result.findings[0].finding_code, "formula_present",
+        )
+        self.assertEqual(normalized.provenance.processor_name, "test-processor")
+        self.assertEqual(normalized.provenance.provider_name, "local-ai")
+
+        with self.assertRaises(SourcePreAnalysisProcessorResultError):
+            validate_processor_execution(SourcePreAnalysisProcessorExecution(
+                result=self._result(schema_version=0),
+                provenance=execution.provenance,
+            ))
+        with self.assertRaises(SourcePreAnalysisProcessorProvenanceError):
+            validate_processor_execution(SourcePreAnalysisProcessorExecution(
+                result=self._result(),
+                provenance=SourcePreAnalysisProcessorProvenance("BAD", "1"),
+            ))
 
 
 if __name__ == "__main__":
