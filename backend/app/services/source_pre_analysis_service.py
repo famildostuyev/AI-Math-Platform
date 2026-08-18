@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from app.models.source_document_page import SourceDocumentPage
 from app.models.source_pre_analysis_finding import SourcePreAnalysisFinding
 from app.models.source_pre_analysis_result import SourcePreAnalysisResult
 from app.models.source_pre_analysis_run import SourcePreAnalysisRun
+from app.models.user import User
 
 
 class SourcePreAnalysisServiceError(Exception):
@@ -27,6 +28,22 @@ class SourcePreAnalysisServiceError(Exception):
 
 class SourcePreAnalysisRunNotFoundError(SourcePreAnalysisServiceError):
     """Raised when an active run and owning document are unavailable."""
+
+
+class SourcePreAnalysisSourceDocumentNotFoundError(
+    SourcePreAnalysisServiceError
+):
+    """Raised when an active source document is unavailable."""
+
+
+class SourcePreAnalysisRequestedByUserNotFoundError(
+    SourcePreAnalysisServiceError
+):
+    """Raised when an active requesting user is unavailable."""
+
+
+class SourcePreAnalysisActiveRunExistsError(SourcePreAnalysisServiceError):
+    """Raised when a document already has a non-terminal active run."""
 
 
 class SourcePreAnalysisInvalidRunStateError(SourcePreAnalysisServiceError):
@@ -81,6 +98,125 @@ class SourcePreAnalysisService:
 
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    @staticmethod
+    def _validate_create_run_ids(
+        *,
+        source_document_id: uuid.UUID,
+        requested_by_user_id: uuid.UUID | None,
+    ) -> None:
+        if not isinstance(source_document_id, uuid.UUID):
+            raise SourcePreAnalysisValidationError(
+                "Source document ID must be a UUID."
+            )
+        if requested_by_user_id is not None and not isinstance(
+            requested_by_user_id, uuid.UUID,
+        ):
+            raise SourcePreAnalysisValidationError(
+                "Requesting user ID must be a UUID or null."
+            )
+
+    def _get_active_source_document_for_update(
+        self,
+        *,
+        source_document_id: uuid.UUID,
+    ) -> SourceDocument:
+        source_document = self.db.scalar(
+            select(SourceDocument)
+            .where(
+                SourceDocument.id == source_document_id,
+                SourceDocument.deleted_at.is_(None),
+            )
+            .with_for_update()
+        )
+        if source_document is None:
+            raise SourcePreAnalysisSourceDocumentNotFoundError(
+                "Active source document was not found."
+            )
+        return source_document
+
+    def _require_active_requesting_user(
+        self,
+        *,
+        requested_by_user_id: uuid.UUID,
+    ) -> None:
+        user = self.db.scalar(
+            select(User).where(
+                User.id == requested_by_user_id,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+            )
+        )
+        if user is None:
+            raise SourcePreAnalysisRequestedByUserNotFoundError(
+                "Active requesting user was not found."
+            )
+
+    def create_run(
+        self,
+        *,
+        source_document_id: uuid.UUID,
+        requested_by_user_id: uuid.UUID | None = None,
+    ) -> SourcePreAnalysisRun:
+        """Create the first pending pre-analysis run for an active document."""
+
+        try:
+            self._validate_create_run_ids(
+                source_document_id=source_document_id,
+                requested_by_user_id=requested_by_user_id,
+            )
+            source_document = self._get_active_source_document_for_update(
+                source_document_id=source_document_id,
+            )
+            if requested_by_user_id is not None:
+                self._require_active_requesting_user(
+                    requested_by_user_id=requested_by_user_id,
+                )
+
+            active_run_id = self.db.scalar(
+                select(SourcePreAnalysisRun.id)
+                .where(
+                    SourcePreAnalysisRun.source_document_id == source_document.id,
+                    SourcePreAnalysisRun.deleted_at.is_(None),
+                    SourcePreAnalysisRun.status.in_((
+                        SourcePreAnalysisRunStatus.PENDING,
+                        SourcePreAnalysisRunStatus.RUNNING,
+                    )),
+                )
+                .limit(1)
+            )
+            if active_run_id is not None:
+                raise SourcePreAnalysisActiveRunExistsError(
+                    "Source document already has an active pre-analysis run."
+                )
+
+            maximum_run_number = self.db.scalar(
+                select(func.max(SourcePreAnalysisRun.run_number)).where(
+                    SourcePreAnalysisRun.source_document_id == source_document.id,
+                )
+            )
+            next_run_number = (maximum_run_number or 0) + 1
+
+            run = SourcePreAnalysisRun(
+                source_document_id=source_document.id,
+                run_number=next_run_number,
+                status=SourcePreAnalysisRunStatus.PENDING,
+                requested_by_user_id=requested_by_user_id,
+                started_at=None,
+                completed_at=None,
+                failure_message=None,
+            )
+            self.db.add(run)
+            self.db.commit()
+            return run
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise SourcePreAnalysisPersistenceConflictError(
+                "Source pre-analysis run could not be created."
+            ) from exc
+        except Exception:
+            self.db.rollback()
+            raise
 
     def _get_active_run_for_update(
         self,

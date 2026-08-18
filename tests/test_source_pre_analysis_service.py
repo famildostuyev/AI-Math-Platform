@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 
 
@@ -23,7 +24,9 @@ from app.core.enums import (
 )
 from app.models.source_pre_analysis_finding import SourcePreAnalysisFinding
 from app.models.source_pre_analysis_result import SourcePreAnalysisResult
+from app.models.source_pre_analysis_run import SourcePreAnalysisRun
 from app.services.source_pre_analysis_service import (
+    SourcePreAnalysisActiveRunExistsError,
     SourcePreAnalysisFinalization,
     SourcePreAnalysisFindingInput,
     SourcePreAnalysisInvalidRunStateError,
@@ -32,8 +35,10 @@ from app.services.source_pre_analysis_service import (
     SourcePreAnalysisPersistenceConflictError,
     SourcePreAnalysisResultAlreadyExistsError,
     SourcePreAnalysisResultInput,
+    SourcePreAnalysisRequestedByUserNotFoundError,
     SourcePreAnalysisRunNotFoundError,
     SourcePreAnalysisService,
+    SourcePreAnalysisSourceDocumentNotFoundError,
     SourcePreAnalysisValidationError,
 )
 
@@ -94,7 +99,7 @@ class SourcePreAnalysisServiceStartRunTest(unittest.TestCase):
 
         SourcePreAnalysisService(db).start_run(run_id=run.id)
 
-        statement = str(db.scalar.call_args.args[0])
+        statement = str(db.scalar.call_args_list[0].args[0])
         self.assertIn("source_pre_analysis_runs.id", statement)
         self.assertIn("source_pre_analysis_runs.source_document_id", statement)
         self.assertIn("source_pre_analysis_runs.deleted_at IS NULL", statement)
@@ -695,6 +700,408 @@ class SourcePreAnalysisServiceMarkFailedTest(unittest.TestCase):
             "delete_finding", "append_finding",
         ):
             self.assertFalse(hasattr(SourcePreAnalysisService, method_name))
+
+
+class SourcePreAnalysisServiceCreateRunTest(unittest.TestCase):
+    @staticmethod
+    def _source() -> SimpleNamespace:
+        return SimpleNamespace(id=uuid.uuid4())
+
+    def test_first_run_without_requester_is_created_pending(self) -> None:
+        db = MagicMock()
+        source = self._source()
+        db.scalar.side_effect = [source, None, None]
+
+        returned = SourcePreAnalysisService(db).create_run(
+            source_document_id=source.id,
+        )
+
+        self.assertIsInstance(returned, SourcePreAnalysisRun)
+        self.assertEqual(returned.source_document_id, source.id)
+        self.assertEqual(returned.run_number, 1)
+        self.assertEqual(returned.status, SourcePreAnalysisRunStatus.PENDING)
+        self.assertIsNone(returned.requested_by_user_id)
+        self.assertIsNone(returned.started_at)
+        self.assertIsNone(returned.completed_at)
+        self.assertIsNone(returned.failure_message)
+        self.assertIs(db.add.call_args.args[0], returned)
+        db.add.assert_called_once_with(returned)
+        db.flush.assert_not_called()
+        db.commit.assert_called_once_with()
+        db.rollback.assert_not_called()
+        self.assertEqual(db.scalar.call_count, 3)
+
+    def test_source_lookup_is_active_scoped_and_locked(self) -> None:
+        db = MagicMock()
+        source = self._source()
+        db.scalar.side_effect = [source, None, None]
+
+        SourcePreAnalysisService(db).create_run(source_document_id=source.id)
+
+        statement = str(db.scalar.call_args_list[0].args[0])
+        self.assertIn("source_documents.id", statement)
+        self.assertIn("source_documents.deleted_at IS NULL", statement)
+        self.assertIn("FOR UPDATE", statement)
+
+    def test_valid_active_requester_is_required_and_persisted(self) -> None:
+        db = MagicMock()
+        source = self._source()
+        requester_id = uuid.uuid4()
+        user = SimpleNamespace(id=requester_id, is_active=True, deleted_at=None)
+        db.scalar.side_effect = [source, user, None, None]
+
+        returned = SourcePreAnalysisService(db).create_run(
+            source_document_id=source.id,
+            requested_by_user_id=requester_id,
+        )
+
+        self.assertEqual(returned.requested_by_user_id, requester_id)
+        self.assertEqual(db.scalar.call_count, 4)
+        user_statement = str(db.scalar.call_args_list[1].args[0])
+        self.assertIn("users.id", user_statement)
+        self.assertIn("users.is_active IS true", user_statement)
+        self.assertIn("users.deleted_at IS NULL", user_statement)
+        self.assertNotIn("FOR UPDATE", user_statement)
+        db.commit.assert_called_once_with()
+
+    def test_unavailable_source_is_rejected(self) -> None:
+        for state in ("missing", "soft-deleted"):
+            with self.subTest(state=state):
+                db = MagicMock()
+                db.scalar.return_value = None
+
+                with self.assertRaises(
+                    SourcePreAnalysisSourceDocumentNotFoundError,
+                ):
+                    SourcePreAnalysisService(db).create_run(
+                        source_document_id=uuid.uuid4(),
+                    )
+
+                statement = str(db.scalar.call_args.args[0])
+                self.assertIn("source_documents.deleted_at IS NULL", statement)
+                self.assertIn("FOR UPDATE", statement)
+                db.add.assert_not_called()
+                db.commit.assert_not_called()
+                db.rollback.assert_called_once_with()
+
+    def test_unavailable_requester_is_rejected(self) -> None:
+        for state in ("missing", "inactive", "soft-deleted"):
+            with self.subTest(state=state):
+                db = MagicMock()
+                source = self._source()
+                db.scalar.side_effect = [source, None]
+
+                with self.assertRaises(
+                    SourcePreAnalysisRequestedByUserNotFoundError,
+                ):
+                    SourcePreAnalysisService(db).create_run(
+                        source_document_id=source.id,
+                        requested_by_user_id=uuid.uuid4(),
+                    )
+
+                user_statement = str(db.scalar.call_args_list[1].args[0])
+                self.assertIn("users.is_active IS true", user_statement)
+                self.assertIn("users.deleted_at IS NULL", user_statement)
+                db.add.assert_not_called()
+                db.commit.assert_not_called()
+                db.rollback.assert_called_once_with()
+
+    def test_invalid_ids_are_rejected_before_database_access(self) -> None:
+        cases = (
+            ("not-a-uuid", None),
+            (1, None),
+            (True, None),
+            (uuid.uuid4(), "not-a-uuid"),
+            (uuid.uuid4(), 1),
+            (uuid.uuid4(), False),
+        )
+        for source_id, requester_id in cases:
+            with self.subTest(
+                source_id=source_id, requester_id=requester_id,
+            ):
+                db = MagicMock()
+                with self.assertRaises(SourcePreAnalysisValidationError):
+                    SourcePreAnalysisService(db).create_run(
+                        source_document_id=source_id,  # type: ignore[arg-type]
+                        requested_by_user_id=requester_id,  # type: ignore[arg-type]
+                    )
+                db.scalar.assert_not_called()
+                db.add.assert_not_called()
+                db.commit.assert_not_called()
+                db.rollback.assert_called_once_with()
+
+    def test_query_failure_rolls_back_and_propagates(self) -> None:
+        db = MagicMock()
+        failure = RuntimeError("source lookup failed")
+        db.scalar.side_effect = failure
+
+        with self.assertRaises(RuntimeError) as raised:
+            SourcePreAnalysisService(db).create_run(
+                source_document_id=uuid.uuid4(),
+            )
+
+        self.assertIs(raised.exception, failure)
+        db.add.assert_not_called()
+        db.commit.assert_not_called()
+        db.rollback.assert_called_once_with()
+
+    def test_commit_integrity_error_is_translated_with_original_cause(self) -> None:
+        db = MagicMock()
+        source = self._source()
+        failure = IntegrityError("insert", {}, Exception("run conflict"))
+        db.scalar.side_effect = [source, None, None]
+        db.commit.side_effect = failure
+
+        with self.assertRaises(
+            SourcePreAnalysisPersistenceConflictError,
+        ) as raised:
+            SourcePreAnalysisService(db).create_run(
+                source_document_id=source.id,
+            )
+
+        self.assertIs(raised.exception.__cause__, failure)
+        db.add.assert_called_once()
+        db.flush.assert_not_called()
+        db.commit.assert_called_once_with()
+        db.rollback.assert_called_once_with()
+        self.assertEqual(db.scalar.call_count, 3)
+
+    def test_add_integrity_error_is_translated_with_original_cause(self) -> None:
+        db = MagicMock()
+        source = self._source()
+        failure = IntegrityError("insert", {}, Exception("run conflict"))
+        db.scalar.side_effect = [source, None, None]
+        db.add.side_effect = failure
+
+        with self.assertRaises(
+            SourcePreAnalysisPersistenceConflictError,
+        ) as raised:
+            SourcePreAnalysisService(db).create_run(
+                source_document_id=source.id,
+            )
+
+        self.assertIs(raised.exception.__cause__, failure)
+        db.commit.assert_not_called()
+        db.rollback.assert_called_once_with()
+        self.assertEqual(db.scalar.call_count, 3)
+
+    def test_requester_query_failure_rolls_back_unchanged(self) -> None:
+        db = MagicMock()
+        source = self._source()
+        failure = RuntimeError("requester lookup failed")
+        db.scalar.side_effect = [source, failure]
+
+        with self.assertRaises(RuntimeError) as raised:
+            SourcePreAnalysisService(db).create_run(
+                source_document_id=source.id,
+                requested_by_user_id=uuid.uuid4(),
+            )
+
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(db.scalar.call_count, 2)
+        db.add.assert_not_called()
+        db.commit.assert_not_called()
+        db.rollback.assert_called_once_with()
+
+    def test_active_run_query_failure_rolls_back_before_max_or_add(self) -> None:
+        db = MagicMock()
+        source = self._source()
+        failure = RuntimeError("active run lookup failed")
+        db.scalar.side_effect = [source, failure]
+
+        with self.assertRaises(RuntimeError) as raised:
+            SourcePreAnalysisService(db).create_run(
+                source_document_id=source.id,
+            )
+
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(db.scalar.call_count, 2)
+        db.add.assert_not_called()
+        db.commit.assert_not_called()
+        db.rollback.assert_called_once_with()
+
+    def test_max_query_failure_rolls_back_before_add(self) -> None:
+        db = MagicMock()
+        source = self._source()
+        failure = RuntimeError("historical maximum lookup failed")
+        db.scalar.side_effect = [source, None, failure]
+
+        with self.assertRaises(RuntimeError) as raised:
+            SourcePreAnalysisService(db).create_run(
+                source_document_id=source.id,
+            )
+
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(db.scalar.call_count, 3)
+        db.add.assert_not_called()
+        db.commit.assert_not_called()
+        db.rollback.assert_called_once_with()
+
+    def test_generic_commit_failure_rolls_back_and_propagates_unchanged(self) -> None:
+        db = MagicMock()
+        source = self._source()
+        failure = RuntimeError("commit failed")
+        db.scalar.side_effect = [source, None, 3]
+        db.commit.side_effect = failure
+        historical_run = SimpleNamespace(
+            id=uuid.uuid4(), run_number=3, status=SourcePreAnalysisRunStatus.FAILED,
+        )
+
+        with self.assertRaises(RuntimeError) as raised:
+            SourcePreAnalysisService(db).create_run(
+                source_document_id=source.id,
+            )
+
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(
+            (historical_run.run_number, historical_run.status),
+            (3, SourcePreAnalysisRunStatus.FAILED),
+        )
+        db.add.assert_called_once()
+        db.flush.assert_not_called()
+        db.commit.assert_called_once_with()
+        db.rollback.assert_called_once_with()
+
+    def test_run_number_unique_constraint_remains_final_database_defense(self) -> None:
+        uniques = {
+            constraint.name: tuple(column.name for column in constraint.columns)
+            for constraint in SourcePreAnalysisRun.__table__.constraints
+            if isinstance(constraint, UniqueConstraint)
+        }
+        self.assertEqual(
+            uniques.get("uq_source_pre_analysis_runs_document_number"),
+            ("source_document_id", "run_number"),
+        )
+
+    def test_active_pending_or_running_run_blocks_creation(self) -> None:
+        for status in (
+            SourcePreAnalysisRunStatus.PENDING,
+            SourcePreAnalysisRunStatus.RUNNING,
+        ):
+            with self.subTest(status=status):
+                db = MagicMock()
+                source = self._source()
+                active_run_id = uuid.uuid4()
+                db.scalar.side_effect = [source, active_run_id]
+
+                with self.assertRaises(SourcePreAnalysisActiveRunExistsError):
+                    SourcePreAnalysisService(db).create_run(
+                        source_document_id=source.id,
+                    )
+
+                active_statement = db.scalar.call_args_list[1].args[0]
+                active_query = str(active_statement)
+                self.assertIn(
+                    "source_pre_analysis_runs.source_document_id", active_query,
+                )
+                self.assertIn(
+                    "source_pre_analysis_runs.deleted_at IS NULL", active_query,
+                )
+                self.assertIn("source_pre_analysis_runs.status IN", active_query)
+                compiled = active_statement.compile().params
+                status_values = next(
+                    value for value in compiled.values()
+                    if isinstance(value, (list, tuple))
+                )
+                self.assertEqual(
+                    tuple(status_values),
+                    (
+                        SourcePreAnalysisRunStatus.PENDING,
+                        SourcePreAnalysisRunStatus.RUNNING,
+                    ),
+                )
+                self.assertEqual(db.scalar.call_count, 2)
+                db.add.assert_not_called()
+                db.commit.assert_not_called()
+                db.rollback.assert_called_once_with()
+
+    def test_terminal_or_soft_deleted_history_allows_creation(self) -> None:
+        for history in (
+            "succeeded", "failed", "soft-deleted pending",
+            "soft-deleted running",
+        ):
+            with self.subTest(history=history):
+                db = MagicMock()
+                source = self._source()
+                db.scalar.side_effect = [source, None, 4]
+
+                run = SourcePreAnalysisService(db).create_run(
+                    source_document_id=source.id,
+                )
+
+                self.assertEqual(run.run_number, 5)
+                db.add.assert_called_once_with(run)
+                db.commit.assert_called_once_with()
+
+    def test_historical_max_allocates_next_without_reusing_gaps(self) -> None:
+        for maximum, expected, history in (
+            (None, 1, "no history"),
+            (1, 2, "failed history"),
+            (7, 8, "succeeded history"),
+            (11, 12, "soft-deleted history with gaps"),
+        ):
+            with self.subTest(maximum=maximum, history=history):
+                db = MagicMock()
+                source = self._source()
+                db.scalar.side_effect = [source, None, maximum]
+
+                run = SourcePreAnalysisService(db).create_run(
+                    source_document_id=source.id,
+                )
+
+                self.assertEqual(run.run_number, expected)
+                maximum_statement = db.scalar.call_args_list[2].args[0]
+                maximum_query = str(maximum_statement)
+                self.assertIn(
+                    "max(source_pre_analysis_runs.run_number)", maximum_query,
+                )
+                self.assertIn(
+                    "source_pre_analysis_runs.source_document_id", maximum_query,
+                )
+                self.assertNotIn(
+                    "source_pre_analysis_runs.deleted_at",
+                    str(maximum_statement.whereclause),
+                )
+                self.assertNotIn(
+                    "source_pre_analysis_runs.status",
+                    str(maximum_statement.whereclause),
+                )
+
+    def test_creation_query_and_write_order_is_locked_guarded_allocated(self) -> None:
+        db = MagicMock()
+        source = self._source()
+        db.scalar.side_effect = [source, None, 2]
+
+        run = SourcePreAnalysisService(db).create_run(
+            source_document_id=source.id,
+        )
+
+        self.assertEqual(run.run_number, 3)
+        self.assertEqual(db.scalar.call_count, 3)
+        source_query = str(db.scalar.call_args_list[0].args[0])
+        active_query = str(db.scalar.call_args_list[1].args[0])
+        maximum_query = str(db.scalar.call_args_list[2].args[0])
+        self.assertIn("FOR UPDATE", source_query)
+        self.assertNotIn("max(", active_query.lower())
+        self.assertIn("max(", maximum_query.lower())
+        names = [call[0] for call in db.method_calls]
+        scalar_positions = [
+            index for index, name in enumerate(names) if name == "scalar"
+        ]
+        self.assertEqual(len(scalar_positions), 3)
+        self.assertLess(scalar_positions[2], names.index("add"))
+        self.assertLess(names.index("add"), names.index("commit"))
+        db.add.assert_called_once_with(run)
+        db.flush.assert_not_called()
+        db.commit.assert_called_once_with()
+
+    def test_run_number_is_not_a_public_create_run_parameter(self) -> None:
+        import inspect
+
+        parameters = inspect.signature(
+            SourcePreAnalysisService.create_run
+        ).parameters
+        self.assertNotIn("run_number", parameters)
 
 
 if __name__ == "__main__":
