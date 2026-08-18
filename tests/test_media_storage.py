@@ -13,6 +13,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 from app.storage.media_storage import (
     LocalMediaStorage,
     MediaStorageCollisionError,
+    MediaStorageError,
     MediaStoragePathError,
 )
 
@@ -89,6 +90,36 @@ class LocalMediaStorageTest(unittest.TestCase):
         self.storage.remove_temporary(second)
         self.assertFalse(first.exists())
         self.assertFalse(second.exists())
+
+    def test_open_key_reads_exact_bytes_in_binary_mode_without_writing(self) -> None:
+        key = "sources/2026/08/book.pdf"
+        final = self.storage.resolve(key)
+        final.parent.mkdir(parents=True)
+        contents = b"\x00%PDF-source\xff"
+        final.write_bytes(contents)
+        before = final.stat()
+
+        with self.storage.open_key(key) as source:
+            self.assertEqual(source.read(), contents)
+            self.assertIn("b", source.mode)
+            self.assertFalse(source.writable())
+
+        after = final.stat()
+        self.assertEqual(after.st_size, before.st_size)
+        self.assertEqual(final.read_bytes(), contents)
+        self.assertTrue(final.is_relative_to(self.root.resolve()))
+
+    def test_open_key_translates_missing_or_unreadable_object(self) -> None:
+        with self.assertRaises(MediaStorageError):
+            self.storage.open_key("sources/2026/08/missing.pdf")
+
+    def test_open_key_rejects_absolute_and_traversal_keys(self) -> None:
+        for key in (
+            "/absolute.pdf", "../outside.pdf", "sources/../../outside.pdf",
+            r"C:\outside.pdf", r"sources\..\outside.pdf", "C:/outside.pdf",
+        ):
+            with self.subTest(key=key), self.assertRaises(MediaStoragePathError):
+                self.storage.open_key(key)
 
 
 if __name__ == "__main__":

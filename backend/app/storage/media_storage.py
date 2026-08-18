@@ -78,6 +78,17 @@ class LocalMediaStorage:
     def remove_key(self, storage_key: str) -> None:
         self._remove_path(self.resolve(storage_key))
 
+    def open_key(self, storage_key: str) -> BinaryIO:
+        """Open one confined final object for binary, read-only access."""
+
+        path = self.resolve(storage_key)
+        try:
+            return path.open("rb")
+        except OSError as exc:
+            raise MediaStorageError(
+                "Could not open stored media for reading."
+            ) from exc
+
     def remove_temporary(self, path: Path) -> None:
         self._remove_path(self._require_contained(path.resolve()))
 
