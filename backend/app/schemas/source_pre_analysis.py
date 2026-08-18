@@ -45,6 +45,11 @@ class SourcePreAnalysisSuccessfulResultRead(StrictSourcePreAnalysisSchema):
     result_id: uuid.UUID
     schema_version: int
     page_count: int | None
+    processor_name: str | None
+    processor_version: str | None
+    provider_name: str | None
+    model_name: str | None
+    prompt_version: str | None
     finding_count: int
     info_count: int
     warning_count: int

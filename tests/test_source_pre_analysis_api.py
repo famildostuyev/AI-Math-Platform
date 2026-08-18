@@ -241,6 +241,11 @@ class SourcePreAnalysisApiTest(unittest.TestCase):
                 "requested_by_user_id": str(uuid.uuid4()),
                 "run_number": 999,
                 "status": "succeeded",
+                "processor_name": "browser-controlled",
+                "processor_version": "999",
+                "provider_name": "browser-provider",
+                "model_name": "browser-model",
+                "prompt_version": "browser-prompt",
             },
         )
 
@@ -376,7 +381,10 @@ class SourcePreAnalysisApiTest(unittest.TestCase):
         )
         successful = SourcePreAnalysisSuccessfulResultView(
             run=successful_run, result_id=uuid.uuid4(), schema_version=3,
-            page_count=8, finding_count=2, info_count=1,
+            page_count=8, processor_name="pdf-pre-analysis",
+            processor_version="1", provider_name="provider",
+            model_name="model", prompt_version="prompt-v3",
+            finding_count=2, info_count=1,
             warning_count=1, error_count=0, findings=(first, second),
         )
         internal = self._overview(
@@ -395,10 +403,27 @@ class SourcePreAnalysisApiTest(unittest.TestCase):
         self.assertEqual(body["latest_run"]["source_document_id"], str(source_id))
         self.assertEqual(body["latest_run"]["status"], "failed")
         result = body["latest_successful_result"]
+        self.assertEqual(set(result), {
+            "run", "result_id", "schema_version", "page_count",
+            "processor_name", "processor_version", "provider_name",
+            "model_name", "prompt_version", "finding_count", "info_count",
+            "warning_count", "error_count", "findings",
+        })
         self.assertEqual(result["run"]["source_document_id"], str(source_id))
         self.assertEqual(result["run"]["status"], "succeeded")
         self.assertEqual(result["schema_version"], 3)
         self.assertEqual(result["page_count"], 8)
+        self.assertEqual(result["processor_name"], "pdf-pre-analysis")
+        self.assertEqual(result["processor_version"], "1")
+        self.assertEqual(result["provider_name"], "provider")
+        self.assertEqual(result["model_name"], "model")
+        self.assertEqual(result["prompt_version"], "prompt-v3")
+        for field_name in (
+            "processor_name", "processor_version", "provider_name",
+            "model_name", "prompt_version",
+        ):
+            self.assertNotIn(field_name, body)
+            self.assertNotIn(field_name, body["latest_run"])
         self.assertEqual(
             (result["finding_count"], result["info_count"],
              result["warning_count"], result["error_count"]),
@@ -438,7 +463,10 @@ class SourcePreAnalysisApiTest(unittest.TestCase):
                 )
                 successful = SourcePreAnalysisSuccessfulResultView(
                     run=successful_run, result_id=uuid.uuid4(),
-                    schema_version=1, page_count=None, finding_count=0,
+                    schema_version=1, page_count=None,
+                    processor_name=None, processor_version=None,
+                    provider_name=None, model_name=None, prompt_version=None,
+                    finding_count=0,
                     info_count=0, warning_count=0, error_count=0, findings=(),
                 )
                 read_service.return_value.get_overview.return_value = (
@@ -459,6 +487,12 @@ class SourcePreAnalysisApiTest(unittest.TestCase):
                     response.json()["latest_successful_result"]["run"]["status"],
                     "succeeded",
                 )
+                result = response.json()["latest_successful_result"]
+                for field_name in (
+                    "processor_name", "processor_version", "provider_name",
+                    "model_name", "prompt_version",
+                ):
+                    self.assertIsNone(result[field_name])
 
     @patch("app.api.source_pre_analysis.SourcePreAnalysisReadService")
     def test_overview_missing_source_maps_stable_404(

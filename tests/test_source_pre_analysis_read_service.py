@@ -56,12 +56,24 @@ class SourcePreAnalysisReadServiceTest(unittest.TestCase):
 
     @staticmethod
     def _result(
-        *, schema_version: int = 1, page_count: int | None = None,
+        *,
+        schema_version: int = 1,
+        page_count: int | None = None,
+        processor_name: str | None = None,
+        processor_version: str | None = None,
+        provider_name: str | None = None,
+        model_name: str | None = None,
+        prompt_version: str | None = None,
     ) -> SimpleNamespace:
         return SimpleNamespace(
             id=uuid.uuid4(),
             schema_version=schema_version,
             page_count=page_count,
+            processor_name=processor_name,
+            processor_version=processor_version,
+            provider_name=provider_name,
+            model_name=model_name,
+            prompt_version=prompt_version,
         )
 
     @staticmethod
@@ -251,6 +263,11 @@ class SourcePreAnalysisReadServiceTest(unittest.TestCase):
                 result = self._result(
                     schema_version=7,
                     page_count=page_count,
+                    processor_name=" pdf-pre-analysis ",
+                    processor_version=" 1.2.3 ",
+                    provider_name=" provider-id ",
+                    model_name=" model-id ",
+                    prompt_version=" prompt-v4 ",
                 )
                 db.scalar.side_effect = [source, latest_run]
                 self._set_successful_row(db, (successful_run, result))
@@ -268,11 +285,61 @@ class SourcePreAnalysisReadServiceTest(unittest.TestCase):
                 self.assertEqual(view.result_id, result.id)
                 self.assertEqual(view.schema_version, 7)
                 self.assertEqual(view.page_count, page_count)
+                self.assertEqual(view.processor_name, " pdf-pre-analysis ")
+                self.assertEqual(view.processor_version, " 1.2.3 ")
+                self.assertEqual(view.provider_name, " provider-id ")
+                self.assertEqual(view.model_name, " model-id ")
+                self.assertEqual(view.prompt_version, " prompt-v4 ")
                 self.assertEqual(view.finding_count, 0)
                 self.assertEqual(view.info_count, 0)
                 self.assertEqual(view.warning_count, 0)
                 self.assertEqual(view.error_count, 0)
                 self.assertEqual(view.findings, ())
+                self.assertEqual(db.scalar.call_count, 2)
+                self.assertEqual(db.execute.call_count, 2)
+                self._assert_read_only(db)
+
+    def test_legacy_and_partial_provenance_are_preserved_exactly(self) -> None:
+        cases = (
+            (None, None, None),
+            ("provider-only", None, None),
+            (None, "model-only", None),
+            (None, None, "prompt-only"),
+        )
+        for provider_name, model_name, prompt_version in cases:
+            with self.subTest(
+                provider_name=provider_name,
+                model_name=model_name,
+                prompt_version=prompt_version,
+            ):
+                db = MagicMock()
+                source = self._source()
+                latest_run = self._run(SourcePreAnalysisRunStatus.PENDING)
+                latest_run.run_number = 9
+                successful_run = self._run(
+                    SourcePreAnalysisRunStatus.SUCCEEDED,
+                )
+                successful_run.run_number = 8
+                result = self._result(
+                    provider_name=provider_name,
+                    model_name=model_name,
+                    prompt_version=prompt_version,
+                )
+                db.scalar.side_effect = [source, latest_run]
+                self._set_successful_row(db, (successful_run, result))
+
+                overview = SourcePreAnalysisReadService(db).get_overview(
+                    source_document_id=source.id,
+                )
+
+                view = overview.latest_successful_result
+                self.assertIsNone(view.processor_name)
+                self.assertIsNone(view.processor_version)
+                self.assertEqual(view.provider_name, provider_name)
+                self.assertEqual(view.model_name, model_name)
+                self.assertEqual(view.prompt_version, prompt_version)
+                self.assertEqual(overview.latest_run.id, latest_run.id)
+                self.assertEqual(view.run.id, successful_run.id)
                 self.assertEqual(db.scalar.call_count, 2)
                 self.assertEqual(db.execute.call_count, 2)
                 self._assert_read_only(db)
@@ -322,7 +389,13 @@ class SourcePreAnalysisReadServiceTest(unittest.TestCase):
                 latest_run.run_number = 9
                 successful_run = self._run(SourcePreAnalysisRunStatus.SUCCEEDED)
                 successful_run.run_number = 8
-                result = self._result()
+                result = self._result(
+                    processor_name="selected-processor",
+                    processor_version="8",
+                    provider_name="selected-provider",
+                    model_name="selected-model",
+                    prompt_version="selected-prompt",
+                )
                 db.scalar.side_effect = [source, latest_run]
                 self._set_successful_row(db, (successful_run, result))
 
@@ -334,6 +407,26 @@ class SourcePreAnalysisReadServiceTest(unittest.TestCase):
                 self.assertEqual(
                     overview.latest_successful_result.run.id,
                     successful_run.id,
+                )
+                self.assertEqual(
+                    overview.latest_successful_result.processor_name,
+                    "selected-processor",
+                )
+                self.assertEqual(
+                    overview.latest_successful_result.processor_version,
+                    "8",
+                )
+                self.assertEqual(
+                    overview.latest_successful_result.provider_name,
+                    "selected-provider",
+                )
+                self.assertEqual(
+                    overview.latest_successful_result.model_name,
+                    "selected-model",
+                )
+                self.assertEqual(
+                    overview.latest_successful_result.prompt_version,
+                    "selected-prompt",
                 )
 
     def test_latest_succeeded_run_and_result_can_populate_both_fields(self) -> None:
@@ -535,6 +628,8 @@ class SourcePreAnalysisReadServiceTest(unittest.TestCase):
         )
         successful = SourcePreAnalysisSuccessfulResultView(
             run=run, result_id=uuid.uuid4(), schema_version=1, page_count=None,
+            processor_name=None, processor_version=None, provider_name=None,
+            model_name=None, prompt_version=None,
             finding_count=1, info_count=1, warning_count=0, error_count=0,
             findings=(finding,),
         )

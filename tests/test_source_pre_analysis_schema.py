@@ -76,6 +76,11 @@ class SourcePreAnalysisSchemaTest(unittest.TestCase):
         run: SourcePreAnalysisRunRead | None = None,
         findings: list[SourcePreAnalysisFindingRead] | None = None,
         page_count: int | None = None,
+        processor_name: str | None = None,
+        processor_version: str | None = None,
+        provider_name: str | None = None,
+        model_name: str | None = None,
+        prompt_version: str | None = None,
     ) -> SourcePreAnalysisSuccessfulResultRead:
         items = findings or []
         return SourcePreAnalysisSuccessfulResultRead(
@@ -83,6 +88,11 @@ class SourcePreAnalysisSchemaTest(unittest.TestCase):
             result_id=uuid.uuid4(),
             schema_version=1,
             page_count=page_count,
+            processor_name=processor_name,
+            processor_version=processor_version,
+            provider_name=provider_name,
+            model_name=model_name,
+            prompt_version=prompt_version,
             finding_count=len(items),
             info_count=sum(
                 item.severity == SourcePreAnalysisFindingSeverity.INFO
@@ -113,6 +123,8 @@ class SourcePreAnalysisSchemaTest(unittest.TestCase):
             },
             "SourcePreAnalysisSuccessfulResultRead": {
                 "run", "result_id", "schema_version", "page_count",
+                "processor_name", "processor_version", "provider_name",
+                "model_name", "prompt_version",
                 "finding_count", "info_count", "warning_count",
                 "error_count", "findings",
             },
@@ -224,7 +236,9 @@ class SourcePreAnalysisSchemaTest(unittest.TestCase):
 
         exact = SourcePreAnalysisSuccessfulResultRead(
             run=self._run(), result_id=uuid.uuid4(), schema_version=3,
-            page_count=2, finding_count=12, info_count=7,
+            page_count=2, processor_name=None, processor_version=None,
+            provider_name=None, model_name=None, prompt_version=None,
+            finding_count=12, info_count=7,
             warning_count=4, error_count=1, findings=[],
         )
         self.assertEqual(
@@ -232,6 +246,39 @@ class SourcePreAnalysisSchemaTest(unittest.TestCase):
              exact.error_count),
             (12, 7, 4, 1),
         )
+
+    def test_provenance_nullable_and_exact_json_serialization(self) -> None:
+        attributed = self._successful(
+            processor_name=" pdf-pre-analysis ",
+            processor_version=" 1 ",
+            provider_name="provider",
+            model_name="model",
+            prompt_version="prompt-v2",
+        )
+        attributed_json = json.loads(attributed.model_dump_json())
+        self.assertEqual(attributed_json["processor_name"], " pdf-pre-analysis ")
+        self.assertEqual(attributed_json["processor_version"], " 1 ")
+        self.assertEqual(attributed_json["provider_name"], "provider")
+        self.assertEqual(attributed_json["model_name"], "model")
+        self.assertEqual(attributed_json["prompt_version"], "prompt-v2")
+
+        legacy_json = json.loads(self._successful().model_dump_json())
+        for field_name in (
+            "processor_name", "processor_version", "provider_name",
+            "model_name", "prompt_version",
+        ):
+            self.assertIsNone(legacy_json[field_name])
+
+        for field_name in ("provider_name", "model_name", "prompt_version"):
+            with self.subTest(field_name=field_name):
+                partial = self._successful(**{field_name: "exact-value"})
+                payload = json.loads(partial.model_dump_json())
+                self.assertEqual(payload[field_name], "exact-value")
+
+        invalid = self._successful().model_dump()
+        invalid["provider_payload"] = {"secret": "not-public"}
+        with self.assertRaises(ValidationError):
+            SourcePreAnalysisSuccessfulResultRead.model_validate(invalid)
 
     def test_populated_findings_preserve_order_and_page_distinctions(self) -> None:
         source_level = self._finding(page_id=None, page_number=None)
@@ -290,7 +337,8 @@ class SourcePreAnalysisSchemaTest(unittest.TestCase):
         }
         prohibited = {
             "deleted_at", "storage_key", "storage_path", "ocr_text",
-            "provider_payload", "prompt", "secret", "source_text",
+            "provider_payload", "prompt", "prompt_body", "secret",
+            "api_key", "token", "source_text", "execution_payload",
             "raw_source_content",
         }
         self.assertTrue(all_fields.isdisjoint(prohibited))

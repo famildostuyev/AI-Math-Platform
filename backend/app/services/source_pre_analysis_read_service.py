@@ -58,6 +58,11 @@ class SourcePreAnalysisSuccessfulResultView:
     result_id: uuid.UUID
     schema_version: int
     page_count: int | None
+    processor_name: str | None
+    processor_version: str | None
+    provider_name: str | None
+    model_name: str | None
+    prompt_version: str | None
     finding_count: int
     info_count: int
     warning_count: int
@@ -179,6 +184,11 @@ class SourcePreAnalysisReadService:
                 result_id=result.id,
                 schema_version=result.schema_version,
                 page_count=result.page_count,
+                processor_name=result.processor_name,
+                processor_version=result.processor_version,
+                provider_name=result.provider_name,
+                model_name=result.model_name,
+                prompt_version=result.prompt_version,
                 finding_count=len(findings),
                 info_count=sum(
                     finding.severity == SourcePreAnalysisFindingSeverity.INFO
