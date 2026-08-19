@@ -1,4 +1,4 @@
-﻿from app.models.grade import Grade
+from app.models.grade import Grade
 from app.models.content_block import ContentBlock
 from app.models.curriculum_course import CurriculumCourse
 from app.models.curriculum_program import CurriculumProgram
@@ -13,6 +13,7 @@ from app.models.media_asset import MediaAsset
 from app.models.permission import Permission
 from app.models.purpose import Purpose
 from app.models.question_candidate import QuestionCandidate
+from app.models.question_extraction_run import QuestionExtractionRun
 from app.models.question_family import QuestionFamily
 from app.models.question_form import QuestionForm
 from app.models.question_revision import QuestionRevision
@@ -53,6 +54,7 @@ __all__ = [
     "Permission",
     "Purpose",
     "QuestionCandidate",
+    "QuestionExtractionRun",
     "QuestionFamily",
     "QuestionForm",
     "QuestionRevision",

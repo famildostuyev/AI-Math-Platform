@@ -120,3 +120,10 @@ class SourcePreAnalysisFindingSeverity(str, Enum):
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
+
+
+class QuestionExtractionRunStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
