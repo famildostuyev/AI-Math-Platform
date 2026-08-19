@@ -18,7 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base_model import BaseModel
 
 if TYPE_CHECKING:
-    from app.models.source_document import SourceDocument
+    from app.models.question_extraction_run import QuestionExtractionRun
     from app.models.source_document_page import SourceDocumentPage
 
 
@@ -41,15 +41,15 @@ class QuestionCandidate(BaseModel):
             name="ck_question_candidates_confidence_range",
         ),
         UniqueConstraint(
-            "source_document_id",
+            "question_extraction_run_id",
             "sequence_number",
-            name="uq_question_candidates_document_sequence",
+            name="uq_question_candidates_run_sequence",
         ),
     )
 
-    source_document_id: Mapped[uuid.UUID] = mapped_column(
+    question_extraction_run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("source_documents.id", ondelete="RESTRICT"),
+        ForeignKey("question_extraction_runs.id", ondelete="RESTRICT"),
         nullable=False,
     )
 
@@ -74,9 +74,9 @@ class QuestionCandidate(BaseModel):
         nullable=True,
     )
 
-    source_document: Mapped["SourceDocument"] = relationship(
-        "SourceDocument",
-        foreign_keys=[source_document_id],
+    question_extraction_run: Mapped["QuestionExtractionRun"] = relationship(
+        "QuestionExtractionRun",
+        foreign_keys=[question_extraction_run_id],
     )
 
     source_document_page: Mapped["SourceDocumentPage | None"] = relationship(

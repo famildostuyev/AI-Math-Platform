@@ -12,7 +12,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
 from app.database.base import Base
-from app.models import QuestionCandidate, SourceDocument, SourceDocumentPage
+from app.models import QuestionCandidate, QuestionExtractionRun, SourceDocumentPage
 
 
 class QuestionCandidateModelMetadataTest(unittest.TestCase):
@@ -27,7 +27,7 @@ class QuestionCandidateModelMetadataTest(unittest.TestCase):
                 "created_at",
                 "updated_at",
                 "deleted_at",
-                "source_document_id",
+                "question_extraction_run_id",
                 "source_document_page_id",
                 "sequence_number",
                 "extracted_text",
@@ -43,8 +43,8 @@ class QuestionCandidateModelMetadataTest(unittest.TestCase):
         self.assertIsInstance(table.c.deleted_at.type, DateTime)
         self.assertTrue(table.c.deleted_at.nullable)
 
-        self.assertIsInstance(table.c.source_document_id.type, UUID)
-        self.assertFalse(table.c.source_document_id.nullable)
+        self.assertIsInstance(table.c.question_extraction_run_id.type, UUID)
+        self.assertFalse(table.c.question_extraction_run_id.nullable)
 
         self.assertIsInstance(table.c.source_document_page_id.type, UUID)
         self.assertTrue(table.c.source_document_page_id.nullable)
@@ -90,8 +90,8 @@ class QuestionCandidateModelMetadataTest(unittest.TestCase):
         self.assertEqual(
             uniques,
             {
-                "uq_question_candidates_document_sequence": (
-                    "source_document_id",
+                "uq_question_candidates_run_sequence": (
+                    "question_extraction_run_id",
                     "sequence_number",
                 )
             },
@@ -100,23 +100,23 @@ class QuestionCandidateModelMetadataTest(unittest.TestCase):
     def test_foreign_keys_and_relationships_match_foundation_contract(self) -> None:
         table = QuestionCandidate.__table__
 
-        document_fk = next(iter(table.c.source_document_id.foreign_keys))
+        run_fk = next(iter(table.c.question_extraction_run_id.foreign_keys))
         page_fk = next(iter(table.c.source_document_page_id.foreign_keys))
 
-        self.assertEqual(document_fk.target_fullname, "source_documents.id")
+        self.assertEqual(run_fk.target_fullname, "question_extraction_runs.id")
         self.assertEqual(page_fk.target_fullname, "source_document_pages.id")
-        self.assertEqual(document_fk.ondelete, "RESTRICT")
+        self.assertEqual(run_fk.ondelete, "RESTRICT")
         self.assertEqual(page_fk.ondelete, "RESTRICT")
 
         relationships = QuestionCandidate.__mapper__.relationships
 
         self.assertEqual(
             set(relationships.keys()),
-            {"source_document", "source_document_page"},
+            {"question_extraction_run", "source_document_page"},
         )
         self.assertIs(
-            relationships.source_document.mapper.class_,
-            SourceDocument,
+            relationships.question_extraction_run.mapper.class_,
+            QuestionExtractionRun,
         )
         self.assertIs(
             relationships.source_document_page.mapper.class_,
@@ -128,7 +128,7 @@ class QuestionCandidateModelMetadataTest(unittest.TestCase):
             self.assertNotIn("delete", relationship.cascade)
             self.assertNotIn("delete-orphan", relationship.cascade)
 
-    def test_scope_excludes_question_bank_review_and_raw_payload_fields(self) -> None:
+    def test_scope_excludes_redundant_question_bank_review_and_raw_payload_fields(self) -> None:
         table = QuestionCandidate.__table__
 
         self.assertFalse(
@@ -137,6 +137,7 @@ class QuestionCandidateModelMetadataTest(unittest.TestCase):
 
         self.assertTrue(
             {
+                "source_document_id",
                 "question_family_id",
                 "question_form_id",
                 "question_revision_id",
