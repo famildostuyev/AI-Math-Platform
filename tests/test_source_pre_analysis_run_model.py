@@ -26,7 +26,8 @@ class SourcePreAnalysisRunModelMetadataTest(unittest.TestCase):
             {
                 "id", "source_document_id", "run_number", "status",
                 "requested_by_user_id", "started_at", "completed_at",
-                "failure_message", "created_at", "updated_at", "deleted_at",
+                "failure_message", "execution_lease_id",
+                "last_heartbeat_at", "created_at", "updated_at", "deleted_at",
             },
         )
         self.assertIsInstance(table.c.id.type, UUID)
@@ -55,6 +56,12 @@ class SourcePreAnalysisRunModelMetadataTest(unittest.TestCase):
             self.assertTrue(column.nullable)
         self.assertIsInstance(table.c.failure_message.type, Text)
         self.assertTrue(table.c.failure_message.nullable)
+        self.assertIsInstance(table.c.execution_lease_id.type, UUID)
+        self.assertTrue(table.c.execution_lease_id.type.as_uuid)
+        self.assertTrue(table.c.execution_lease_id.nullable)
+        self.assertIsInstance(table.c.last_heartbeat_at.type, DateTime)
+        self.assertTrue(table.c.last_heartbeat_at.type.timezone)
+        self.assertTrue(table.c.last_heartbeat_at.nullable)
 
     def test_constraints_and_indexes_match_lifecycle_policy(self) -> None:
         table = SourcePreAnalysisRun.__table__
@@ -69,6 +76,7 @@ class SourcePreAnalysisRunModelMetadataTest(unittest.TestCase):
                 "ck_source_pre_analysis_runs_number_positive",
                 "ck_source_pre_analysis_runs_lifecycle_consistent",
                 "ck_source_pre_analysis_runs_time_order",
+                "ck_source_pre_analysis_runs_heartbeat_order",
                 "source_pre_analysis_run_status",
             },
         )
@@ -80,10 +88,45 @@ class SourcePreAnalysisRunModelMetadataTest(unittest.TestCase):
         for value in SourcePreAnalysisRunStatus:
             self.assertIn(f"status = '{value.value}'", lifecycle)
         self.assertIn("char_length(btrim(failure_message)) > 0", lifecycle)
+        self.assertIn(
+            "status = 'pending' AND started_at IS NULL AND completed_at IS NULL "
+            "AND failure_message IS NULL AND execution_lease_id IS NULL "
+            "AND last_heartbeat_at IS NULL",
+            lifecycle,
+        )
+        self.assertIn(
+            "status = 'running' AND started_at IS NOT NULL "
+            "AND completed_at IS NULL AND failure_message IS NULL "
+            "AND execution_lease_id IS NOT NULL "
+            "AND last_heartbeat_at IS NOT NULL",
+            lifecycle,
+        )
+        self.assertIn(
+            "status = 'succeeded' AND started_at IS NOT NULL "
+            "AND completed_at IS NOT NULL AND failure_message IS NULL "
+            "AND execution_lease_id IS NULL "
+            "AND last_heartbeat_at IS NULL",
+            lifecycle,
+        )
+        self.assertIn(
+            "status = 'failed' AND completed_at IS NOT NULL "
+            "AND failure_message IS NOT NULL "
+            "AND char_length(btrim(failure_message)) > 0 "
+            "AND execution_lease_id IS NULL "
+            "AND last_heartbeat_at IS NULL",
+            lifecycle,
+        )
+        failed_clause = lifecycle.split("OR (status = 'failed'", 1)[1]
+        self.assertNotIn("started_at IS NOT NULL", failed_clause)
         self.assertEqual(
             checks["ck_source_pre_analysis_runs_time_order"],
             "started_at IS NULL OR completed_at IS NULL "
             "OR completed_at >= started_at",
+        )
+        self.assertEqual(
+            checks["ck_source_pre_analysis_runs_heartbeat_order"],
+            "last_heartbeat_at IS NULL OR "
+            "(started_at IS NOT NULL AND last_heartbeat_at >= started_at)",
         )
         uniques = {
             constraint.name: tuple(column.name for column in constraint.columns)
@@ -104,9 +147,14 @@ class SourcePreAnalysisRunModelMetadataTest(unittest.TestCase):
         }
         self.assertEqual(
             indexes,
-            {"ix_source_pre_analysis_runs_requested_by_user_id": (
-                "requested_by_user_id",
-            )},
+            {
+                "ix_source_pre_analysis_runs_requested_by_user_id": (
+                    "requested_by_user_id",
+                ),
+                "ix_source_pre_analysis_runs_recovery": (
+                    "status", "deleted_at", "last_heartbeat_at",
+                ),
+            },
         )
 
     def test_relationships_and_scope_are_strictly_lifecycle_only(self) -> None:
@@ -145,6 +193,9 @@ class SourcePreAnalysisRunModelMetadataTest(unittest.TestCase):
                 "parser_version", "model_version", "prompt_version",
                 "progress", "page_finding_id", "question_id",
                 "question_form_id", "question_revision_id", "content_block_id",
+                "worker_id", "claimed_at", "lease_expires_at",
+                "attempt_count", "retry_count", "heartbeat_count",
+                "recovery_status",
             }.isdisjoint(table.c.keys())
         )
         self.assertIn("source_pre_analysis_runs", Base.metadata.tables)

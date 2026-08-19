@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Enum as SQLEnum,
     ForeignKey,
+    Index,
     Integer,
     Text,
     UniqueConstraint,
@@ -36,14 +37,22 @@ class SourcePreAnalysisRun(BaseModel):
         ),
         CheckConstraint(
             "(status = 'pending' AND started_at IS NULL "
-            "AND completed_at IS NULL AND failure_message IS NULL) "
+            "AND completed_at IS NULL AND failure_message IS NULL "
+            "AND execution_lease_id IS NULL "
+            "AND last_heartbeat_at IS NULL) "
             "OR (status = 'running' AND started_at IS NOT NULL "
-            "AND completed_at IS NULL AND failure_message IS NULL) "
+            "AND completed_at IS NULL AND failure_message IS NULL "
+            "AND execution_lease_id IS NOT NULL "
+            "AND last_heartbeat_at IS NOT NULL) "
             "OR (status = 'succeeded' AND started_at IS NOT NULL "
-            "AND completed_at IS NOT NULL AND failure_message IS NULL) "
+            "AND completed_at IS NOT NULL AND failure_message IS NULL "
+            "AND execution_lease_id IS NULL "
+            "AND last_heartbeat_at IS NULL) "
             "OR (status = 'failed' AND completed_at IS NOT NULL "
             "AND failure_message IS NOT NULL "
-            "AND char_length(btrim(failure_message)) > 0)",
+            "AND char_length(btrim(failure_message)) > 0 "
+            "AND execution_lease_id IS NULL "
+            "AND last_heartbeat_at IS NULL)",
             name="ck_source_pre_analysis_runs_lifecycle_consistent",
         ),
         CheckConstraint(
@@ -51,10 +60,21 @@ class SourcePreAnalysisRun(BaseModel):
             "OR completed_at >= started_at",
             name="ck_source_pre_analysis_runs_time_order",
         ),
+        CheckConstraint(
+            "last_heartbeat_at IS NULL OR "
+            "(started_at IS NOT NULL AND last_heartbeat_at >= started_at)",
+            name="ck_source_pre_analysis_runs_heartbeat_order",
+        ),
         UniqueConstraint(
             "source_document_id",
             "run_number",
             name="uq_source_pre_analysis_runs_document_number",
+        ),
+        Index(
+            "ix_source_pre_analysis_runs_recovery",
+            "status",
+            "deleted_at",
+            "last_heartbeat_at",
         ),
     )
 
@@ -101,6 +121,16 @@ class SourcePreAnalysisRun(BaseModel):
 
     failure_message: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
+    )
+
+    execution_lease_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
+
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
     )
 
