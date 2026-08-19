@@ -59,6 +59,18 @@ class Settings(BaseSettings):
         le=100,
         strict=True,
     )
+    SOURCE_PRE_ANALYSIS_WORKER_BATCH_SIZE: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        strict=True,
+    )
+    SOURCE_PRE_ANALYSIS_WORKER_BATCH_SIZE: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        strict=True,
+    )
 
     # Database
     DATABASE_URL: str = Field(..., min_length=1)
