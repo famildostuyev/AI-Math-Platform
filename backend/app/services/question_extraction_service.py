@@ -247,3 +247,45 @@ class QuestionExtractionService:
         except Exception:
             self.db.rollback()
             raise
+
+    def mark_failed(
+        self,
+        *,
+        run_id: uuid.UUID,
+        failure_message: str,
+    ) -> QuestionExtractionRun:
+        """Atomically transition one active running extraction run to failed."""
+
+        try:
+            if type(run_id) is not uuid.UUID:
+                raise QuestionExtractionValidationError(
+                    "Question extraction run ID must be a UUID."
+                )
+            if not isinstance(failure_message, str):
+                raise QuestionExtractionValidationError(
+                    "Failure message must be a string."
+                )
+
+            normalized_message = failure_message.strip()
+            if not normalized_message:
+                raise QuestionExtractionValidationError(
+                    "Failure message cannot be blank."
+                )
+
+            run = self._get_active_run_for_update(run_id=run_id)
+
+            if run.status != QuestionExtractionRunStatus.RUNNING:
+                raise QuestionExtractionInvalidRunStateError(
+                    "Question extraction run is not running."
+                )
+
+            run.status = QuestionExtractionRunStatus.FAILED
+            run.completed_at = utc_now()
+            run.failure_message = normalized_message
+
+            self.db.commit()
+            return run
+
+        except Exception:
+            self.db.rollback()
+            raise
