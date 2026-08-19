@@ -1,0 +1,181 @@
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.core.enums import QuestionExtractionRunStatus
+from app.models.question_extraction_run import QuestionExtractionRun
+from app.models.source_document import SourceDocument
+from app.models.user import User
+
+
+class QuestionExtractionServiceError(Exception):
+    """Base exception for question extraction lifecycle failures."""
+
+
+class QuestionExtractionSourceDocumentNotFoundError(
+    QuestionExtractionServiceError
+):
+    """Raised when an active source document is unavailable."""
+
+
+class QuestionExtractionRequestedByUserNotFoundError(
+    QuestionExtractionServiceError
+):
+    """Raised when an active requesting user is unavailable."""
+
+
+class QuestionExtractionActiveRunExistsError(
+    QuestionExtractionServiceError
+):
+    """Raised when a source document already has an active extraction run."""
+
+
+class QuestionExtractionValidationError(
+    QuestionExtractionServiceError
+):
+    """Raised when trusted lifecycle input is invalid."""
+
+
+class QuestionExtractionPersistenceConflictError(
+    QuestionExtractionServiceError
+):
+    """Raised when extraction lifecycle persistence conflicts."""
+
+
+class QuestionExtractionService:
+    """Application service for question extraction lifecycle operations."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    @staticmethod
+    def _validate_create_run_ids(
+        *,
+        source_document_id: uuid.UUID,
+        requested_by_user_id: uuid.UUID | None,
+    ) -> None:
+        if not isinstance(source_document_id, uuid.UUID):
+            raise QuestionExtractionValidationError(
+                "Source document ID must be a UUID."
+            )
+        if (
+            requested_by_user_id is not None
+            and not isinstance(requested_by_user_id, uuid.UUID)
+        ):
+            raise QuestionExtractionValidationError(
+                "Requesting user ID must be a UUID or null."
+            )
+
+    def _get_active_source_document_for_update(
+        self,
+        *,
+        source_document_id: uuid.UUID,
+    ) -> SourceDocument:
+        source_document = self.db.scalar(
+            select(SourceDocument)
+            .where(
+                SourceDocument.id == source_document_id,
+                SourceDocument.deleted_at.is_(None),
+            )
+            .with_for_update()
+        )
+        if source_document is None:
+            raise QuestionExtractionSourceDocumentNotFoundError(
+                "Active source document was not found."
+            )
+        return source_document
+
+    def _require_active_requesting_user(
+        self,
+        *,
+        requested_by_user_id: uuid.UUID,
+    ) -> None:
+        user_id = self.db.scalar(
+            select(User.id).where(
+                User.id == requested_by_user_id,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+            )
+        )
+        if user_id is None:
+            raise QuestionExtractionRequestedByUserNotFoundError(
+                "Active requesting user was not found."
+            )
+
+    def create_run(
+        self,
+        *,
+        source_document_id: uuid.UUID,
+        requested_by_user_id: uuid.UUID | None = None,
+    ) -> QuestionExtractionRun:
+        """Create one pending extraction run for an active source document."""
+
+        try:
+            self._validate_create_run_ids(
+                source_document_id=source_document_id,
+                requested_by_user_id=requested_by_user_id,
+            )
+
+            source_document = self._get_active_source_document_for_update(
+                source_document_id=source_document_id,
+            )
+
+            if requested_by_user_id is not None:
+                self._require_active_requesting_user(
+                    requested_by_user_id=requested_by_user_id,
+                )
+
+            active_run_id = self.db.scalar(
+                select(QuestionExtractionRun.id)
+                .where(
+                    QuestionExtractionRun.source_document_id
+                    == source_document.id,
+                    QuestionExtractionRun.deleted_at.is_(None),
+                    QuestionExtractionRun.status.in_(
+                        (
+                            QuestionExtractionRunStatus.PENDING,
+                            QuestionExtractionRunStatus.RUNNING,
+                        )
+                    ),
+                )
+                .limit(1)
+            )
+            if active_run_id is not None:
+                raise QuestionExtractionActiveRunExistsError(
+                    "Source document already has an active extraction run."
+                )
+
+            maximum_run_number = self.db.scalar(
+                select(func.max(QuestionExtractionRun.run_number)).where(
+                    QuestionExtractionRun.source_document_id
+                    == source_document.id,
+                )
+            )
+            next_run_number = (maximum_run_number or 0) + 1
+
+            run = QuestionExtractionRun(
+                source_document_id=source_document.id,
+                run_number=next_run_number,
+                status=QuestionExtractionRunStatus.PENDING,
+                requested_by_user_id=requested_by_user_id,
+                started_at=None,
+                completed_at=None,
+                failure_message=None,
+            )
+
+            self.db.add(run)
+            self.db.commit()
+            return run
+
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise QuestionExtractionPersistenceConflictError(
+                "Question extraction run could not be created."
+            ) from exc
+        except Exception:
+            self.db.rollback()
+            raise
