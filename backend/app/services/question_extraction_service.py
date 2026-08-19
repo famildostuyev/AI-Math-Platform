@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -8,8 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.core.enums import QuestionExtractionRunStatus
 from app.core.security import utc_now
+from app.models.question_candidate import QuestionCandidate
 from app.models.question_extraction_run import QuestionExtractionRun
 from app.models.source_document import SourceDocument
+from app.models.source_document_page import SourceDocumentPage
 from app.models.user import User
 
 
@@ -45,6 +50,24 @@ class QuestionExtractionInvalidRunStateError(
     """Raised when an extraction run cannot perform the requested transition."""
 
 
+class QuestionExtractionCandidatesAlreadyExistError(
+    QuestionExtractionServiceError
+):
+    """Raised when an extraction run already owns candidate history."""
+
+
+class QuestionExtractionPageNotFoundError(
+    QuestionExtractionServiceError
+):
+    """Raised when a referenced active source page is unavailable."""
+
+
+class QuestionExtractionPageDocumentMismatchError(
+    QuestionExtractionServiceError
+):
+    """Raised when a referenced page belongs to another source document."""
+
+
 class QuestionExtractionValidationError(
     QuestionExtractionServiceError
 ):
@@ -55,6 +78,13 @@ class QuestionExtractionPersistenceConflictError(
     QuestionExtractionServiceError
 ):
     """Raised when extraction lifecycle persistence conflicts."""
+
+
+@dataclass(frozen=True, slots=True)
+class QuestionExtractionCandidateInput:
+    source_document_page_id: uuid.UUID | None
+    extracted_text: str
+    confidence: Decimal | None
 
 
 class QuestionExtractionService:
@@ -215,6 +245,63 @@ class QuestionExtractionService:
             )
         return run
 
+    @staticmethod
+    def _normalize_candidates(
+        candidates: Sequence[QuestionExtractionCandidateInput],
+    ) -> tuple[QuestionExtractionCandidateInput, ...]:
+        if isinstance(candidates, (str, bytes)) or not isinstance(
+            candidates, Sequence
+        ):
+            raise QuestionExtractionValidationError(
+                "Candidates must be a sequence."
+            )
+
+        normalized: list[QuestionExtractionCandidateInput] = []
+        for candidate in candidates:
+            if not isinstance(candidate, QuestionExtractionCandidateInput):
+                raise QuestionExtractionValidationError(
+                    "Candidate input is invalid."
+                )
+            if candidate.source_document_page_id is not None and not isinstance(
+                candidate.source_document_page_id,
+                uuid.UUID,
+            ):
+                raise QuestionExtractionValidationError(
+                    "Candidate page ID must be a UUID or null."
+                )
+            if not isinstance(candidate.extracted_text, str):
+                raise QuestionExtractionValidationError(
+                    "Candidate text must be a string."
+                )
+            extracted_text = candidate.extracted_text.strip()
+            if not extracted_text:
+                raise QuestionExtractionValidationError(
+                    "Candidate text cannot be blank."
+                )
+            if candidate.confidence is not None:
+                if not isinstance(candidate.confidence, Decimal):
+                    raise QuestionExtractionValidationError(
+                        "Candidate confidence must be a Decimal or null."
+                    )
+                if (
+                    not candidate.confidence.is_finite()
+                    or candidate.confidence < Decimal("0")
+                    or candidate.confidence > Decimal("1")
+                ):
+                    raise QuestionExtractionValidationError(
+                        "Candidate confidence must be between 0 and 1."
+                    )
+
+            normalized.append(
+                QuestionExtractionCandidateInput(
+                    source_document_page_id=candidate.source_document_page_id,
+                    extracted_text=extracted_text,
+                    confidence=candidate.confidence,
+                )
+            )
+
+        return tuple(normalized)
+
     def start_run(
         self,
         *,
@@ -244,6 +331,102 @@ class QuestionExtractionService:
             self.db.commit()
             return run
 
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def finalize_success(
+        self,
+        *,
+        run_id: uuid.UUID,
+        candidates: Sequence[QuestionExtractionCandidateInput],
+    ) -> tuple[QuestionCandidate, ...]:
+        """Atomically persist candidate output and mark a running run succeeded."""
+
+        try:
+            if type(run_id) is not uuid.UUID:
+                raise QuestionExtractionValidationError(
+                    "Question extraction run ID must be a UUID."
+                )
+
+            normalized_candidates = self._normalize_candidates(candidates)
+
+            run = self._get_active_run_for_update(run_id=run_id)
+            if run.status != QuestionExtractionRunStatus.RUNNING:
+                raise QuestionExtractionInvalidRunStateError(
+                    "Question extraction run is not running."
+                )
+
+            existing_candidate_id = self.db.scalar(
+                select(QuestionCandidate.id)
+                .where(
+                    QuestionCandidate.question_extraction_run_id == run.id,
+                )
+                .limit(1)
+            )
+            if existing_candidate_id is not None:
+                raise QuestionExtractionCandidatesAlreadyExistError(
+                    "Question extraction run already has candidate history."
+                )
+
+            page_ids = {
+                candidate.source_document_page_id
+                for candidate in normalized_candidates
+                if candidate.source_document_page_id is not None
+            }
+            if page_ids:
+                pages = list(
+                    self.db.scalars(
+                        select(SourceDocumentPage)
+                        .where(
+                            SourceDocumentPage.id.in_(page_ids),
+                            SourceDocumentPage.deleted_at.is_(None),
+                        )
+                        .with_for_update()
+                    ).all()
+                )
+                page_by_id = {page.id: page for page in pages}
+                if set(page_by_id) != page_ids:
+                    raise QuestionExtractionPageNotFoundError(
+                        "An active source document page was not found."
+                    )
+                if any(
+                    page.source_document_id != run.source_document_id
+                    for page in pages
+                ):
+                    raise QuestionExtractionPageDocumentMismatchError(
+                        "Source document page belongs to another document."
+                    )
+
+            candidate_models = tuple(
+                QuestionCandidate(
+                    question_extraction_run_id=run.id,
+                    source_document_page_id=candidate.source_document_page_id,
+                    sequence_number=sequence_number,
+                    extracted_text=candidate.extracted_text,
+                    confidence=candidate.confidence,
+                )
+                for sequence_number, candidate in enumerate(
+                    normalized_candidates,
+                    start=1,
+                )
+            )
+
+            if candidate_models:
+                self.db.add_all(candidate_models)
+
+            run.status = QuestionExtractionRunStatus.SUCCEEDED
+            run.completed_at = utc_now()
+            run.failure_message = None
+
+            self.db.commit()
+            return candidate_models
+
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise QuestionExtractionPersistenceConflictError(
+                "Question extraction finalization could not be persisted."
+            ) from exc
         except Exception:
             self.db.rollback()
             raise
