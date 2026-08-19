@@ -34,13 +34,19 @@ class SourcePreAnalysisProvenanceFinalizationTest(unittest.TestCase):
     def _run() -> SimpleNamespace:
         return SimpleNamespace(
             id=uuid.uuid4(), source_document_id=uuid.uuid4(),
-            status=SourcePreAnalysisRunStatus.RUNNING,
-            started_at=object(), completed_at=None, failure_message=None,
+            status=SourcePreAnalysisRunStatus.PENDING,
+            started_at=None, completed_at=None, failure_message=None,
+            execution_lease_id=None, last_heartbeat_at=None,
         )
 
     def _db(self) -> tuple[MagicMock, SimpleNamespace]:
         db = MagicMock()
         run = self._run()
+        db.scalar.return_value = run
+        claim = SourcePreAnalysisService(db).start_run(run_id=run.id)
+        self.assertEqual(run.status, SourcePreAnalysisRunStatus.RUNNING)
+        self.assertEqual(run.execution_lease_id, claim.execution_lease_id)
+        db.reset_mock()
         db.scalar.side_effect = [run, None]
 
         def assign_id() -> None:
@@ -69,6 +75,7 @@ class SourcePreAnalysisProvenanceFinalizationTest(unittest.TestCase):
     ):
         return SourcePreAnalysisService(db).finalize_success(
             run_id=run.id,
+            execution_lease_id=run.execution_lease_id,
             result=SourcePreAnalysisResultInput(schema_version=2, page_count=None),
             findings=[],
             provenance=provenance,
@@ -139,8 +146,7 @@ class SourcePreAnalysisProvenanceFinalizationTest(unittest.TestCase):
         )
         for provenance in cases:
             with self.subTest(provenance=provenance):
-                db = MagicMock()
-                run = self._run()
+                db, run = self._db()
                 original = (
                     run.status, run.started_at, run.completed_at,
                     run.failure_message,

@@ -16,6 +16,7 @@ from app.services.source_pre_analysis_processor import (
 from app.services.source_pre_analysis_service import (
     SourcePreAnalysisFinalization,
     SourcePreAnalysisInvalidRunStateError,
+    SourcePreAnalysisLeaseMismatchError,
     SourcePreAnalysisResultAlreadyExistsError,
     SourcePreAnalysisService,
 )
@@ -111,13 +112,21 @@ class SourcePreAnalysisExecutionReconciliationRequiredError(
     def __init__(
         self,
         *,
-        finalization_error: SourcePreAnalysisExecutionFinalizationError,
+        execution_error: SourcePreAnalysisExecutionError,
         transition_error: Exception,
     ) -> None:
         super().__init__(
             "Source pre-analysis final state requires reconciliation."
         )
-        self.finalization_error = finalization_error
+        self.execution_error = execution_error
+        self.finalization_error = (
+            execution_error
+            if isinstance(
+                execution_error,
+                SourcePreAnalysisExecutionFinalizationError,
+            )
+            else None
+        )
         self.transition_error = transition_error
 
 
@@ -156,11 +165,12 @@ class SourcePreAnalysisExecutionService:
             )
 
         try:
-            self.lifecycle_service.start_run(run_id=run_id)
+            claim = self.lifecycle_service.start_run(run_id=run_id)
         except Exception as exc:
             raise SourcePreAnalysisExecutionStartError(
                 "Source pre-analysis run could not be started."
             ) from exc
+        execution_lease_id = claim.execution_lease_id
 
         try:
             with self.source_service.open_for_run(run_id=run_id) as source:
@@ -187,6 +197,7 @@ class SourcePreAnalysisExecutionService:
             self._raise_after_failure_transition(
                 run_id=run_id,
                 execution_error=execution_error,
+                execution_lease_id=execution_lease_id,
                 failure_message=str(execution_error),
             )
         except SourcePreAnalysisSourceServiceError as exc:
@@ -197,6 +208,7 @@ class SourcePreAnalysisExecutionService:
             self._raise_after_failure_transition(
                 run_id=run_id,
                 execution_error=execution_error,
+                execution_lease_id=execution_lease_id,
                 failure_message=SOURCE_FAILURE_MESSAGE,
             )
         except Exception as exc:
@@ -207,6 +219,7 @@ class SourcePreAnalysisExecutionService:
             self._raise_after_failure_transition(
                 run_id=run_id,
                 execution_error=execution_error,
+                execution_lease_id=execution_lease_id,
                 failure_message=SOURCE_FAILURE_MESSAGE,
             )
 
@@ -220,6 +233,7 @@ class SourcePreAnalysisExecutionService:
             self._raise_after_failure_transition(
                 run_id=run_id,
                 execution_error=execution_error,
+                execution_lease_id=execution_lease_id,
                 failure_message=INVALID_OUTPUT_FAILURE_MESSAGE,
             )
 
@@ -236,12 +250,14 @@ class SourcePreAnalysisExecutionService:
             self._raise_after_failure_transition(
                 run_id=run_id,
                 execution_error=execution_error,
+                execution_lease_id=execution_lease_id,
                 failure_message=OUTPUT_FAILURE_MESSAGE,
             )
 
         try:
             return self.lifecycle_service.finalize_success(
                 run_id=run_id,
+                execution_lease_id=execution_lease_id,
                 result=prepared.result,
                 findings=prepared.findings,
                 provenance=validated_execution.provenance,
@@ -254,6 +270,7 @@ class SourcePreAnalysisExecutionService:
             self._raise_after_failure_transition(
                 run_id=run_id,
                 execution_error=finalization_error,
+                execution_lease_id=execution_lease_id,
                 failure_message=FINALIZATION_FAILURE_MESSAGE,
                 finalization_failure=True,
             )
@@ -263,12 +280,16 @@ class SourcePreAnalysisExecutionService:
         *,
         run_id: uuid.UUID,
         execution_error: SourcePreAnalysisExecutionError,
+        execution_lease_id: uuid.UUID | None = None,
         failure_message: str,
         finalization_failure: bool = False,
     ) -> NoReturn:
+        if execution_lease_id is None:
+            raise AssertionError("Post-start failure requires an execution lease.")
         try:
             self.lifecycle_service.mark_failed(
                 run_id=run_id,
+                execution_lease_id=execution_lease_id,
                 failure_message=failure_message,
             )
         except Exception as transition_error:
@@ -277,6 +298,7 @@ class SourcePreAnalysisExecutionService:
                 (
                     SourcePreAnalysisInvalidRunStateError,
                     SourcePreAnalysisResultAlreadyExistsError,
+                    SourcePreAnalysisLeaseMismatchError,
                 ),
             ):
                 if not isinstance(
@@ -287,7 +309,15 @@ class SourcePreAnalysisExecutionService:
                         "Reconciliation requires a finalization error."
                     )
                 raise SourcePreAnalysisExecutionReconciliationRequiredError(
-                    finalization_error=execution_error,
+                    execution_error=execution_error,
+                    transition_error=transition_error,
+                ) from transition_error
+            if isinstance(
+                transition_error,
+                SourcePreAnalysisLeaseMismatchError,
+            ):
+                raise SourcePreAnalysisExecutionReconciliationRequiredError(
+                    execution_error=execution_error,
                     transition_error=transition_error,
                 ) from transition_error
             raise SourcePreAnalysisExecutionFailureTransitionError(

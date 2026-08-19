@@ -33,6 +33,7 @@ from app.services.source_pre_analysis_service import (
     SourcePreAnalysisFinalization,
     SourcePreAnalysisFindingInput,
     SourcePreAnalysisInvalidRunStateError,
+    SourcePreAnalysisLeaseMismatchError,
     SourcePreAnalysisPageDocumentMismatchError,
     SourcePreAnalysisPageNotFoundError,
     SourcePreAnalysisPersistenceConflictError,
@@ -40,6 +41,7 @@ from app.services.source_pre_analysis_service import (
     SourcePreAnalysisResultInput,
     SourcePreAnalysisRequestedByUserNotFoundError,
     SourcePreAnalysisRunNotFoundError,
+    SourcePreAnalysisRunClaim,
     SourcePreAnalysisService,
     SourcePreAnalysisSourceDocumentNotFoundError,
     SourcePreAnalysisValidationError,
@@ -47,6 +49,7 @@ from app.services.source_pre_analysis_service import (
 
 
 NOW = datetime(2026, 8, 18, 10, 30, tzinfo=timezone.utc)
+LEASE_ID = uuid.uuid4()
 VALID_PROVENANCE = SourcePreAnalysisProcessorProvenance(
     processor_name="test-processor",
     processor_version="1",
@@ -65,6 +68,8 @@ class SourcePreAnalysisServiceStartRunTest(unittest.TestCase):
             started_at=None,
             completed_at=None,
             failure_message=None,
+            execution_lease_id=None,
+            last_heartbeat_at=None,
         )
 
     def test_constructor_stores_session(self) -> None:
@@ -87,11 +92,17 @@ class SourcePreAnalysisServiceStartRunTest(unittest.TestCase):
         ) as clock:
             returned = SourcePreAnalysisService(db).start_run(run_id=run.id)
 
-        self.assertIs(returned, run)
+        self.assertIsInstance(returned, SourcePreAnalysisRunClaim)
+        self.assertEqual(returned.run_id, run.id)
+        self.assertEqual(returned.execution_lease_id, run.execution_lease_id)
+        self.assertEqual(returned.started_at, NOW)
+        self.assertEqual(returned.last_heartbeat_at, NOW)
         self.assertEqual(run.status, SourcePreAnalysisRunStatus.RUNNING)
         self.assertEqual(run.started_at, NOW)
         self.assertIsNone(run.completed_at)
         self.assertIsNone(run.failure_message)
+        self.assertIsInstance(run.execution_lease_id, uuid.UUID)
+        self.assertEqual(run.last_heartbeat_at, NOW)
         clock.assert_called_once_with()
         db.commit.assert_called_once_with()
         db.rollback.assert_not_called()
@@ -202,6 +213,79 @@ class SourcePreAnalysisServiceStartRunTest(unittest.TestCase):
         db.flush.assert_not_called()
 
 
+class SourcePreAnalysisServiceHeartbeatTest(unittest.TestCase):
+    @staticmethod
+    def _run(
+        status: SourcePreAnalysisRunStatus = SourcePreAnalysisRunStatus.RUNNING,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=uuid.uuid4(),
+            source_document_id=uuid.uuid4(),
+            status=status,
+            execution_lease_id=LEASE_ID,
+            last_heartbeat_at=NOW,
+        )
+
+    def test_matching_running_lease_refreshes_and_commits_once(self) -> None:
+        db = MagicMock()
+        run = self._run()
+        db.scalar.return_value = run
+        refreshed = datetime(2026, 8, 18, 10, 31, tzinfo=timezone.utc)
+
+        with patch(
+            "app.services.source_pre_analysis_service.utc_now",
+            return_value=refreshed,
+        ):
+            returned = SourcePreAnalysisService(db).heartbeat_run(
+                run_id=run.id,
+                execution_lease_id=LEASE_ID,
+            )
+
+        self.assertEqual(returned, refreshed)
+        self.assertEqual(run.last_heartbeat_at, refreshed)
+        self.assertEqual(run.execution_lease_id, LEASE_ID)
+        self.assertIn("FOR UPDATE", str(db.scalar.call_args.args[0]))
+        db.commit.assert_called_once_with()
+        db.rollback.assert_not_called()
+
+    def test_wrong_lease_and_terminal_states_are_rejected(self) -> None:
+        cases = (
+            (self._run(), uuid.uuid4(), SourcePreAnalysisLeaseMismatchError),
+            (
+                self._run(SourcePreAnalysisRunStatus.SUCCEEDED),
+                LEASE_ID,
+                SourcePreAnalysisInvalidRunStateError,
+            ),
+        )
+        for run, lease_id, error in cases:
+            with self.subTest(error=error):
+                db = MagicMock()
+                db.scalar.return_value = run
+                with self.assertRaises(error):
+                    SourcePreAnalysisService(db).heartbeat_run(
+                        run_id=run.id,
+                        execution_lease_id=lease_id,
+                    )
+                db.commit.assert_not_called()
+                db.rollback.assert_called_once_with()
+
+    def test_heartbeat_commit_failure_rolls_back_unchanged_exception(self) -> None:
+        db = MagicMock()
+        run = self._run()
+        db.scalar.return_value = run
+        failure = RuntimeError("commit failed")
+        db.commit.side_effect = failure
+
+        with self.assertRaises(RuntimeError) as raised:
+            SourcePreAnalysisService(db).heartbeat_run(
+                run_id=run.id,
+                execution_lease_id=LEASE_ID,
+            )
+
+        self.assertIs(raised.exception, failure)
+        db.rollback.assert_called_once_with()
+
+
 class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
     @staticmethod
     def _run(
@@ -210,6 +294,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
         return SimpleNamespace(
             id=uuid.uuid4(), source_document_id=uuid.uuid4(), status=status,
             started_at=NOW, completed_at=None, failure_message="stale failure",
+            execution_lease_id=LEASE_ID, last_heartbeat_at=NOW,
         )
 
     @staticmethod
@@ -255,6 +340,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
         ) as clock:
             finalized = SourcePreAnalysisService(db).finalize_success(
                 run_id=run.id,
+                execution_lease_id=run.execution_lease_id,
                 result=SourcePreAnalysisResultInput(
                     schema_version=2, page_count=None,
                 ),
@@ -272,6 +358,8 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
         self.assertEqual(run.completed_at, NOW)
         self.assertEqual(run.started_at, started_at)
         self.assertIsNone(run.failure_message)
+        self.assertIsNone(run.execution_lease_id)
+        self.assertIsNone(run.last_heartbeat_at)
         clock.assert_called_once_with()
         db.add.assert_called_once_with(finalized.result)
         db.flush.assert_called_once_with()
@@ -284,6 +372,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
         db, run = self._db()
         finalized = SourcePreAnalysisService(db).finalize_success(
             run_id=run.id,
+            execution_lease_id=run.execution_lease_id,
             result=SourcePreAnalysisResultInput(page_count=0),
             findings=[
                 self._finding(code=" first ", confidence=None, message=" First "),
@@ -332,6 +421,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
         db, _ = self._db(run=run, pages=pages)
         finalized = SourcePreAnalysisService(db).finalize_success(
             run_id=run.id,
+            execution_lease_id=run.execution_lease_id,
             result=SourcePreAnalysisResultInput(page_count=5),
             findings=[
                 self._finding(page_id=first_id, code="one"),
@@ -354,7 +444,8 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
     def test_run_lock_and_result_query_have_exact_scope(self) -> None:
         db, run = self._db()
         SourcePreAnalysisService(db).finalize_success(
-            run_id=run.id, result=SourcePreAnalysisResultInput(), findings=[],
+            run_id=run.id, execution_lease_id=run.execution_lease_id,
+            result=SourcePreAnalysisResultInput(), findings=[],
             provenance=VALID_PROVENANCE,
         )
 
@@ -383,6 +474,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                 with self.assertRaises(SourcePreAnalysisResultAlreadyExistsError):
                     SourcePreAnalysisService(db).finalize_success(
                         run_id=run.id,
+                        execution_lease_id=run.execution_lease_id,
                         result=SourcePreAnalysisResultInput(), findings=[],
                         provenance=VALID_PROVENANCE,
                     )
@@ -390,6 +482,23 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                 db.flush.assert_not_called()
                 db.commit.assert_not_called()
                 db.rollback.assert_called_once_with()
+
+    def test_wrong_execution_lease_cannot_finalize(self) -> None:
+        db, run = self._db()
+
+        with self.assertRaises(SourcePreAnalysisLeaseMismatchError):
+            SourcePreAnalysisService(db).finalize_success(
+                run_id=run.id,
+                execution_lease_id=uuid.uuid4(),
+                result=SourcePreAnalysisResultInput(),
+                findings=[],
+                provenance=VALID_PROVENANCE,
+            )
+
+        self.assertEqual(db.scalar.call_count, 1)
+        db.add.assert_not_called()
+        db.commit.assert_not_called()
+        db.rollback.assert_called_once_with()
 
     def test_non_running_states_are_rejected_before_result_lookup(self) -> None:
         for status in (
@@ -403,6 +512,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                 with self.assertRaises(SourcePreAnalysisInvalidRunStateError):
                     SourcePreAnalysisService(db).finalize_success(
                         run_id=run.id,
+                        execution_lease_id=run.execution_lease_id,
                         result=SourcePreAnalysisResultInput(), findings=[],
                         provenance=VALID_PROVENANCE,
                     )
@@ -428,6 +538,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                 with self.assertRaises(error):
                     SourcePreAnalysisService(db).finalize_success(
                         run_id=run.id,
+                        execution_lease_id=run.execution_lease_id,
                         result=SourcePreAnalysisResultInput(),
                         findings=[self._finding(page_id=page_id)],
                         provenance=VALID_PROVENANCE,
@@ -452,7 +563,8 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                 db = MagicMock()
                 with self.assertRaises(SourcePreAnalysisValidationError):
                     SourcePreAnalysisService(db).finalize_success(
-                        run_id=uuid.uuid4(), result=result, findings=[],
+                        run_id=uuid.uuid4(), execution_lease_id=LEASE_ID,
+                        result=result, findings=[],
                         provenance=VALID_PROVENANCE,
                     )
                 db.scalar.assert_not_called()
@@ -477,6 +589,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                 with self.assertRaises(SourcePreAnalysisValidationError):
                     SourcePreAnalysisService(db).finalize_success(
                         run_id=uuid.uuid4(),
+                        execution_lease_id=LEASE_ID,
                         result=SourcePreAnalysisResultInput(),
                         findings=[self._finding(code="valid"), finding],
                         provenance=VALID_PROVENANCE,
@@ -492,7 +605,8 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
         db = MagicMock()
         with self.assertRaises(SourcePreAnalysisValidationError):
             SourcePreAnalysisService(db).finalize_success(
-                run_id=uuid.uuid4(), result=SourcePreAnalysisResultInput(),
+                run_id=uuid.uuid4(), execution_lease_id=LEASE_ID,
+                result=SourcePreAnalysisResultInput(),
                 findings=[finding],
                 provenance=VALID_PROVENANCE,
             )
@@ -513,6 +627,7 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
                 ) as raised:
                     SourcePreAnalysisService(db).finalize_success(
                         run_id=run.id,
+                        execution_lease_id=run.execution_lease_id,
                         result=SourcePreAnalysisResultInput(), findings=[],
                         provenance=VALID_PROVENANCE,
                     )
@@ -527,7 +642,8 @@ class SourcePreAnalysisServiceFinalizeSuccessTest(unittest.TestCase):
         old_finding = SimpleNamespace(value="unchanged")
         with self.assertRaises(RuntimeError) as raised:
             SourcePreAnalysisService(db).finalize_success(
-                run_id=run.id, result=SourcePreAnalysisResultInput(), findings=[],
+                run_id=run.id, execution_lease_id=run.execution_lease_id,
+                result=SourcePreAnalysisResultInput(), findings=[],
                 provenance=VALID_PROVENANCE,
             )
         self.assertIs(raised.exception, failure)
@@ -552,6 +668,7 @@ class SourcePreAnalysisServiceMarkFailedTest(unittest.TestCase):
         return SimpleNamespace(
             id=uuid.uuid4(), source_document_id=uuid.uuid4(), status=status,
             started_at=NOW, completed_at=None, failure_message=None,
+            execution_lease_id=LEASE_ID, last_heartbeat_at=NOW,
         )
 
     @staticmethod
@@ -574,6 +691,7 @@ class SourcePreAnalysisServiceMarkFailedTest(unittest.TestCase):
         ) as clock:
             returned = SourcePreAnalysisService(db).mark_failed(
                 run_id=run.id,
+                execution_lease_id=run.execution_lease_id,
                 failure_message="  Source could not be processed safely.  ",
             )
 
@@ -584,6 +702,8 @@ class SourcePreAnalysisServiceMarkFailedTest(unittest.TestCase):
         self.assertEqual(
             run.failure_message, "Source could not be processed safely.",
         )
+        self.assertIsNone(run.execution_lease_id)
+        self.assertIsNone(run.last_heartbeat_at)
         clock.assert_called_once_with()
         db.commit.assert_called_once_with()
         db.rollback.assert_not_called()
@@ -599,6 +719,7 @@ class SourcePreAnalysisServiceMarkFailedTest(unittest.TestCase):
                 with self.assertRaises(SourcePreAnalysisValidationError):
                     SourcePreAnalysisService(db).mark_failed(
                         run_id=uuid.uuid4(),
+                        execution_lease_id=LEASE_ID,
                         failure_message=failure_message,  # type: ignore[arg-type]
                     )
 
@@ -606,6 +727,20 @@ class SourcePreAnalysisServiceMarkFailedTest(unittest.TestCase):
                 db.add.assert_not_called()
                 db.commit.assert_not_called()
                 db.rollback.assert_called_once_with()
+
+    def test_wrong_execution_lease_cannot_mark_failed(self) -> None:
+        db, run = self._db()
+
+        with self.assertRaises(SourcePreAnalysisLeaseMismatchError):
+            SourcePreAnalysisService(db).mark_failed(
+                run_id=run.id,
+                execution_lease_id=uuid.uuid4(),
+                failure_message="Safe summary.",
+            )
+
+        self.assertEqual(run.status, SourcePreAnalysisRunStatus.RUNNING)
+        db.commit.assert_not_called()
+        db.rollback.assert_called_once_with()
 
     def test_non_running_states_are_rejected_without_mutation(self) -> None:
         for status in (
@@ -623,7 +758,9 @@ class SourcePreAnalysisServiceMarkFailedTest(unittest.TestCase):
 
                 with self.assertRaises(SourcePreAnalysisInvalidRunStateError):
                     SourcePreAnalysisService(db).mark_failed(
-                        run_id=run.id, failure_message="Safe failure summary.",
+                        run_id=run.id,
+                        execution_lease_id=run.execution_lease_id,
+                        failure_message="Safe failure summary.",
                     )
 
                 self.assertEqual(
@@ -646,7 +783,8 @@ class SourcePreAnalysisServiceMarkFailedTest(unittest.TestCase):
 
                 with self.assertRaises(SourcePreAnalysisRunNotFoundError):
                     SourcePreAnalysisService(db).mark_failed(
-                        run_id=uuid.uuid4(), failure_message="Safe summary.",
+                        run_id=uuid.uuid4(), execution_lease_id=LEASE_ID,
+                        failure_message="Safe summary.",
                     )
 
                 query = str(db.scalar.call_args.args[0])
@@ -666,7 +804,9 @@ class SourcePreAnalysisServiceMarkFailedTest(unittest.TestCase):
 
                 with self.assertRaises(SourcePreAnalysisResultAlreadyExistsError):
                     SourcePreAnalysisService(db).mark_failed(
-                        run_id=run.id, failure_message="Safe summary.",
+                        run_id=run.id,
+                        execution_lease_id=run.execution_lease_id,
+                        failure_message="Safe summary.",
                     )
 
                 self.assertEqual(existing_result.value, "unchanged")
@@ -690,7 +830,8 @@ class SourcePreAnalysisServiceMarkFailedTest(unittest.TestCase):
             SourcePreAnalysisPersistenceConflictError,
         ) as raised:
             SourcePreAnalysisService(db).mark_failed(
-                run_id=run.id, failure_message="Safe summary.",
+                run_id=run.id, execution_lease_id=run.execution_lease_id,
+                failure_message="Safe summary.",
             )
 
         self.assertIs(raised.exception.__cause__, failure)
@@ -704,7 +845,8 @@ class SourcePreAnalysisServiceMarkFailedTest(unittest.TestCase):
 
         with self.assertRaises(RuntimeError) as raised:
             SourcePreAnalysisService(db).mark_failed(
-                run_id=uuid.uuid4(), failure_message="Safe summary.",
+                run_id=uuid.uuid4(), execution_lease_id=LEASE_ID,
+                failure_message="Safe summary.",
             )
 
         self.assertIs(raised.exception, failure)

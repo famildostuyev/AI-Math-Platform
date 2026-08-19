@@ -5,6 +5,7 @@ import unittest
 import uuid
 import os
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
@@ -70,6 +71,7 @@ from app.services.source_pre_analysis_service import (
     SourcePreAnalysisPersistenceConflictError,
     SourcePreAnalysisResultAlreadyExistsError,
     SourcePreAnalysisResultInput,
+    SourcePreAnalysisRunClaim,
     SourcePreAnalysisRunNotFoundError,
 )
 from app.services.source_pre_analysis_source_service import (
@@ -84,6 +86,14 @@ class SourcePreAnalysisExecutionServiceTest(unittest.TestCase):
     def setUp(self) -> None:
         self.db = MagicMock()
         self.run_id = uuid.uuid4()
+        self.lease_id = uuid.uuid4()
+        claim_time = datetime(2026, 8, 19, 10, 0, tzinfo=timezone.utc)
+        self.claim = SourcePreAnalysisRunClaim(
+            run_id=self.run_id,
+            execution_lease_id=self.lease_id,
+            started_at=claim_time,
+            last_heartbeat_at=claim_time,
+        )
         self.lifecycle = MagicMock()
         self.source_service = MagicMock()
         self.selector = MagicMock()
@@ -143,6 +153,7 @@ class SourcePreAnalysisExecutionServiceTest(unittest.TestCase):
             self.prepared
         )
         self.lifecycle.finalize_success.return_value = self.finalization
+        self.lifecycle.start_run.return_value = self.claim
         self._set_source_context()
 
     def _set_source_context(
@@ -190,7 +201,9 @@ class SourcePreAnalysisExecutionServiceTest(unittest.TestCase):
 
     def test_success_has_exact_order_delegation_and_return_identity(self) -> None:
         events: list[str] = []
-        self.lifecycle.start_run.side_effect = lambda **_: events.append("start")
+        self.lifecycle.start_run.side_effect = lambda **_: (
+            events.append("start") or self.claim
+        )
         self._set_source_context(events=events)
         self.selector.select.side_effect = lambda **_: (
             events.append("select") or self.processor
@@ -227,6 +240,7 @@ class SourcePreAnalysisExecutionServiceTest(unittest.TestCase):
         )
         self.lifecycle.finalize_success.assert_called_once_with(
             run_id=self.run_id,
+            execution_lease_id=self.lease_id,
             result=self.prepared.result,
             findings=self.prepared.findings,
             provenance=self.execution.provenance,
@@ -323,6 +337,7 @@ class SourcePreAnalysisExecutionServiceTest(unittest.TestCase):
                 self.assertIs(raised.exception.__cause__, failure)
                 self.lifecycle.mark_failed.assert_called_once_with(
                     run_id=self.run_id,
+                    execution_lease_id=self.lease_id,
                     failure_message=SOURCE_FAILURE_MESSAGE,
                 )
                 self.selector.select.assert_not_called()
@@ -345,6 +360,7 @@ class SourcePreAnalysisExecutionServiceTest(unittest.TestCase):
         self.assertEqual(events, ["source_enter", "source_exit"])
         self.lifecycle.mark_failed.assert_called_once_with(
             run_id=self.run_id,
+            execution_lease_id=self.lease_id,
             failure_message=UNSUPPORTED_SOURCE_FAILURE_MESSAGE,
         )
         self.processor.process.assert_not_called()
@@ -363,6 +379,7 @@ class SourcePreAnalysisExecutionServiceTest(unittest.TestCase):
         self.assertIs(raised.exception.__cause__, failure)
         self.lifecycle.mark_failed.assert_called_once_with(
             run_id=self.run_id,
+            execution_lease_id=self.lease_id,
             failure_message=PROCESSOR_FAILURE_MESSAGE,
         )
         self.processor.process.assert_not_called()
@@ -424,6 +441,7 @@ class SourcePreAnalysisExecutionServiceTest(unittest.TestCase):
                 self.assertIsNotNone(raised.exception.__cause__)
                 self.lifecycle.mark_failed.assert_called_once_with(
                     run_id=self.run_id,
+                    execution_lease_id=self.lease_id,
                     failure_message=INVALID_OUTPUT_FAILURE_MESSAGE,
                 )
                 self.output_service.prepare_finalization_inputs.assert_not_called()
@@ -450,6 +468,7 @@ class SourcePreAnalysisExecutionServiceTest(unittest.TestCase):
                 self.assertIs(raised.exception.__cause__, failure)
                 self.lifecycle.mark_failed.assert_called_once_with(
                     run_id=self.run_id,
+                    execution_lease_id=self.lease_id,
                     failure_message=OUTPUT_FAILURE_MESSAGE,
                 )
                 self.lifecycle.finalize_success.assert_not_called()
@@ -469,6 +488,7 @@ class SourcePreAnalysisExecutionServiceTest(unittest.TestCase):
         self.lifecycle.finalize_success.assert_called_once()
         self.lifecycle.mark_failed.assert_called_once_with(
             run_id=self.run_id,
+            execution_lease_id=self.lease_id,
             failure_message=FINALIZATION_FAILURE_MESSAGE,
         )
         self.assertEqual(self.output_service.method_calls.count(
@@ -529,6 +549,7 @@ class SourcePreAnalysisExecutionServiceTest(unittest.TestCase):
                 self.lifecycle.finalize_success.assert_called_once()
                 self.lifecycle.mark_failed.assert_called_once_with(
                     run_id=self.run_id,
+                    execution_lease_id=self.lease_id,
                     failure_message=FINALIZATION_FAILURE_MESSAGE,
                 )
 
@@ -555,6 +576,7 @@ class SourcePreAnalysisExecutionServiceTest(unittest.TestCase):
         self.assertIs(raised.exception.__cause__, failure)
         self.lifecycle.mark_failed.assert_called_once_with(
             run_id=self.run_id,
+            execution_lease_id=self.lease_id,
             failure_message=SOURCE_FAILURE_MESSAGE,
         )
         self.output_service.prepare_finalization_inputs.assert_not_called()

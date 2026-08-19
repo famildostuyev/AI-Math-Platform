@@ -42,6 +42,24 @@ class Settings(BaseSettings):
         ge=1,
     )
 
+    # Source pre-analysis execution ownership
+    SOURCE_PRE_ANALYSIS_LEASE_SECONDS: int = Field(
+        default=900,
+        ge=1,
+        strict=True,
+    )
+    SOURCE_PRE_ANALYSIS_HEARTBEAT_SECONDS: int = Field(
+        default=30,
+        ge=1,
+        strict=True,
+    )
+    SOURCE_PRE_ANALYSIS_RECOVERY_BATCH_SIZE: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        strict=True,
+    )
+
     # Database
     DATABASE_URL: str = Field(..., min_length=1)
     DATABASE_POOL_SIZE: int = Field(default=10, ge=1, le=100)
@@ -279,6 +297,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 "SameSite='none' olduqda "
                 "AUTH_COOKIE_SECURE=true olmalıdır."
+            )
+
+        if (
+            self.SOURCE_PRE_ANALYSIS_HEARTBEAT_SECONDS
+            >= self.SOURCE_PRE_ANALYSIS_LEASE_SECONDS
+        ):
+            raise ValueError(
+                "Source pre-analysis heartbeat interval must be shorter "
+                "than its execution lease."
             )
 
         if self.APP_ENV == "production":

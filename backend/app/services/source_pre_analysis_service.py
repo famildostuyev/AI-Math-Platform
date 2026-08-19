@@ -54,6 +54,10 @@ class SourcePreAnalysisInvalidRunStateError(SourcePreAnalysisServiceError):
     """Raised when a run cannot perform the requested lifecycle transition."""
 
 
+class SourcePreAnalysisLeaseMismatchError(SourcePreAnalysisServiceError):
+    """Raised when execution does not own the active run lease."""
+
+
 class SourcePreAnalysisResultAlreadyExistsError(SourcePreAnalysisServiceError):
     """Raised when a run already owns a historical result."""
 
@@ -95,6 +99,14 @@ class SourcePreAnalysisFindingInput:
 class SourcePreAnalysisFinalization:
     result: SourcePreAnalysisResult
     findings: tuple[SourcePreAnalysisFinding, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SourcePreAnalysisRunClaim:
+    run_id: uuid.UUID
+    execution_lease_id: uuid.UUID
+    started_at: datetime
+    last_heartbeat_at: datetime
 
 
 class SourcePreAnalysisService:
@@ -440,23 +452,92 @@ class SourcePreAnalysisService:
         self,
         *,
         run_id: uuid.UUID,
-    ) -> SourcePreAnalysisRun:
+    ) -> SourcePreAnalysisRunClaim:
         """Atomically transition one active pending run to running."""
 
         try:
+            if type(run_id) is not uuid.UUID:
+                raise SourcePreAnalysisValidationError(
+                    "Source pre-analysis run ID must be a UUID."
+                )
             run = self._get_active_run_for_update(run_id=run_id)
             if run.status != SourcePreAnalysisRunStatus.PENDING:
                 raise SourcePreAnalysisInvalidRunStateError(
                     "Source pre-analysis run is not pending."
                 )
 
+            lease_id = uuid.uuid4()
+            started_at = utc_now()
             run.status = SourcePreAnalysisRunStatus.RUNNING
-            run.started_at = utc_now()
+            run.started_at = started_at
             run.completed_at = None
             run.failure_message = None
+            run.execution_lease_id = lease_id
+            run.last_heartbeat_at = started_at
 
             self.db.commit()
-            return run
+            return SourcePreAnalysisRunClaim(
+                run_id=run.id,
+                execution_lease_id=lease_id,
+                started_at=started_at,
+                last_heartbeat_at=started_at,
+            )
+        except Exception:
+            self.db.rollback()
+            raise
+
+    @staticmethod
+    def _validate_execution_lease_id(
+        execution_lease_id: uuid.UUID,
+    ) -> None:
+        if type(execution_lease_id) is not uuid.UUID:
+            raise SourcePreAnalysisValidationError(
+                "Execution lease ID must be a UUID."
+            )
+
+    @classmethod
+    def _require_execution_lease(
+        cls,
+        *,
+        run: SourcePreAnalysisRun,
+        execution_lease_id: uuid.UUID,
+    ) -> None:
+        cls._validate_execution_lease_id(execution_lease_id)
+        if (
+            run.execution_lease_id is None
+            or run.execution_lease_id != execution_lease_id
+        ):
+            raise SourcePreAnalysisLeaseMismatchError(
+                "Source pre-analysis execution lease does not match."
+            )
+
+    def heartbeat_run(
+        self,
+        *,
+        run_id: uuid.UUID,
+        execution_lease_id: uuid.UUID,
+    ) -> datetime:
+        """Refresh one matching active execution lease under row lock."""
+
+        try:
+            if type(run_id) is not uuid.UUID:
+                raise SourcePreAnalysisValidationError(
+                    "Source pre-analysis run ID must be a UUID."
+                )
+            self._validate_execution_lease_id(execution_lease_id)
+            run = self._get_active_run_for_update(run_id=run_id)
+            if run.status != SourcePreAnalysisRunStatus.RUNNING:
+                raise SourcePreAnalysisInvalidRunStateError(
+                    "Source pre-analysis run is not running."
+                )
+            self._require_execution_lease(
+                run=run,
+                execution_lease_id=execution_lease_id,
+            )
+            heartbeat_at = utc_now()
+            run.last_heartbeat_at = heartbeat_at
+            self.db.commit()
+            return heartbeat_at
         except Exception:
             self.db.rollback()
             raise
@@ -465,6 +546,7 @@ class SourcePreAnalysisService:
         self,
         *,
         run_id: uuid.UUID,
+        execution_lease_id: uuid.UUID,
         result: SourcePreAnalysisResultInput,
         findings: Sequence[SourcePreAnalysisFindingInput],
         provenance: SourcePreAnalysisProcessorProvenance,
@@ -472,6 +554,7 @@ class SourcePreAnalysisService:
         """Atomically persist complete output and mark a running run succeeded."""
 
         try:
+            self._validate_execution_lease_id(execution_lease_id)
             self._validate_result_input(result)
             normalized_findings = self._normalize_findings(findings)
             normalized_provenance = self._normalize_provenance(provenance)
@@ -481,6 +564,10 @@ class SourcePreAnalysisService:
                 raise SourcePreAnalysisInvalidRunStateError(
                     "Source pre-analysis run is not running."
                 )
+            self._require_execution_lease(
+                run=run,
+                execution_lease_id=execution_lease_id,
+            )
 
             existing_result = self.db.scalar(
                 select(SourcePreAnalysisResult).where(
@@ -554,6 +641,8 @@ class SourcePreAnalysisService:
             run.status = SourcePreAnalysisRunStatus.SUCCEEDED
             run.completed_at = utc_now()
             run.failure_message = None
+            run.execution_lease_id = None
+            run.last_heartbeat_at = None
 
             self.db.commit()
             return SourcePreAnalysisFinalization(
@@ -573,11 +662,13 @@ class SourcePreAnalysisService:
         self,
         *,
         run_id: uuid.UUID,
+        execution_lease_id: uuid.UUID,
         failure_message: str,
     ) -> SourcePreAnalysisRun:
         """Atomically transition one active running run to failed."""
 
         try:
+            self._validate_execution_lease_id(execution_lease_id)
             if not isinstance(failure_message, str):
                 raise SourcePreAnalysisValidationError(
                     "Failure message must be a string."
@@ -593,6 +684,10 @@ class SourcePreAnalysisService:
                 raise SourcePreAnalysisInvalidRunStateError(
                     "Source pre-analysis run is not running."
                 )
+            self._require_execution_lease(
+                run=run,
+                execution_lease_id=execution_lease_id,
+            )
 
             existing_result = self.db.scalar(
                 select(SourcePreAnalysisResult).where(
@@ -607,6 +702,8 @@ class SourcePreAnalysisService:
             run.status = SourcePreAnalysisRunStatus.FAILED
             run.completed_at = utc_now()
             run.failure_message = normalized_message
+            run.execution_lease_id = None
+            run.last_heartbeat_at = None
 
             self.db.commit()
             return run
