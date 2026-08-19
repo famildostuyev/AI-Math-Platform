@@ -97,6 +97,7 @@ class QuestionTypeModelMetadataTest(unittest.TestCase):
             "question_revision_related_topics",
             "question_revision_purposes",
             "question_sources",
+            "question_candidates",
         }
         self.assertEqual(
             {

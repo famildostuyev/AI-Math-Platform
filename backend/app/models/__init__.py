@@ -12,6 +12,7 @@ from app.models.image_block_content import ImageBlockContent
 from app.models.media_asset import MediaAsset
 from app.models.permission import Permission
 from app.models.purpose import Purpose
+from app.models.question_candidate import QuestionCandidate
 from app.models.question_family import QuestionFamily
 from app.models.question_form import QuestionForm
 from app.models.question_revision import QuestionRevision
@@ -51,6 +52,7 @@ __all__ = [
     "MediaAsset",
     "Permission",
     "Purpose",
+    "QuestionCandidate",
     "QuestionFamily",
     "QuestionForm",
     "QuestionRevision",
