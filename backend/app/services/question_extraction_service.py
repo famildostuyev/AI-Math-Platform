@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.enums import QuestionExtractionRunStatus
+from app.core.security import utc_now
 from app.models.question_extraction_run import QuestionExtractionRun
 from app.models.source_document import SourceDocument
 from app.models.user import User
@@ -14,6 +15,10 @@ from app.models.user import User
 
 class QuestionExtractionServiceError(Exception):
     """Base exception for question extraction lifecycle failures."""
+
+
+class QuestionExtractionRunNotFoundError(QuestionExtractionServiceError):
+    """Raised when an active extraction run and owning document are unavailable."""
 
 
 class QuestionExtractionSourceDocumentNotFoundError(
@@ -32,6 +37,12 @@ class QuestionExtractionActiveRunExistsError(
     QuestionExtractionServiceError
 ):
     """Raised when a source document already has an active extraction run."""
+
+
+class QuestionExtractionInvalidRunStateError(
+    QuestionExtractionServiceError
+):
+    """Raised when an extraction run cannot perform the requested transition."""
 
 
 class QuestionExtractionValidationError(
@@ -176,6 +187,63 @@ class QuestionExtractionService:
             raise QuestionExtractionPersistenceConflictError(
                 "Question extraction run could not be created."
             ) from exc
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def _get_active_run_for_update(
+        self,
+        *,
+        run_id: uuid.UUID,
+    ) -> QuestionExtractionRun:
+        run = self.db.scalar(
+            select(QuestionExtractionRun)
+            .join(
+                SourceDocument,
+                SourceDocument.id == QuestionExtractionRun.source_document_id,
+            )
+            .where(
+                QuestionExtractionRun.id == run_id,
+                QuestionExtractionRun.deleted_at.is_(None),
+                SourceDocument.deleted_at.is_(None),
+            )
+            .with_for_update()
+        )
+        if run is None:
+            raise QuestionExtractionRunNotFoundError(
+                "Active question extraction run was not found."
+            )
+        return run
+
+    def start_run(
+        self,
+        *,
+        run_id: uuid.UUID,
+    ) -> QuestionExtractionRun:
+        """Atomically transition one active pending extraction run to running."""
+
+        try:
+            if type(run_id) is not uuid.UUID:
+                raise QuestionExtractionValidationError(
+                    "Question extraction run ID must be a UUID."
+                )
+
+            run = self._get_active_run_for_update(run_id=run_id)
+
+            if run.status != QuestionExtractionRunStatus.PENDING:
+                raise QuestionExtractionInvalidRunStateError(
+                    "Question extraction run is not pending."
+                )
+
+            started_at = utc_now()
+            run.status = QuestionExtractionRunStatus.RUNNING
+            run.started_at = started_at
+            run.completed_at = None
+            run.failure_message = None
+
+            self.db.commit()
+            return run
+
         except Exception:
             self.db.rollback()
             raise
