@@ -116,6 +116,9 @@ export type QuestionDraftRead = {
   revision_number: number
   status: QuestionRevisionStatus
   question_type_id: UUID
+  source_id: UUID | null
+  source_detail: string | null
+  source_display_name: string | null
   primary_topic_id: UUID | null
   related_topic_ids: UUID[]
   purpose_ids: UUID[]
@@ -498,3 +501,4 @@ export function reorderBlocks(
     },
   )
 }
+

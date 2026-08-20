@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 import sys
@@ -115,6 +115,9 @@ class QuestionEditorApiTest(unittest.TestCase):
             "revision_number": 1,
             "status": "draft",
             "question_type_id": self.question_type_id,
+            "source_id": None,
+            "source_detail": None,
+            "source_display_name": None,
             "primary_topic_id": self.primary_topic_id,
             "related_topic_ids": [self.related_topic_id],
             "purpose_ids": [self.purpose_id],
@@ -1705,3 +1708,4 @@ class QuestionEditorApiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

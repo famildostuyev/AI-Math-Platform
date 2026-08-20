@@ -638,10 +638,18 @@ class QuestionEditorServiceTest(unittest.TestCase):
 
     def _read_db(self, blocks: list[object]):
         family = SimpleNamespace(id=uuid.uuid4())
+        source_id = uuid.uuid4()
+        source = SimpleNamespace(
+            id=source_id,
+            display_name="Test source",
+        )
         form = SimpleNamespace(
             id=uuid.uuid4(),
             question_family_id=family.id,
             question_type_id=uuid.uuid4(),
+            source_id=source_id,
+            source_detail="Test source detail",
+            source=source,
             question_family=family,
         )
         revision = SimpleNamespace(
@@ -667,6 +675,15 @@ class QuestionEditorServiceTest(unittest.TestCase):
         )
         self.assertIsInstance(response, QuestionRevisionEditorRead)
         self.assertEqual(response.blocks, [])
+        self.assertEqual(response.source_id, revision.question_form.source_id)
+        self.assertEqual(
+            response.source_detail,
+            revision.question_form.source_detail,
+        )
+        self.assertEqual(
+            response.source_display_name,
+            "Test source",
+        )
         self.assertEqual(response.updated_at, NOW)
         statement = str(db.scalar.call_args.args[0])
         self.assertIn("question_revisions.deleted_at IS NULL", statement)
@@ -2503,3 +2520,4 @@ class QuestionEditorServiceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

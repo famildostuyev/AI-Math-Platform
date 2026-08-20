@@ -128,6 +128,9 @@ class QuestionDraftRead(StrictEditorSchema):
     revision_number: int = Field(gt=0)
     status: QuestionRevisionStatus
     question_type_id: uuid.UUID
+    source_id: uuid.UUID | None
+    source_detail: str | None
+    source_display_name: str | None
     primary_topic_id: uuid.UUID | None
     related_topic_ids: list[uuid.UUID]
     purpose_ids: list[uuid.UUID]
@@ -369,3 +372,4 @@ class BlockOrderRequest(StrictEditorSchema):
         cls, value: datetime,
     ) -> datetime:
         return _require_aware_datetime(value)
+

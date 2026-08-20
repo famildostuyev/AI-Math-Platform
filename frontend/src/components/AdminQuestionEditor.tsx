@@ -465,7 +465,7 @@ export default function AdminQuestionEditor({
 
         {revision && <>
           <section className="admin-editor-metadata" aria-label="Reviziya məlumatları">
-            <div><span>Reviziya</span><strong>#{revision.revision_number}</strong></div><div><span>Status</span><strong>{revision.status}</strong></div><div><span>Sual tipi ID</span><strong title={revision.question_type_id}>{revision.question_type_id}</strong></div><div><span>Çətinlik</span><strong>{revision.difficulty ?? 'Təyin edilməyib'}</strong></div><div><span>Yenilənib</span><strong>{formatUpdatedAt(revision.updated_at)}</strong></div>
+            <div><span>Reviziya</span><strong>#{revision.revision_number}</strong></div><div><span>Status</span><strong>{revision.status}</strong></div><div><span>Sual tipi ID</span><strong title={revision.question_type_id}>{revision.question_type_id}</strong></div><div><span>Mənbə</span><strong>{revision.source_display_name ?? 'Təyin edilməyib'}</strong></div><div><span>Mənbə ID</span><strong title={revision.source_id ?? undefined}>{revision.source_id ?? 'Təyin edilməyib'}</strong></div><div><span>Mənbə detalı</span><strong>{revision.source_detail ?? 'Təyin edilməyib'}</strong></div><div><span>Çətinlik</span><strong>{revision.difficulty ?? 'Təyin edilməyib'}</strong></div><div><span>Yenilənib</span><strong>{formatUpdatedAt(revision.updated_at)}</strong></div>
           </section>
 
           {revisionReadOnly && (

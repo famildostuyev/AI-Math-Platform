@@ -600,6 +600,9 @@ class QuestionEditorSchemaTest(unittest.TestCase):
             "revision_number": 1,
             "status": "draft",
             "question_type_id": str(uuid.uuid4()),
+            "source_id": str(uuid.uuid4()),
+            "source_detail": "Test source detail",
+            "source_display_name": "Test source",
             "primary_topic_id": None,
             "related_topic_ids": [],
             "purpose_ids": [],
@@ -637,3 +640,4 @@ class QuestionEditorSchemaTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

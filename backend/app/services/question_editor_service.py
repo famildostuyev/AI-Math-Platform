@@ -1196,6 +1196,13 @@ class QuestionEditorService:
             revision_number=revision.revision_number,
             status=revision.status,
             question_type_id=form.question_type_id,
+            source_id=form.source_id,
+            source_detail=form.source_detail,
+            source_display_name=(
+                form.source.display_name
+                if form.source is not None
+                else None
+            ),
             primary_topic_id=revision.primary_topic_id,
             related_topic_ids=related_topic_ids,
             purpose_ids=purpose_ids,
@@ -1280,3 +1287,4 @@ class QuestionEditorService:
         raise UnsupportedEditorBlockTypeError(
             f"Unsupported editor block type: {block_type.value}."
         )
+
