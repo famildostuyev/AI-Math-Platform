@@ -106,9 +106,14 @@ class SourceDocumentsApiTest(unittest.TestCase):
             route for route in source_documents_router.routes
             if isinstance(route, APIRoute)
         ]
-        self.assertEqual(len(routes), 1)
-        self.assertEqual(routes[0].path, "/sources")
-        self.assertEqual(routes[0].methods, {"POST"})
+        self.assertEqual(len(routes), 2)
+        self.assertEqual(
+            {(route.path, frozenset(route.methods)) for route in routes},
+            {
+                ("/sources", frozenset({"GET"})),
+                ("/sources", frozenset({"POST"})),
+            },
+        )
 
         response = self.client.get("/openapi.json")
         self.assertEqual(response.status_code, 200)
@@ -123,10 +128,11 @@ class SourceDocumentsApiTest(unittest.TestCase):
             if path.startswith("/api/v1/sources")
         }
         self.assertEqual(source_paths, {
-            "/api/v1/sources": {"POST"},
+            "/api/v1/sources": {"GET", "POST"},
             "/api/v1/sources/{source_document_id}/pre-analysis/runs": {"POST"},
             "/api/v1/sources/{source_document_id}/pre-analysis": {"GET"},
             "/api/v1/sources/{source_document_id}/question-extraction/runs": {"POST"},
+            "/api/v1/sources/{source_document_id}/question-extraction": {"GET"},
         })
         operation = paths["/api/v1/sources"]["post"]
         self.assertEqual(
@@ -341,3 +347,4 @@ class SourceDocumentsApiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
