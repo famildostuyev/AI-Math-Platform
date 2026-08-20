@@ -126,6 +126,7 @@ class SourceDocumentsApiTest(unittest.TestCase):
             "/api/v1/sources": {"POST"},
             "/api/v1/sources/{source_document_id}/pre-analysis/runs": {"POST"},
             "/api/v1/sources/{source_document_id}/pre-analysis": {"GET"},
+            "/api/v1/sources/{source_document_id}/question-extraction/runs": {"POST"},
         })
         operation = paths["/api/v1/sources"]["post"]
         self.assertEqual(

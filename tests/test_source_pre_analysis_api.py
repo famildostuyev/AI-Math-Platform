@@ -184,6 +184,7 @@ class SourcePreAnalysisApiTest(unittest.TestCase):
         self.assertEqual(source_paths, {
             "/api/v1/sources/{source_document_id}/pre-analysis/runs": {"POST"},
             "/api/v1/sources/{source_document_id}/pre-analysis": {"GET"},
+            "/api/v1/sources/{source_document_id}/question-extraction/runs": {"POST"},
         })
         post_operation = paths[
             "/api/v1/sources/{source_document_id}/pre-analysis/runs"
