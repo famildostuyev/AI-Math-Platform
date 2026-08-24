@@ -99,6 +99,7 @@ class QuestionTypeModelMetadataTest(unittest.TestCase):
             "question_sources",
             "question_candidates",
             "question_extraction_runs",
+            "question_extraction_results",
         }
         self.assertEqual(
             {

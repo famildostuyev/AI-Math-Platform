@@ -55,7 +55,7 @@ class QuestionExtractionApiTest(unittest.TestCase):
         routes=[r for r in question_extraction_router.routes if isinstance(r,APIRoute)]
         self.assertEqual(
             {(r.path,frozenset(r.methods)) for r in routes},
-            {("/sources/{source_document_id}/question-extraction/runs",frozenset({"POST"}))}
+            {("/sources/{source_document_id}/question-extraction/runs",frozenset({"POST"})),("/sources/{source_document_id}/question-extraction",frozenset({"GET"}))}
         )
         response=self.client.get("/openapi.json")
         self.assertEqual(response.status_code,200)
@@ -143,3 +143,4 @@ class QuestionExtractionApiTest(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
+

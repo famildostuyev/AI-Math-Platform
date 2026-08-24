@@ -21,6 +21,7 @@ from app.services.source_binary_service import (
     UnsafeSourceBinaryError,
     UnsupportedSourceBinaryError,
 )
+from app.services.source_document_read_service import SourceDocumentReadService
 from app.services.source_ingestion_service import (
     SourceIngestionCompensationError,
     SourceIngestionPersistenceConflictError,
@@ -35,6 +36,26 @@ router = APIRouter(
     prefix="/sources",
     tags=["Sources"],
 )
+
+
+@router.get(
+    "",
+    response_model=list[SourceDocumentRead],
+    status_code=status.HTTP_200_OK,
+    summary="List source documents",
+)
+def list_source_documents(
+    current_user: Annotated[
+        User,
+        Depends(require_roles(RoleName.ADMIN)),
+    ],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[SourceDocumentRead]:
+    """Return active source documents for Admin source selection."""
+
+    del current_user
+
+    return list(SourceDocumentReadService(db).list_documents())
 
 
 @router.post(

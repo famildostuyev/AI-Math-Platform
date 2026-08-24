@@ -9,3 +9,4 @@ PyJWT
 pwdlib[argon2]
 python-multipart
 openai
+PyMuPDF==1.28.2

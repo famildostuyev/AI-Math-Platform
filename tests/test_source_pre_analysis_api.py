@@ -185,6 +185,7 @@ class SourcePreAnalysisApiTest(unittest.TestCase):
             "/api/v1/sources/{source_document_id}/pre-analysis/runs": {"POST"},
             "/api/v1/sources/{source_document_id}/pre-analysis": {"GET"},
             "/api/v1/sources/{source_document_id}/question-extraction/runs": {"POST"},
+            "/api/v1/sources/{source_document_id}/question-extraction": {"GET"},
         })
         post_operation = paths[
             "/api/v1/sources/{source_document_id}/pre-analysis/runs"
@@ -517,3 +518,4 @@ class SourcePreAnalysisApiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

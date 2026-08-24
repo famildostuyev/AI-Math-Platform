@@ -29,6 +29,14 @@ from app.services.question_extraction_execution_service import (
     QuestionExtractionExecutionProcessorError,
     QuestionExtractionExecutionStartError,
 )
+from app.services.question_extraction_document_analysis_execution_service import (
+    QuestionExtractionDocumentAnalysisAlreadyFinalizedError,
+    QuestionExtractionDocumentAnalysisExecutionService,
+    QuestionExtractionDocumentAnalysisProviderTimeoutError,
+)
+from app.services.question_extraction_execution_strategy import (
+    build_question_extraction_execution_strategy,
+)
 from app.services.question_extraction_worker_service import (
     QuestionExtractionWorkerService,
     QuestionExtractionWorkerSummary,
@@ -74,16 +82,12 @@ class QuestionExtractionWorkerServiceTest(unittest.TestCase):
                 "QuestionExtractionDispatchService",
                 return_value=dispatch,
             ) as dispatch_class,
-            patch(
-                "app.services.question_extraction_worker_service."
-                "QuestionExtractionExecutionService",
-                side_effect=execution_factory,
-            ),
         ):
             summary = QuestionExtractionWorkerService(
                 session_factory=self.session_factory,
                 worker_batch_size=worker_batch_size,
                 selector_factory=selector_factory,
+                execution_strategy_factory=execution_factory,
             ).run_once()
 
         return (
@@ -110,6 +114,82 @@ class QuestionExtractionWorkerServiceTest(unittest.TestCase):
         self.assertEqual(len(self.sessions), 1)
         self.sessions[0].close.assert_called_once_with()
 
+    def test_explicit_run_id_executes_only_that_target_without_queue_fallback(
+        self,
+    ) -> None:
+        target_run_id = uuid.uuid4()
+        other_run_id = uuid.uuid4()
+        strategy = MagicMock()
+        strategy_factory = MagicMock(return_value=strategy)
+
+        discovery_session = MagicMock()
+        discovery_session.scalar.return_value = target_run_id
+        execution_session = MagicMock()
+        sessions = iter((discovery_session, execution_session))
+
+        with patch(
+            "app.services.question_extraction_worker_service."
+            "QuestionExtractionDispatchService"
+        ) as dispatch_class:
+            summary = QuestionExtractionWorkerService(
+                session_factory=lambda: next(sessions),
+                execution_strategy_factory=strategy_factory,
+            ).run_once(run_id=target_run_id)
+
+        self.assertEqual(summary.discovered, 1)
+        strategy.execute_run.assert_called_once_with(run_id=target_run_id)
+        self.assertNotEqual(
+            strategy.execute_run.call_args,
+            call(run_id=other_run_id),
+        )
+        dispatch_class.assert_not_called()
+        discovery_session.close.assert_called_once_with()
+        execution_session.close.assert_called_once_with()
+
+    def test_ineligible_explicit_target_does_not_execute_or_fallback(self) -> None:
+        for reason in ("non_pending", "deleted", "existing_result"):
+            with self.subTest(reason=reason):
+                target_run_id = uuid.uuid4()
+                discovery_session = MagicMock()
+                discovery_session.scalar.return_value = None
+                strategy_factory = MagicMock()
+                with patch(
+                    "app.services.question_extraction_worker_service."
+                    "QuestionExtractionDispatchService"
+                ) as dispatch_class:
+                    summary = QuestionExtractionWorkerService(
+                        session_factory=lambda: discovery_session,
+                        execution_strategy_factory=strategy_factory,
+                    ).run_once(run_id=target_run_id)
+                self.assertEqual(summary.discovered, 0)
+                strategy_factory.assert_not_called()
+                dispatch_class.assert_not_called()
+
+    def test_explicit_target_query_enforces_pending_active_and_no_result(self) -> None:
+        target_run_id = uuid.uuid4()
+        discovery_session = MagicMock()
+        discovery_session.scalar.return_value = None
+        QuestionExtractionWorkerService(
+            session_factory=lambda: discovery_session,
+            execution_strategy_factory=MagicMock(),
+        ).run_once(run_id=target_run_id)
+
+        statement = discovery_session.scalar.call_args.args[0]
+        sql = str(statement)
+        self.assertIn("question_extraction_runs.id", sql)
+        self.assertIn("question_extraction_runs.status", sql)
+        self.assertIn("question_extraction_runs.deleted_at IS NULL", sql)
+        self.assertIn("source_documents.deleted_at IS NULL", sql)
+        self.assertIn("NOT (EXISTS", sql)
+        self.assertIn("question_extraction_results", sql)
+
+    def test_invalid_explicit_run_id_is_rejected_before_discovery(self) -> None:
+        with self.assertRaises(ValueError):
+            QuestionExtractionWorkerService(
+                session_factory=self.session_factory,
+            ).run_once(run_id="invalid")  # type: ignore[arg-type]
+        self.assertEqual(self.sessions, [])
+
     def test_discovery_session_closes_before_run_sessions_open(self) -> None:
         run_id = uuid.uuid4()
         events = []
@@ -134,14 +214,12 @@ class QuestionExtractionWorkerServiceTest(unittest.TestCase):
                 "QuestionExtractionDispatchService",
                 return_value=dispatch,
             ),
-            patch(
-                "app.services.question_extraction_worker_service."
-                "QuestionExtractionExecutionService"
-            ) as execution_class,
         ):
+            execution_class = MagicMock()
             QuestionExtractionWorkerService(
                 session_factory=factory,
                 selector_factory=lambda: object(),
+                execution_strategy_factory=execution_class,
             ).run_once()
 
         self.assertLess(
@@ -151,6 +229,164 @@ class QuestionExtractionWorkerServiceTest(unittest.TestCase):
         execution_class.return_value.execute_run.assert_called_once_with(
             run_id=run_id
         )
+
+    def test_default_execution_mode_is_legacy(self) -> None:
+        run_id = uuid.uuid4()
+        strategy_factory = MagicMock()
+        dispatch = MagicMock()
+        dispatch.list_pending_run_ids.return_value = (run_id,)
+        with patch(
+            "app.services.question_extraction_worker_service."
+            "QuestionExtractionDispatchService",
+            return_value=dispatch,
+        ):
+            QuestionExtractionWorkerService(
+                session_factory=self.session_factory,
+                execution_strategy_factory=strategy_factory,
+            ).run_once()
+        self.assertEqual(
+            strategy_factory.call_args.kwargs["execution_mode"],
+            "legacy",
+        )
+
+    def test_document_analysis_mode_delegates_to_injected_strategy(self) -> None:
+        run_id = uuid.uuid4()
+        strategy = MagicMock()
+        strategy_factory = MagicMock(return_value=strategy)
+        dispatch = MagicMock()
+        dispatch.list_pending_run_ids.return_value = (run_id,)
+        with patch(
+            "app.services.question_extraction_worker_service."
+            "QuestionExtractionDispatchService",
+            return_value=dispatch,
+        ):
+            summary = QuestionExtractionWorkerService(
+                session_factory=self.session_factory,
+                execution_mode="document_analysis",
+                execution_strategy_factory=strategy_factory,
+            ).run_once()
+        self.assertEqual(summary.succeeded, 1)
+        self.assertEqual(
+            strategy_factory.call_args.kwargs["execution_mode"],
+            "document_analysis",
+        )
+        strategy.execute_run.assert_called_once_with(run_id=run_id)
+
+    def test_document_analysis_failure_uses_safe_failure_transition(self) -> None:
+        run_id = uuid.uuid4()
+        strategy = MagicMock()
+        strategy.execute_run.side_effect = (
+            QuestionExtractionDocumentAnalysisProviderTimeoutError("secret")
+        )
+        dispatch = MagicMock()
+        dispatch.list_pending_run_ids.return_value = (run_id,)
+        with (
+            patch(
+                "app.services.question_extraction_worker_service."
+                "QuestionExtractionDispatchService",
+                return_value=dispatch,
+            ),
+            patch(
+                "app.services.question_extraction_worker_service."
+                "QuestionExtractionService"
+            ) as lifecycle_class,
+        ):
+            with self.assertLogs(
+                "app.services.question_extraction_worker_service",
+                level="WARNING",
+            ) as captured:
+                summary = QuestionExtractionWorkerService(
+                    session_factory=self.session_factory,
+                    execution_mode="document_analysis",
+                    execution_strategy_factory=MagicMock(return_value=strategy),
+                ).run_once()
+        self.assertEqual(summary.failed, 1)
+        lifecycle_class.return_value.mark_failed.assert_called_once_with(
+            run_id=run_id,
+            failure_message="Document analysis execution failed.",
+        )
+        log_output = " ".join(captured.output)
+        self.assertIn("category=timeout", log_output)
+        self.assertNotIn("secret", log_output)
+        self.assertNotIn("api_key", log_output)
+        self.assertNotIn("request body", log_output)
+        self.assertNotIn("response body", log_output)
+        self.assertNotIn("source text", log_output)
+
+    def test_existing_document_analysis_result_is_start_skipped(self) -> None:
+        run_id = uuid.uuid4()
+        strategy = MagicMock()
+        strategy.execute_run.side_effect = (
+            QuestionExtractionDocumentAnalysisAlreadyFinalizedError("exists")
+        )
+        dispatch = MagicMock()
+        dispatch.list_pending_run_ids.return_value = (run_id,)
+        with patch(
+            "app.services.question_extraction_worker_service."
+            "QuestionExtractionDispatchService",
+            return_value=dispatch,
+        ):
+            summary = QuestionExtractionWorkerService(
+                session_factory=self.session_factory,
+                execution_mode="document_analysis",
+                execution_strategy_factory=MagicMock(return_value=strategy),
+            ).run_once()
+        self.assertEqual(summary.start_skipped, 1)
+
+    def test_invalid_execution_mode_fails_fast(self) -> None:
+        with self.assertRaises(ValueError):
+            QuestionExtractionWorkerService(
+                session_factory=self.session_factory,
+                execution_mode="invalid",  # type: ignore[arg-type]
+            )
+
+    def test_legacy_composition_uses_selector_and_not_provider(self) -> None:
+        db = MagicMock()
+        selector = MagicMock()
+        selector_factory = MagicMock(return_value=selector)
+        provider_factory = MagicMock()
+        with patch(
+            "app.services.question_extraction_execution_strategy."
+            "QuestionExtractionExecutionService"
+        ) as legacy_class:
+            result = build_question_extraction_execution_strategy(
+                db,
+                execution_mode="legacy",
+                selector_factory=selector_factory,
+                document_analysis_provider_factory=provider_factory,
+            )
+        self.assertIs(result, legacy_class.return_value)
+        selector_factory.assert_called_once_with()
+        legacy_class.assert_called_once_with(db, processor_selector=selector)
+        provider_factory.assert_not_called()
+
+    def test_document_analysis_composition_uses_injected_provider(self) -> None:
+        db = MagicMock()
+        provider = MagicMock(name="fake-provider")
+        provider_factory = MagicMock(return_value=provider)
+        selector_factory = MagicMock()
+        strategy = build_question_extraction_execution_strategy(
+            db,
+            execution_mode="document_analysis",
+            selector_factory=selector_factory,
+            document_analysis_provider_factory=provider_factory,
+        )
+        self.assertIsInstance(
+            strategy,
+            QuestionExtractionDocumentAnalysisExecutionService,
+        )
+        self.assertIs(strategy.provider, provider)
+        provider_factory.assert_called_once_with()
+        selector_factory.assert_not_called()
+
+    def test_worker_does_not_construct_openai_or_finalize_success(self) -> None:
+        module = Path(
+            BACKEND_DIR
+            / "app/services/question_extraction_worker_service.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("OpenAIDocumentAnalysisProvider", module)
+        self.assertNotIn("finalize_success", module)
+        self.assertNotIn("QuestionCandidate", module)
 
     def test_each_run_gets_new_session_selector_and_one_attempt(self) -> None:
         ids = tuple(uuid.uuid4() for _ in range(3))
@@ -164,7 +400,7 @@ class QuestionExtractionWorkerServiceTest(unittest.TestCase):
         self.assertEqual(summary.start_skipped, 0)
 
         self.assertEqual(len(self.sessions), 4)
-        self.assertEqual(selector_factory.call_count, 3)
+        self.assertEqual(selector_factory.call_count, 0)
         self.assertEqual(
             [execution.execute_run.call_args for execution in executions],
             [call(run_id=run_id) for run_id in ids],
@@ -285,6 +521,21 @@ class QuestionExtractionWorkerServiceTest(unittest.TestCase):
                 Settings(
                     QUESTION_EXTRACTION_WORKER_BATCH_SIZE=invalid
                 )
+
+    def test_execution_mode_config_is_explicit_and_api_key_independent(self) -> None:
+        self.assertEqual(Settings().QUESTION_EXTRACTION_EXECUTION_MODE, "legacy")
+        self.assertEqual(
+            Settings(
+                QUESTION_EXTRACTION_EXECUTION_MODE="document_analysis"
+            ).QUESTION_EXTRACTION_EXECUTION_MODE,
+            "document_analysis",
+        )
+        self.assertEqual(
+            Settings(OPENAI_API_KEY="configured").QUESTION_EXTRACTION_EXECUTION_MODE,
+            "legacy",
+        )
+        with self.assertRaises(ValueError):
+            Settings(QUESTION_EXTRACTION_EXECUTION_MODE="automatic")
 
     def test_worker_module_has_no_recovery_watchdog_or_lease_boundary(
         self,

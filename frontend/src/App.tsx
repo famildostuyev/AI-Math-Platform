@@ -4,6 +4,9 @@ import LoginScreen from './components/LoginScreen'
 import AdminDashboard from './components/AdminDashboard'
 import AdminQuestionEditor from './components/AdminQuestionEditor'
 import AdminQuestionBank from './components/AdminQuestionBank'
+import AdminSources from './components/AdminSources'
+import AdminSourceDetail from './components/AdminSourceDetail'
+import AdminQuestionExtraction from './components/AdminQuestionExtraction'
 import { getCurrentUser, logout, refreshTokens } from './api/auth'
 import type { CurrentUserResponse, TokenResponse } from './api/auth'
 import { ApiError } from './api/client'
@@ -67,7 +70,7 @@ import {
   BookOpen,
 } from 'lucide-react'
 
-type Screen = 'dashboard' | 'test-builder' | 'online-tests' | 'online-test-details' | 'active-test-details' | 'admin-dashboard' | 'admin-question-bank' | 'admin-question-editor'
+type Screen = 'dashboard' | 'test-builder' | 'online-tests' | 'online-test-details' | 'active-test-details' | 'admin-dashboard' | 'admin-sources' | 'admin-source-detail' | 'admin-question-extraction' | 'admin-question-bank' | 'admin-question-editor'
 type AdminEditorOrigin = 'dashboard' | 'question-bank'
 type BuilderStep = 'purpose' | 'class' | 'section' | 'topics' | 'parameters' | 'review'
 type PreparationStage = 'review' | 'use-mode' | 'online-students' | 'online-time' | 'online-presentation' | 'online-activation' | 'preview' | 'design' | 'final' | 'export'
@@ -302,6 +305,7 @@ function Sidebar({
   onHome,
   onAdminHome,
   onOpenOnlineTests,
+  onOpenAdminSources,
   onOpenQuestionBank,
   isAdmin,
   firstName,
@@ -314,6 +318,7 @@ function Sidebar({
   onHome: () => void
   onAdminHome: () => void
   onOpenOnlineTests: () => void
+  onOpenAdminSources: () => void
   onOpenQuestionBank: () => void
   isAdmin: boolean
   firstName: string
@@ -353,7 +358,13 @@ function Sidebar({
             </button>
             <button className="nav-item admin-nav-item--disabled" type="button" disabled><Users size={21} /><span>İstifadəçilər</span></button>
             <button className="nav-item admin-nav-item--disabled" type="button" disabled><ShieldCheck size={21} /><span>Rollar</span></button>
-            <button className="nav-item admin-nav-item--disabled" type="button" disabled><FolderInput size={21} /><span>Mənbələr</span></button>
+            <button
+              className={screen === 'admin-sources' || screen === 'admin-source-detail' || screen === 'admin-question-extraction' ? 'nav-item active' : 'nav-item'}
+              type="button"
+              onClick={onOpenAdminSources}
+            >
+              <FolderInput size={21} /><span>Mənbələr</span>
+            </button>
             <button
               className={screen === 'admin-question-bank' || screen === 'admin-question-editor' ? 'nav-item active' : 'nav-item'}
               type="button"
@@ -5189,6 +5200,8 @@ function App() {
   })
   const [selectedQuestionRevisionId, setSelectedQuestionRevisionId] =
     useState<string | null>(null)
+  const [selectedSourceDocumentId, setSelectedSourceDocumentId] =
+    useState<string | null>(null)
   const [adminEditorOrigin, setAdminEditorOrigin] =
     useState<AdminEditorOrigin>('question-bank')
   const latestTokensRef = useRef<TokenResponse | null>(null)
@@ -5422,6 +5435,9 @@ function App() {
   const isAdmin = currentUser.active_role.name === 'admin'
   const isAdminScreen =
     screen === 'admin-dashboard'
+    || screen === 'admin-sources'
+    || screen === 'admin-source-detail'
+    || screen === 'admin-question-extraction'
     || screen === 'admin-question-bank'
     || screen === 'admin-question-editor'
   const activeScreen = isAdmin
@@ -5436,6 +5452,29 @@ function App() {
   const openAdminDashboard = () => {
     setSelectedQuestionRevisionId(null)
     setScreen('admin-dashboard')
+  }
+
+  const openAdminSources = () => {
+    setSelectedSourceDocumentId(null)
+    setScreen('admin-sources')
+  }
+
+  const openSource = (sourceDocumentId: string) => {
+    setSelectedSourceDocumentId(sourceDocumentId)
+    setScreen('admin-source-detail')
+  }
+
+  const openQuestionExtraction = () => {
+    if (selectedSourceDocumentId === null) return
+    setScreen('admin-question-extraction')
+  }
+
+  const backToSourceDetail = () => {
+    if (selectedSourceDocumentId === null) {
+      openAdminSources()
+      return
+    }
+    setScreen('admin-source-detail')
   }
 
   const openTestBuilder = () => {
@@ -5487,6 +5526,7 @@ function App() {
         onHome={openDashboard}
         onAdminHome={openAdminDashboard}
         onOpenOnlineTests={openOnlineTests}
+        onOpenAdminSources={openAdminSources}
         onOpenQuestionBank={openQuestionBank}
         isAdmin={isAdmin}
         firstName={currentUser.first_name}
@@ -5539,6 +5579,34 @@ function App() {
           onCreateQuestion={createQuestionFromDashboard}
         />
       )}
+
+      {isAdmin && activeScreen === 'admin-sources' && (
+        <AdminSources
+          authenticatedRequest={authenticatedRequest}
+          onOpenSource={openSource}
+        />
+      )}
+
+      {isAdmin
+        && activeScreen === 'admin-source-detail'
+        && selectedSourceDocumentId !== null && (
+          <AdminSourceDetail
+            authenticatedRequest={authenticatedRequest}
+            sourceDocumentId={selectedSourceDocumentId}
+            onBack={openAdminSources}
+            onOpenQuestionExtraction={openQuestionExtraction}
+          />
+        )}
+
+      {isAdmin
+        && activeScreen === 'admin-question-extraction'
+        && selectedSourceDocumentId !== null && (
+          <AdminQuestionExtraction
+            authenticatedRequest={authenticatedRequest}
+            sourceDocumentId={selectedSourceDocumentId}
+            onBack={backToSourceDetail}
+          />
+        )}
 
       {isAdmin && activeScreen === 'admin-question-editor' && (
         <AdminQuestionEditor

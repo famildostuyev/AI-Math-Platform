@@ -13,6 +13,7 @@ from app.models.media_asset import MediaAsset
 from app.models.permission import Permission
 from app.models.purpose import Purpose
 from app.models.question_candidate import QuestionCandidate
+from app.models.question_extraction_result import QuestionExtractionResult
 from app.models.question_extraction_run import QuestionExtractionRun
 from app.models.question_family import QuestionFamily
 from app.models.question_form import QuestionForm
@@ -54,6 +55,7 @@ __all__ = [
     "Permission",
     "Purpose",
     "QuestionCandidate",
+    "QuestionExtractionResult",
     "QuestionExtractionRun",
     "QuestionFamily",
     "QuestionForm",

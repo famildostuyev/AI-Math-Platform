@@ -71,6 +71,10 @@ class Settings(BaseSettings):
         le=100,
         strict=True,
     )
+    QUESTION_EXTRACTION_EXECUTION_MODE: Literal[
+        "legacy",
+        "document_analysis",
+    ] = "legacy"
 
     # Database
     DATABASE_URL: str = Field(..., min_length=1)
@@ -201,6 +205,19 @@ class Settings(BaseSettings):
 
     # External services
     OPENAI_API_KEY: str | None = None
+    OPENAI_DOCUMENT_ANALYSIS_MODEL: str = "gpt-5-mini"
+    OPENAI_DOCUMENT_ANALYSIS_TIMEOUT_SECONDS: float = Field(
+        default=120.0,
+        gt=0,
+        le=600,
+    )
+    OPENAI_DOCUMENT_ANALYSIS_PROMPT_VERSION: str = "question-analysis-v2"
+    OPENAI_DOCUMENT_ANALYSIS_PROCESSING_VERSION: str = "1"
+    OPENAI_DOCUMENT_ANALYSIS_SCHEMA_VERSION: int = Field(
+        default=1,
+        ge=1,
+        strict=True,
+    )
 
     model_config = SettingsConfigDict(
         env_file=str(ENV_FILE_PATH),
