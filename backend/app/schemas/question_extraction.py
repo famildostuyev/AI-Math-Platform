@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,9 +41,33 @@ class QuestionExtractionAnalysisPageRead(StrictQuestionExtractionSchema):
     page_number: int
 
 
+class QuestionExtractionTextSegmentRead(StrictQuestionExtractionSchema):
+    type: Literal["text"]
+    text: str
+
+
+class QuestionExtractionMathSegmentRead(StrictQuestionExtractionSchema):
+    type: Literal["math"]
+    latex: str
+    source_text: str
+    display_mode: bool
+
+
+QuestionExtractionContentSegmentRead = Annotated[
+    QuestionExtractionTextSegmentRead | QuestionExtractionMathSegmentRead,
+    Field(discriminator="type"),
+]
+
+
+class QuestionExtractionStructuredContentRead(StrictQuestionExtractionSchema):
+    format_version: Literal[1]
+    segments: list[QuestionExtractionContentSegmentRead] = Field(min_length=1)
+
+
 class QuestionExtractionAnalysisOptionRead(StrictQuestionExtractionSchema):
     label: str | None
     text: str
+    content: QuestionExtractionStructuredContentRead | None = None
 
 
 class QuestionExtractionAnalysisCorrectionRead(StrictQuestionExtractionSchema):
@@ -58,6 +83,7 @@ class QuestionExtractionAnalysisQuestionRead(StrictQuestionExtractionSchema):
     variant: str | None
     source_pages: list[QuestionExtractionAnalysisPageRead]
     question_text: str
+    content: QuestionExtractionStructuredContentRead | None = None
     answer_options: list[QuestionExtractionAnalysisOptionRead]
     confidence: Decimal = Field(ge=0, le=1)
     needs_review: bool

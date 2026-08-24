@@ -12,11 +12,16 @@ from app.core.enums import QuestionExtractionRunStatus
 from app.core.security import utc_now
 from app.models.question_extraction_result import QuestionExtractionResult
 from app.models.question_extraction_run import QuestionExtractionRun
-from app.services.document_analysis_provider import DocumentAnalysis
+from app.services.document_analysis_provider import (
+    DocumentAnalysis,
+    QuestionAnalysis,
+    StructuredContent,
+)
 
 
 ANALYSIS_PROCESSOR_NAME = "document-analysis"
 _ANALYSIS_ID_NAMESPACE = uuid.UUID("69a86642-e52d-4ca0-9236-55f67fa148da")
+_FOUR_OPTION_LABELS = ("A", "B", "C", "D")
 
 
 class QuestionExtractionAnalysisResultError(Exception):
@@ -49,6 +54,31 @@ def _variant_name(question_number: str | None) -> str | None:
     return None
 
 
+def _content_payload(content: StructuredContent) -> dict[str, object]:
+    return content.model_dump(mode="json")
+
+
+def _answer_options(question: QuestionAnalysis) -> list[dict[str, object]]:
+    options = question.answer_options
+    generate_labels = (
+        len(options) == len(_FOUR_OPTION_LABELS)
+        and all(option.label is None for option in options)
+    )
+    payloads: list[dict[str, object]] = []
+    for index, option in enumerate(options):
+        payload: dict[str, object] = {
+            "label": (
+                _FOUR_OPTION_LABELS[index]
+                if generate_labels else option.label
+            ),
+            "text": option.text,
+        }
+        if option.content is not None:
+            payload["content"] = _content_payload(option.content)
+        payloads.append(payload)
+    return payloads
+
+
 def map_document_analysis(
     *, run_id: uuid.UUID, analysis: DocumentAnalysis,
 ) -> dict[str, object]:
@@ -58,7 +88,7 @@ def map_document_analysis(
         variant = _variant_name(question.question_number)
         if variant is not None:
             variants[variant] += 1
-        questions.append({
+        question_payload: dict[str, object] = {
             "id": str(uuid.uuid5(
                 _ANALYSIS_ID_NAMESPACE, f"{run_id}:{sequence_number}",
             )),
@@ -70,10 +100,7 @@ def map_document_analysis(
                 "page_number": reference.page_number,
             } for reference in question.source_pages],
             "question_text": question.question_text,
-            "answer_options": [
-                {"label": option.label, "text": option.text}
-                for option in question.answer_options
-            ],
+            "answer_options": _answer_options(question),
             "confidence": str(question.confidence),
             "needs_review": question.needs_review,
             "corrections": [{
@@ -82,7 +109,10 @@ def map_document_analysis(
                 "reason": correction.reason,
             } for correction in question.corrections],
             "visual_required": question.visual_required,
-        })
+        }
+        if question.content is not None:
+            question_payload["content"] = _content_payload(question.content)
+        questions.append(question_payload)
     return {
         "detected_language": analysis.detected_language,
         "total_questions": len(questions),

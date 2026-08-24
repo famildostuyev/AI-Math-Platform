@@ -5,6 +5,7 @@ import sys
 import unittest
 import uuid
 import base64
+import json
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +13,8 @@ from unittest.mock import patch
 
 import httpx
 from openai import APIConnectionError, APIError, APITimeoutError, RateLimitError
+from openai.lib._parsing._responses import type_to_text_format_param
+from pydantic import ValidationError
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
@@ -38,8 +41,11 @@ from app.services.openai_document_analysis_provider import (
     _OpenAIAnswerOption,
     _OpenAICorrection,
     _OpenAIDocumentAnalysis,
+    _OpenAIMathSegment,
     _OpenAIPageReference,
     _OpenAIQuestion,
+    _OpenAIStructuredContent,
+    _OpenAITextSegment,
     build_document_analysis_request,
 )
 from app.services.raw_document import RawDocument, RawDocumentPage
@@ -199,7 +205,7 @@ class OpenAIDocumentAnalysisProviderTest(unittest.TestCase):
             "model", "instructions", "text_format", "timeout", "store",
         ):
             self.assertEqual(text_only_call[key], multimodal_call[key])
-        self.assertEqual(multimodal_call["timeout"], 120.0)
+        self.assertEqual(multimodal_call["timeout"], 180.0)
 
     def test_provider_name_is_openai(self) -> None:
         result = self._provider(FakeClient(self._parsed())).analyze_document(
@@ -221,7 +227,7 @@ class OpenAIDocumentAnalysisProviderTest(unittest.TestCase):
             Settings.model_fields[
                 "OPENAI_DOCUMENT_ANALYSIS_TIMEOUT_SECONDS"
             ].default,
-            120.0,
+            180.0,
         )
         with patch.dict(
             os.environ,
@@ -258,7 +264,7 @@ class OpenAIDocumentAnalysisProviderTest(unittest.TestCase):
         result = self._provider(FakeClient(self._parsed())).analyze_document(
             self.request
         )
-        self.assertEqual(result.provenance.prompt_version, "question-analysis-v2")
+        self.assertEqual(result.provenance.prompt_version, "question-analysis-v3")
         self.assertEqual(result.provenance.processor_version, "1")
         self.assertEqual(result.provenance.schema_version, 1)
         self.assertEqual(result.schema_version, 1)
@@ -276,6 +282,42 @@ class OpenAIDocumentAnalysisProviderTest(unittest.TestCase):
             "visual_required=true",
             "correction",
             "needs_review=true",
+            "assign A, B, C, and D",
+            "matching structures",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, DOCUMENT_ANALYSIS_INSTRUCTIONS)
+
+    def test_instructions_request_math_only_structured_content(self) -> None:
+        for required in (
+            "only for question text",
+            "ordinary prose-only question",
+            "content=null",
+            "fractions",
+            "roots",
+            "powers",
+            "subscripts",
+            "Greek letters",
+            "angles",
+            "equations",
+            "ordered text/math segments",
+            "valid",
+            "LaTeX and source_text",
+            "Return answer options as label and plain text only",
+            "do not segment answer option text",
+            "Always keep question_text and",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, DOCUMENT_ANALYSIS_INSTRUCTIONS)
+
+    def test_instructions_require_corrections_for_every_question(self) -> None:
+        for required in (
+            "Every question object must include the corrections field",
+            "corrections=[]",
+            "structured",
+            "correction objects",
+            "Never omit corrections",
+            "never return corrections=null",
         ):
             with self.subTest(required=required):
                 self.assertIn(required, DOCUMENT_ANALYSIS_INSTRUCTIONS)
@@ -296,6 +338,119 @@ class OpenAIDocumentAnalysisProviderTest(unittest.TestCase):
         self.assertEqual(result.questions[0].question_text, "Find x.")
         self.assertEqual(result.questions[0].source_pages[0].page_number, 1)
         self.assertEqual(result.questions[0].confidence, Decimal("0.9"))
+
+    def test_structured_math_content_maps_with_order_and_legacy_fallbacks(self) -> None:
+        parsed = self._parsed()
+        parsed.questions[0].content = _OpenAIStructuredContent(
+            format_version=1,
+            segments=[
+                _OpenAITextSegment(type="text", text="Simplify: "),
+                _OpenAIMathSegment(
+                    type="math",
+                    latex=r"\frac{\sin\alpha + 2\cos\alpha}{\cos\alpha}",
+                    source_text="(sin alpha + 2 cos alpha) / cos alpha",
+                    display_mode=False,
+                ),
+                _OpenAITextSegment(type="text", text=" then choose."),
+            ],
+        )
+
+        result = self._provider(FakeClient(parsed)).analyze_document(self.request)
+        question = result.questions[0]
+
+        self.assertEqual(question.question_text, "Find x.")
+        self.assertEqual(
+            [segment.type for segment in question.content.segments],
+            ["text", "math", "text"],
+        )
+        self.assertEqual(
+            question.content.segments[1].latex,
+            r"\frac{\sin\alpha + 2\cos\alpha}{\cos\alpha}",
+        )
+        self.assertEqual(
+            question.content.segments[1].source_text,
+            "(sin alpha + 2 cos alpha) / cos alpha",
+        )
+        self.assertEqual(question.answer_options[0].label, "A")
+        self.assertEqual(question.answer_options[0].text, "2")
+        self.assertIsNone(question.answer_options[0].content)
+
+    def test_legacy_structured_response_maps_missing_content_to_none(self) -> None:
+        result = self._provider(FakeClient(self._parsed())).analyze_document(
+            self.request
+        )
+
+        self.assertIsNone(result.questions[0].content)
+        self.assertIsNone(result.questions[0].answer_options[0].content)
+
+    def test_sdk_strict_schema_uses_supported_ordered_segment_union(self) -> None:
+        schema = type_to_text_format_param(_OpenAIDocumentAnalysis)["schema"]
+        definitions = schema["$defs"]
+        content_schema = definitions["_OpenAIStructuredContent"]
+        option_schema = definitions["_OpenAIAnswerOption"]
+        segment_items = content_schema["properties"]["segments"]["items"]
+        serialized = json.dumps(schema, sort_keys=True)
+
+        self.assertIn("anyOf", segment_items)
+        self.assertNotIn("oneOf", serialized)
+        self.assertNotIn("discriminator", serialized)
+        self.assertNotIn("default", serialized)
+        self.assertNotIn("content", option_schema["properties"])
+        self.assertNotIn("content", option_schema["required"])
+        question_schema = definitions["_OpenAIQuestion"]
+        self.assertIn("corrections", question_schema["required"])
+        self.assertNotIn(
+            "default",
+            question_schema["properties"]["corrections"],
+        )
+        self.assertEqual(
+            set(definitions["_OpenAITextSegment"]["required"]),
+            {"type", "text"},
+        )
+        self.assertEqual(
+            set(definitions["_OpenAIMathSegment"]["required"]),
+            {"type", "latex", "source_text", "display_mode"},
+        )
+        self.assertEqual(
+            set(content_schema["required"]),
+            {"format_version", "segments"},
+        )
+        for model_name in (
+            "_OpenAITextSegment",
+            "_OpenAIMathSegment",
+            "_OpenAIStructuredContent",
+        ):
+            self.assertIs(
+                definitions[model_name]["additionalProperties"],
+                False,
+            )
+
+    def test_corrections_collection_is_required_non_null_and_mappable(self) -> None:
+        empty = self._parsed()
+        empty.questions[0].corrections = []
+        self.assertEqual(empty.questions[0].corrections, [])
+        empty_result = self._provider(FakeClient(empty)).analyze_document(
+            self.request
+        )
+        self.assertEqual(empty_result.questions[0].corrections, ())
+
+        populated = self._parsed()
+        self.assertEqual(len(populated.questions[0].corrections), 1)
+        populated_result = self._provider(FakeClient(populated)).analyze_document(
+            self.request
+        )
+        self.assertEqual(len(populated_result.questions[0].corrections), 1)
+
+        for invalid_corrections in (None, "missing"):
+            payload = self._parsed().model_dump(mode="json")
+            if invalid_corrections == "missing":
+                del payload["questions"][0]["corrections"]
+            else:
+                payload["questions"][0]["corrections"] = None
+            with self.subTest(corrections=invalid_corrections), self.assertRaises(
+                ValidationError
+            ):
+                _OpenAIDocumentAnalysis.model_validate(payload)
 
     def test_invalid_structured_response_raises_typed_error(self) -> None:
         parsed = self._parsed()
@@ -458,6 +613,139 @@ class OpenAIDocumentAnalysisProviderTest(unittest.TestCase):
         ):
             self._provider(FakeClient(None)).analyze_document(self.request)
         self.assertIn("category=invalid_response", " ".join(captured.output))
+
+    def test_parse_validation_errors_log_only_bounded_paths_and_types(self) -> None:
+        cases = (
+            (
+                {"format_version": 1, "segments": [{
+                    "type": "math", "latex": "secret-latex",
+                    "source_text": "private-source-text",
+                }]},
+                "display_mode",
+                "missing",
+            ),
+            (
+                {"segments": [{"type": "text", "text": "private-question"}]},
+                "format_version",
+                "missing",
+            ),
+            (
+                {"format_version": 1, "segments": [{
+                    "type": "formula", "latex": "x", "source_text": "x",
+                    "display_mode": False,
+                }]},
+                "type",
+                "literal_error",
+            ),
+            (
+                {"format_version": 1, "segments": []},
+                "segments",
+                "too_short",
+            ),
+            (
+                {"format_version": 1, "segments": [{
+                    "type": "text", "text": "source-secret",
+                    "unexpected": "api-key-like-secret",
+                }]},
+                "unexpected",
+                "extra_forbidden",
+            ),
+        )
+        for content, expected_path, expected_type in cases:
+            with self.subTest(expected_type=expected_type):
+                payload = self._parsed().model_dump(mode="json")
+                payload["questions"][0]["content"] = content
+                with self.assertRaises(ValidationError) as invalid:
+                    _OpenAIDocumentAnalysis.model_validate(payload)
+                client = FakeClient()
+                client.responses.error = invalid.exception
+
+                with self.assertLogs(
+                    "app.services.openai_document_analysis_provider",
+                    level="WARNING",
+                ) as captured, self.assertRaises(
+                    DocumentAnalysisProviderInvalidResponseError
+                ):
+                    self._provider(client).analyze_document(self.request)
+
+                output = " ".join(captured.output)
+                self.assertIn("category=invalid_response", output)
+                self.assertIn("exception_type=ValidationError", output)
+                self.assertIn("validation_error_count=", output)
+                self.assertIn(expected_path, output)
+                self.assertIn(expected_type, output)
+                for secret in (
+                    "secret-latex",
+                    "private-source-text",
+                    "private-question",
+                    "source-secret",
+                    "api-key-like-secret",
+                ):
+                    self.assertNotIn(secret, output)
+
+    def test_validation_error_log_count_and_paths_are_bounded(self) -> None:
+        payload = self._parsed().model_dump(mode="json")
+        question = payload["questions"][0]
+        question["content"] = {
+            "segments": [{"type": "text", "text": "secret-value"}],
+        }
+        payload["questions"] = [
+            json.loads(json.dumps(question)) for _ in range(8)
+        ]
+        with self.assertRaises(ValidationError) as invalid:
+            _OpenAIDocumentAnalysis.model_validate(payload)
+        client = FakeClient()
+        client.responses.error = invalid.exception
+
+        with self.assertLogs(
+            "app.services.openai_document_analysis_provider",
+            level="WARNING",
+        ) as captured, self.assertRaises(
+            DocumentAnalysisProviderInvalidResponseError
+        ):
+            self._provider(client).analyze_document(self.request)
+
+        output = " ".join(captured.output)
+        self.assertIn("validation_error_count=8", output)
+        paths = output.split("validation_paths=", 1)[1].split(" ", 1)[0]
+        self.assertEqual(len(paths.split(",")), 5)
+        self.assertTrue(all(len(path) <= 160 for path in paths.split(",")))
+        self.assertNotIn("secret-value", output)
+
+    def test_mapping_validation_error_uses_safe_metadata(self) -> None:
+        parsed = self._parsed()
+        parsed.questions[0].content = _OpenAIStructuredContent(
+            format_version=1,
+            segments=[
+                _OpenAITextSegment(
+                    type="text",
+                    text="private question/source content   ",
+                ),
+                _OpenAIMathSegment(
+                    type="math",
+                    latex=" ",
+                    source_text="secret-source-text",
+                    display_mode=False,
+                ),
+            ],
+        )
+
+        with self.assertLogs(
+            "app.services.openai_document_analysis_provider",
+            level="WARNING",
+        ) as captured, self.assertRaises(
+            DocumentAnalysisProviderInvalidResponseError
+        ):
+            self._provider(FakeClient(parsed)).analyze_document(self.request)
+
+        output = " ".join(captured.output)
+        self.assertIn("category=invalid_response", output)
+        self.assertIn("exception_type=ValidationError", output)
+        self.assertIn("validation_error_count=1", output)
+        self.assertIn("validation_paths=latex", output)
+        self.assertIn("validation_types=value_error", output)
+        self.assertNotIn("private question/source content", output)
+        self.assertNotIn("secret-source-text", output)
 
     def test_openai_objects_do_not_leak_into_domain_result(self) -> None:
         result = self._provider(FakeClient(self._parsed())).analyze_document(

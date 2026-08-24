@@ -152,6 +152,18 @@ class QuestionExtractionApiReadTest(unittest.TestCase):
                         "page_number": 1,
                     }],
                     "question_text": f"Question {variant}/{number}",
+                    "content": ({
+                        "format_version": 1,
+                        "segments": [
+                            {"type": "text", "text": "Find "},
+                            {
+                                "type": "math",
+                                "latex": "x^2",
+                                "source_text": "x²",
+                                "display_mode": False,
+                            },
+                        ],
+                    } if variant == "C" and number == 1 else None),
                     "answer_options": [],
                     "confidence": "0.9",
                     "needs_review": False,
@@ -221,6 +233,13 @@ class QuestionExtractionApiReadTest(unittest.TestCase):
                 *(f"Variant D / {number}" for number in range(1, 13)),
             ],
         )
+        first_question = result["analysis"]["questions"][0]
+        self.assertEqual(first_question["question_text"], "Question C/1")
+        self.assertEqual(
+            [segment["type"] for segment in first_question["content"]["segments"]],
+            ["text", "math"],
+        )
+        self.assertIsNone(result["analysis"]["questions"][1]["content"])
         self.assertEqual(
             response.json()["latest_successful_result"]["candidate_count"],
             0,

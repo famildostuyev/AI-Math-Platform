@@ -56,11 +56,11 @@ class TextOnlyDocumentAnalysisDiagnosticTest(unittest.TestCase):
         self.assertEqual(request.pages[0].source_document_page_id, self.page_id)
         self.assertEqual(request.pages[0].raw_extracted_text,
                          "private source content")
-        self.assertEqual(request.prompt_version, "question-analysis-v2")
+        self.assertEqual(request.prompt_version, "question-analysis-v3")
         self.assertEqual(request.processing_version, "1")
         self.assertEqual(request.schema_version, 1)
         self.assertEqual(settings.OPENAI_DOCUMENT_ANALYSIS_MODEL, "gpt-5-mini")
-        self.assertEqual(settings.OPENAI_DOCUMENT_ANALYSIS_TIMEOUT_SECONDS, 120.0)
+        self.assertEqual(settings.OPENAI_DOCUMENT_ANALYSIS_TIMEOUT_SECONDS, 180.0)
         self.assertIs(
             diagnostic.DOCUMENT_ANALYSIS_INSTRUCTIONS,
             DOCUMENT_ANALYSIS_INSTRUCTIONS,

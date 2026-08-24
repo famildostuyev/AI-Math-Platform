@@ -207,11 +207,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
     OPENAI_DOCUMENT_ANALYSIS_MODEL: str = "gpt-5-mini"
     OPENAI_DOCUMENT_ANALYSIS_TIMEOUT_SECONDS: float = Field(
-        default=120.0,
+        default=180.0,
         gt=0,
         le=600,
     )
-    OPENAI_DOCUMENT_ANALYSIS_PROMPT_VERSION: str = "question-analysis-v2"
+    OPENAI_DOCUMENT_ANALYSIS_PROMPT_VERSION: str = "question-analysis-v3"
     OPENAI_DOCUMENT_ANALYSIS_PROCESSING_VERSION: str = "1"
     OPENAI_DOCUMENT_ANALYSIS_SCHEMA_VERSION: int = Field(
         default=1,

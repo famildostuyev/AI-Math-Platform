@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import Protocol, runtime_checkable
+from typing import Annotated, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -104,9 +104,47 @@ class DocumentAnalysisPageReference(StrictDocumentAnalysisModel):
     page_number: int = Field(gt=0)
 
 
+class TextSegment(StrictDocumentAnalysisModel):
+    type: Literal["text"] = "text"
+    text: str
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Text segment cannot be empty.")
+        return value
+
+
+class MathSegment(StrictDocumentAnalysisModel):
+    type: Literal["math"] = "math"
+    latex: str
+    source_text: str
+    display_mode: bool = False
+
+    @field_validator("latex", "source_text")
+    @classmethod
+    def validate_math_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Math segment values cannot be empty.")
+        return value
+
+
+ContentSegment = Annotated[
+    TextSegment | MathSegment,
+    Field(discriminator="type"),
+]
+
+
+class StructuredContent(StrictDocumentAnalysisModel):
+    format_version: Literal[1] = 1
+    segments: tuple[ContentSegment, ...] = Field(min_length=1)
+
+
 class DocumentAnalysisAnswerOption(StrictDocumentAnalysisModel):
     label: str | None = None
     text: str
+    content: StructuredContent | None = None
 
     @field_validator("label")
     @classmethod
@@ -139,6 +177,7 @@ class DocumentAnalysisCorrection(StrictDocumentAnalysisModel):
 class QuestionAnalysis(StrictDocumentAnalysisModel):
     question_number: str | None = None
     question_text: str
+    content: StructuredContent | None = None
     answer_options: tuple[DocumentAnalysisAnswerOption, ...] = ()
     source_pages: tuple[DocumentAnalysisPageReference, ...]
     visual_required: bool

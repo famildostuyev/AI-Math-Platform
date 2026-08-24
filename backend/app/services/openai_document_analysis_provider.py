@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 import uuid
 from decimal import Decimal
-from typing import Protocol
+from typing import Literal, Protocol
 
 from openai import (
     APIConnectionError,
@@ -31,12 +32,20 @@ from app.services.document_analysis_provider import (
     DocumentAnalysisProviderRateLimitError,
     DocumentAnalysisProviderTimeoutError,
     DocumentAnalysisRequest,
+    MathSegment,
     QuestionAnalysis,
+    StructuredContent,
+    TextSegment,
 )
 from app.services.raw_document import RawDocument
 
 
 OPENAI_PROVIDER_NAME = "openai"
+VALIDATION_LOG_MAX_ERRORS = 5
+VALIDATION_LOG_MAX_PATH_LENGTH = 160
+VALIDATION_LOG_MAX_COMPONENT_LENGTH = 64
+_SAFE_VALIDATION_COMPONENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_SAFE_VALIDATION_TYPE = re.compile(r"^[a-z][a-z0-9_]*$")
 logger = logging.getLogger(__name__)
 DOCUMENT_ANALYSIS_INSTRUCTIONS = """
 Analyze only the supplied source material and extract every separate question
@@ -46,6 +55,24 @@ mathematical meaning, question numbering, answer options, formulas,
 coordinates, signs, symbols, fractions, and exact source-page references.
 Do not translate, shorten, approve, or invent content.
 
+Use answer_options only for selectable multiple-choice answers. Preserve every
+source option label. When a four-option multiple-choice question has no visible
+labels, assign A, B, C, and D in source order. Keep matching structures in the
+question text; do not convert their rows or columns into answer_options.
+
+Return optional versioned content segments only for question text that actually
+contains mathematical notation. For an ordinary prose-only question, return
+content=null instead of a redundant single text segment. For a math-bearing
+question, split prose and math into ordered text/math segments. Treat fractions,
+roots, powers, subscripts, Greek letters, angles, equations, and other
+mathematical notation as math-bearing. Every math segment must contain valid
+LaTeX and source_text preserving the visible or faithfully reconstructed
+original math text. Never convert the entire mixed question into one LaTeX
+string. Return answer options as label and plain text only, preserving their
+source order; do not segment answer option text. Always keep question_text and
+answer option text populated as plain-text fallbacks, including when question
+content is null.
+
 Detect Variant C and Variant D separately when they occur. Preserve each
 variant's source numbering in every question object and, when supported by the
 source, use a deterministic question_number such as "Variant C / 1" or
@@ -54,7 +81,9 @@ source, use a deterministic question_number such as "Variant C / 1" or
 Compare the extracted text layer with every supplied page visual. Correct a
 real OCR or text-extraction mismatch only when visual evidence supports the
 correction, and give a concrete correction reason. Never create a correction
-from speculation.
+from speculation. Every question object must include the corrections field.
+Return corrections=[] when there is no correction; otherwise return structured
+correction objects. Never omit corrections and never return corrections=null.
 
 Set visual_required=true only when solving or fully understanding the question
 depends on visual material; the mere presence of a page image is not enough.
@@ -73,6 +102,26 @@ class _OpenAIPageReference(_OpenAIStructuredModel):
     page_number: int = Field(gt=0)
 
 
+class _OpenAITextSegment(_OpenAIStructuredModel):
+    type: Literal["text"]
+    text: str
+
+
+class _OpenAIMathSegment(_OpenAIStructuredModel):
+    type: Literal["math"]
+    latex: str
+    source_text: str
+    display_mode: bool
+
+
+_OpenAIContentSegment = _OpenAITextSegment | _OpenAIMathSegment
+
+
+class _OpenAIStructuredContent(_OpenAIStructuredModel):
+    format_version: Literal[1]
+    segments: list[_OpenAIContentSegment] = Field(min_length=1)
+
+
 class _OpenAIAnswerOption(_OpenAIStructuredModel):
     label: str | None = None
     text: str
@@ -87,6 +136,7 @@ class _OpenAICorrection(_OpenAIStructuredModel):
 class _OpenAIQuestion(_OpenAIStructuredModel):
     question_number: str | None = None
     question_text: str
+    content: _OpenAIStructuredContent | None = None
     answer_options: list[_OpenAIAnswerOption]
     source_pages: list[_OpenAIPageReference]
     visual_required: bool
@@ -103,6 +153,27 @@ class _OpenAIDocumentAnalysis(_OpenAIStructuredModel):
 class _ResponsesResource(Protocol):
     def parse(self, **kwargs: object) -> object:
         ...
+
+
+def _map_structured_content(
+    content: _OpenAIStructuredContent | None,
+) -> StructuredContent | None:
+    if content is None:
+        return None
+    segments = tuple(
+        TextSegment(text=segment.text)
+        if isinstance(segment, _OpenAITextSegment)
+        else MathSegment(
+            latex=segment.latex,
+            source_text=segment.source_text,
+            display_mode=segment.display_mode,
+        )
+        for segment in content.segments
+    )
+    return StructuredContent(
+        format_version=content.format_version,
+        segments=segments,
+    )
 
 
 class _OpenAIClient(Protocol):
@@ -253,9 +324,17 @@ class OpenAIDocumentAnalysisProvider:
                 "Document analysis provider network request failed."
             ) from exc
         except APIError as exc:
-            self._log_failure(category="provider_api_error")
+            self._log_failure(
+                category="provider_api_error",
+                exception=exc,
+            )
             raise DocumentAnalysisProviderAPIError(
                 "Document analysis provider request failed."
+            ) from exc
+        except ValidationError as exc:
+            self._log_validation_failure(exception=exc)
+            raise DocumentAnalysisProviderInvalidResponseError(
+                "Document analysis provider response is invalid."
             ) from exc
         except Exception as exc:
             self._log_failure(
@@ -271,11 +350,67 @@ class OpenAIDocumentAnalysisProvider:
             if not isinstance(parsed, _OpenAIDocumentAnalysis):
                 raise ValueError("Structured output is unavailable.")
             return self._map_response(request=request, parsed=parsed)
-        except (ValidationError, ValueError, TypeError) as exc:
+        except ValidationError as exc:
+            self._log_validation_failure(exception=exc)
+            raise DocumentAnalysisProviderInvalidResponseError(
+                "Document analysis provider response is invalid."
+            ) from exc
+        except (ValueError, TypeError) as exc:
             self._log_failure(category="invalid_response")
             raise DocumentAnalysisProviderInvalidResponseError(
                 "Document analysis provider response is invalid."
             ) from exc
+
+    def _log_validation_failure(
+        self,
+        *,
+        exception: ValidationError,
+    ) -> None:
+        errors = exception.errors(
+            include_input=False,
+            include_url=False,
+            include_context=False,
+        )
+        paths: list[str] = []
+        error_types: list[str] = []
+        for error in errors[:VALIDATION_LOG_MAX_ERRORS]:
+            components: list[str] = []
+            for component in error.get("loc", ()):
+                if type(component) is int:
+                    components.append(str(component))
+                elif (
+                    type(component) is str
+                    and len(component) <= VALIDATION_LOG_MAX_COMPONENT_LENGTH
+                    and _SAFE_VALIDATION_COMPONENT.fullmatch(component)
+                ):
+                    components.append(component)
+                else:
+                    components.append("field")
+            path = ".".join(components) or "root"
+            paths.append(path[:VALIDATION_LOG_MAX_PATH_LENGTH])
+
+            error_type = error.get("type")
+            error_types.append(
+                error_type
+                if (
+                    type(error_type) is str
+                    and len(error_type) <= VALIDATION_LOG_MAX_COMPONENT_LENGTH
+                    and _SAFE_VALIDATION_TYPE.fullmatch(error_type)
+                )
+                else "validation_error"
+            )
+
+        logger.warning(
+            "document_analysis_provider_failure "
+            "provider=%s category=invalid_response model=%s "
+            "exception_type=ValidationError validation_error_count=%s "
+            "validation_paths=%s validation_types=%s",
+            OPENAI_PROVIDER_NAME,
+            self._model,
+            len(errors),
+            ",".join(paths),
+            ",".join(error_types),
+        )
 
     def _log_failure(
         self,
@@ -382,9 +517,12 @@ class OpenAIDocumentAnalysisProvider:
                 QuestionAnalysis(
                     question_number=question.question_number,
                     question_text=question.question_text,
+                    content=_map_structured_content(question.content),
                     answer_options=tuple(
                         DocumentAnalysisAnswerOption(
-                            label=option.label, text=option.text,
+                            label=option.label,
+                            text=option.text,
+                            content=None,
                         )
                         for option in question.answer_options
                     ),

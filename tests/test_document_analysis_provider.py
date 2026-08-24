@@ -23,7 +23,10 @@ from app.services.document_analysis_provider import (
     DocumentAnalysisProvider,
     DocumentAnalysisRequest,
     DocumentAnalysisNeighborPage,
+    MathSegment,
     QuestionAnalysis,
+    StructuredContent,
+    TextSegment,
 )
 
 
@@ -110,6 +113,53 @@ class DocumentAnalysisProviderContractTest(unittest.TestCase):
         self.assertEqual(analysis.questions[0].question_text, "Find x.")
         self.assertEqual(analysis.questions[0].answer_options[0].label, "A")
         self.assertEqual(analysis.provenance.provider_name, "provider")
+
+    def test_versioned_content_preserves_mixed_segment_order_and_fidelity(self) -> None:
+        fidelity_pairs = (
+            ("(sinα + 2cosα) / cosα", r"\frac{\sin\alpha + 2\cos\alpha}{\cos\alpha}"),
+            ("√(x+1)", r"\sqrt{x+1}"),
+            ("x²", "x^2"),
+            ("a₁", "a_1"),
+            ("α = 90°", r"\alpha = 90^\circ"),
+        )
+        segments = [TextSegment(text="Hesablayın: ")]
+        segments.extend(
+            MathSegment(latex=latex, source_text=source)
+            for source, latex in fidelity_pairs
+        )
+        segments.append(TextSegment(text=" cavabını seçin."))
+        content = StructuredContent(segments=tuple(segments))
+
+        self.assertEqual(content.format_version, 1)
+        self.assertEqual(content.segments[0].type, "text")
+        self.assertEqual(content.segments[-1].type, "text")
+        self.assertEqual(
+            [(segment.source_text, segment.latex) for segment in content.segments[1:-1]],
+            list(fidelity_pairs),
+        )
+
+    def test_structured_content_validation_is_strict(self) -> None:
+        invalid_values = (
+            {"segments": []},
+            {"segments": [{"type": "text", "text": ""}]},
+            {"segments": [{"type": "math", "latex": "", "source_text": "x"}]},
+            {"segments": [{"type": "math", "latex": "x", "source_text": ""}]},
+            {"segments": [{"type": "unknown", "text": "x"}]},
+            {"segments": [{"type": "text", "text": "x", "unknown": True}]},
+            {"format_version": 2, "segments": [{"type": "text", "text": "x"}]},
+        )
+        for values in invalid_values:
+            with self.subTest(values=values), self.assertRaises(ValidationError):
+                StructuredContent.model_validate(values)
+
+    def test_question_and_option_content_are_optional_legacy_extensions(self) -> None:
+        analysis = self._analysis()
+        question = analysis.questions[0]
+
+        self.assertIsNone(question.content)
+        self.assertIsNone(question.answer_options[0].content)
+        self.assertEqual(question.question_text, "Find x.")
+        self.assertEqual(question.answer_options[0].text, "2")
 
     def test_unknown_fields_are_rejected_at_every_contract_boundary(self) -> None:
         with self.assertRaises(ValidationError):

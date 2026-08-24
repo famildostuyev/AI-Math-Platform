@@ -24,7 +24,10 @@ from app.services.document_analysis_provider import (
     DocumentAnalysisCorrection,
     DocumentAnalysisPageReference,
     DocumentAnalysisProvenance,
+    MathSegment,
     QuestionAnalysis,
+    StructuredContent,
+    TextSegment,
 )
 from app.services.question_extraction_analysis_result_service import (
     QuestionExtractionAnalysisInvalidRunStateError,
@@ -312,6 +315,97 @@ class QuestionExtractionAnalysisResultServiceTest(unittest.TestCase):
             self.payload["questions"][0]["answer_options"],
             [{"label": "A", "text": "5"}],
         )
+
+    def test_four_unlabeled_multiple_choice_options_receive_a_to_d_labels(self) -> None:
+        question = self.analysis.questions[0].model_copy(update={
+            "answer_options": tuple(
+                DocumentAnalysisAnswerOption(label=None, text=str(value))
+                for value in range(1, 5)
+            ),
+        })
+        payload = map_document_analysis(
+            run_id=self.run_id,
+            analysis=self.analysis.model_copy(update={"questions": (question,)}),
+        )
+
+        self.assertEqual(
+            [option["label"] for option in payload["questions"][0]["answer_options"]],
+            ["A", "B", "C", "D"],
+        )
+
+    def test_existing_option_labels_are_preserved_without_partial_generation(self) -> None:
+        labels = ("I", None, "III", "IV")
+        question = self.analysis.questions[0].model_copy(update={
+            "answer_options": tuple(
+                DocumentAnalysisAnswerOption(label=label, text=str(index))
+                for index, label in enumerate(labels, start=1)
+            ),
+        })
+        payload = map_document_analysis(
+            run_id=self.run_id,
+            analysis=self.analysis.model_copy(update={"questions": (question,)}),
+        )
+
+        self.assertEqual(
+            [option["label"] for option in payload["questions"][0]["answer_options"]],
+            list(labels),
+        )
+
+    def test_matching_structure_without_answer_options_is_unchanged(self) -> None:
+        question = self.analysis.questions[1].model_copy(update={
+            "question_text": "Uyğunluğu müəyyən edin: 1-a, 2-b.",
+        })
+        payload = map_document_analysis(
+            run_id=self.run_id,
+            analysis=self.analysis.model_copy(update={"questions": (question,)}),
+        )
+
+        self.assertEqual(payload["questions"][0]["answer_options"], [])
+        self.assertEqual(
+            payload["questions"][0]["question_text"],
+            "Uyğunluğu müəyyən edin: 1-a, 2-b.",
+        )
+
+    def test_structured_content_maps_to_json_without_changing_fallback_text(self) -> None:
+        question_content = StructuredContent(segments=(
+            TextSegment(text="Sadələşdirin: "),
+            MathSegment(
+                latex=r"\frac{\sin\alpha + 2\cos\alpha}{\cos\alpha}",
+                source_text="(sinα + 2cosα) / cosα",
+            ),
+        ))
+        option_content = StructuredContent(segments=(
+            MathSegment(latex="x^2", source_text="x²"),
+        ))
+        option = self.analysis.questions[0].answer_options[0].model_copy(
+            update={"content": option_content},
+        )
+        question = self.analysis.questions[0].model_copy(update={
+            "content": question_content,
+            "answer_options": (option,),
+        })
+        payload = map_document_analysis(
+            run_id=self.run_id,
+            analysis=self.analysis.model_copy(update={"questions": (question,)}),
+        )
+        mapped = payload["questions"][0]
+
+        self.assertEqual(mapped["question_text"], "2x - 3 = 7")
+        self.assertEqual(mapped["content"]["format_version"], 1)
+        self.assertEqual(
+            [segment["type"] for segment in mapped["content"]["segments"]],
+            ["text", "math"],
+        )
+        self.assertEqual(
+            mapped["answer_options"][0]["content"]["segments"][0]["latex"],
+            "x^2",
+        )
+
+    def test_legacy_json_payload_omits_optional_content_keys(self) -> None:
+        question = self.payload["questions"][0]
+
+        self.assertNotIn("content", question)
+        self.assertNotIn("content", question["answer_options"][0])
 
     def test_confidence_is_preserved_exactly(self) -> None:
         self.assertEqual(self.payload["questions"][0]["confidence"], "0.875")

@@ -3,12 +3,21 @@ import { AlertCircle, ArrowLeft, Eye, LoaderCircle, Play, RotateCcw } from 'luci
 import { ApiError } from '../api/client'
 import { createQuestionExtractionRun, getQuestionExtractionOverview, type QuestionExtractionOverviewRead } from '../api/questionExtraction'
 import { getSourceDocuments } from '../api/sourceDocuments'
+import MathContent from './MathContent'
 
 type AuthenticatedRequest = <T>(request: (accessToken: string) => Promise<T>) => Promise<T>
 type Props = { authenticatedRequest: AuthenticatedRequest; sourceDocumentId: string; onBack: () => void }
 
 const statusLabels: Record<string, string> = { pending: 'Gözləyir', running: 'Emal edilir', succeeded: 'Tamamlanıb', failed: 'Uğursuz' }
 const languageLabel = (value: string | null) => value === 'az' ? 'Azərbaycan dili' : value ?? 'Müəyyən edilməyib'
+const fourOptionLabels = ['A', 'B', 'C', 'D'] as const
+
+function answerOptionLabel(labels: Array<string | null>, index: number): string | null {
+  const sourceLabel = labels[index]
+  if (sourceLabel) return sourceLabel
+  if (labels.length === fourOptionLabels.length && labels.every((label) => label === null)) return fourOptionLabels[index]
+  return null
+}
 
 function extractionError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -32,6 +41,7 @@ export default function AdminQuestionExtraction({ authenticatedRequest, sourceDo
   const [starting, setStarting] = useState(false)
   const [startError, setStartError] = useState<string | null>(null)
   const [variant, setVariant] = useState('all')
+  const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null)
 
   useEffect(() => {
     const generation = ++generationRef.current
@@ -62,7 +72,23 @@ export default function AdminQuestionExtraction({ authenticatedRequest, sourceDo
   const activeRun = latestRun?.status === 'pending' || latestRun?.status === 'running'
   const answerOptionCount = useMemo(() => analysis?.questions.reduce((sum, question) => sum + question.answer_options.length, 0) ?? 0, [analysis])
   const effectiveVariant = analysis?.blocks.some((block) => block.name === variant) ? variant : 'all'
-  const questions = analysis?.questions.filter((question) => effectiveVariant === 'all' || question.variant === effectiveVariant) ?? []
+  const questions = useMemo(
+    () => analysis?.questions.filter((question) => effectiveVariant === 'all' || question.variant === effectiveVariant) ?? [],
+    [analysis, effectiveVariant],
+  )
+  const activeQuestionIndex = questions.findIndex((question) => question.id === selectedQuestionId)
+  const resolvedActiveQuestionIndex = activeQuestionIndex >= 0 ? activeQuestionIndex : 0
+  const activeQuestion = questions[resolvedActiveQuestionIndex] ?? null
+
+  useEffect(() => {
+    if (questions.length === 0) {
+      if (selectedQuestionId !== null) setSelectedQuestionId(null)
+      return
+    }
+    if (!questions.some((question) => question.id === selectedQuestionId)) {
+      setSelectedQuestionId(questions[0].id)
+    }
+  }, [questions, selectedQuestionId])
 
   const startExtraction = async () => {
     if (starting || activeRun) return
@@ -91,7 +117,18 @@ export default function AdminQuestionExtraction({ authenticatedRequest, sourceDo
       <div className="admin-question-extraction-summary"><div><span>Ümumi sual</span><strong>{analysis.total_questions}</strong></div>{analysis.blocks.map((block) => <div key={block.name}><span>{block.name}</span><strong>{block.question_count}</strong></div>)}<div><span>Review tələb edən</span><strong>{analysis.needs_review_count}</strong></div><div><span>Cavab variantları</span><strong>{answerOptionCount}</strong></div><div><span>Dil</span><strong>{languageLabel(analysis.detected_language)}</strong></div></div>
       <section className="admin-question-extraction-provenance"><h2>Analiz məlumatları</h2><dl><div><dt>Provider</dt><dd>{result.provider_name ?? '—'}</dd></div><div><dt>Model</dt><dd>{result.model_name ?? '—'}</dd></div><div><dt>Processor</dt><dd>{result.processor_name} / {result.processor_version}</dd></div><div><dt>Processing version</dt><dd>{result.processing_version}</dd></div><div><dt>Schema version</dt><dd>{result.schema_version}</dd></div><div><dt>Prompt version</dt><dd>{result.prompt_version ?? '—'}</dd></div></dl></section>
       <div className="admin-question-extraction-variants" role="group" aria-label="Variant filtri"><button type="button" className={effectiveVariant === 'all' ? 'active' : ''} onClick={() => setVariant('all')}>Hamısı ({analysis.total_questions})</button>{analysis.blocks.map((block) => <button type="button" key={block.name} className={effectiveVariant === block.name ? 'active' : ''} onClick={() => setVariant(block.name)}>{block.name} ({block.question_count})</button>)}</div>
-      <div className="admin-question-extraction-list">{questions.map((question) => <article className={`admin-question-extraction-question${question.needs_review ? ' admin-question-extraction-question--review' : ''}`} key={question.id}><header><div><strong>{question.question_number ?? `Sual ${question.sequence_number}`}</strong>{question.variant && <span>{question.variant}</span>}</div>{question.needs_review && <strong className="admin-question-extraction-review"><AlertCircle size={15} /> Yoxlama tələb edir</strong>}</header><p className="admin-question-extraction-question-text">{question.question_text}</p>{question.answer_options.length > 0 && <ol className="admin-question-extraction-options">{question.answer_options.map((option, index) => <li key={`${question.id}-option-${index}`}><strong>{option.label ? `${option.label})` : `${index + 1}.`}</strong> {option.text}</li>)}</ol>}<div className="admin-question-extraction-question-meta"><span>Səhifə: {question.source_pages.map((page) => page.page_number).join(', ')}</span><span>Etimad: {question.confidence}</span>{question.visual_required && <span><Eye size={15} /> Vizual material tələb olunur</span>}{question.corrections.length > 0 && <span>Düzəliş: {question.corrections.length}</span>}</div>{question.corrections.length > 0 && <details><summary>AI düzəlişləri</summary><ul>{question.corrections.map((correction, index) => <li key={`${question.id}-correction-${index}`}><del>{correction.original_value}</del> → <ins>{correction.normalized_value}</ins> — {correction.reason}</li>)}</ul></details>}</article>)}</div>
+      <section className="admin-question-extraction-review-workspace" aria-label="Sual yoxlama sahəsi">
+        <nav className="admin-question-extraction-navigator" aria-label="Suallar">
+          {questions.map((question) => {
+            const isActive = question.id === activeQuestion?.id
+            return <button type="button" key={question.id} className={isActive ? 'active' : ''} aria-current={isActive ? 'true' : undefined} onClick={() => setSelectedQuestionId(question.id)}><span>{question.question_number ?? `Sual ${question.sequence_number}`}</span>{question.needs_review && <span className="admin-question-extraction-navigator-review" aria-label="Yoxlama tələb edir" title="Yoxlama tələb edir" />}</button>
+          })}
+        </nav>
+        {activeQuestion && <div className="admin-question-extraction-active-question">
+          <div className="admin-question-extraction-pagination"><button type="button" disabled={resolvedActiveQuestionIndex === 0} onClick={() => setSelectedQuestionId(questions[resolvedActiveQuestionIndex - 1].id)}>Əvvəlki</button><span>{resolvedActiveQuestionIndex + 1} / {questions.length}</span><button type="button" disabled={resolvedActiveQuestionIndex === questions.length - 1} onClick={() => setSelectedQuestionId(questions[resolvedActiveQuestionIndex + 1].id)}>Növbəti</button></div>
+          <article className={`admin-question-extraction-question${activeQuestion.needs_review ? ' admin-question-extraction-question--review' : ''}`}><header><div><strong>{activeQuestion.question_number ?? `Sual ${activeQuestion.sequence_number}`}</strong>{activeQuestion.variant && <span>{activeQuestion.variant}</span>}</div>{activeQuestion.needs_review && <strong className="admin-question-extraction-review"><AlertCircle size={15} /> Yoxlama tələb edir</strong>}</header><div className="admin-question-extraction-question-text"><MathContent content={activeQuestion.content} fallbackText={activeQuestion.question_text} /></div>{activeQuestion.answer_options.length > 0 && <ul className="admin-question-extraction-options">{activeQuestion.answer_options.map((option, index, options) => { const label = answerOptionLabel(options.map((item) => item.label), index); return <li key={`${activeQuestion.id}-option-${index}`}>{label && <strong>{label})</strong>} <MathContent content={option.content} fallbackText={option.text} /></li> })}</ul>}<div className="admin-question-extraction-question-meta"><span>Səhifə: {activeQuestion.source_pages.map((page) => page.page_number).join(', ')}</span><span>Etimad: {activeQuestion.confidence}</span>{activeQuestion.visual_required && <span><Eye size={15} /> Vizual material tələb olunur</span>}{activeQuestion.corrections.length > 0 && <span>Düzəliş: {activeQuestion.corrections.length}</span>}</div>{activeQuestion.corrections.length > 0 && <details><summary>AI düzəlişləri</summary><ul>{activeQuestion.corrections.map((correction, index) => <li key={`${activeQuestion.id}-correction-${index}`}><del>{correction.original_value}</del> → <ins>{correction.normalized_value}</ins> — {correction.reason}</li>)}</ul></details>}</article>
+        </div>}
+      </section>
     </> : <div className="admin-question-extraction-empty"><strong>Bu mənbə üçün uğurlu AI analiz nəticəsi yoxdur.</strong>{latestRun && <span> Cari status: {statusLabels[latestRun.status] ?? latestRun.status}.</span>}</div>}
   </section>
 }

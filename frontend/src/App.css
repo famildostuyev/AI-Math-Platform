@@ -11122,3 +11122,121 @@ button {
     grid-row: auto;
   }
 }
+/* Admin AI question review navigator */
+.math-content__math {
+  vertical-align: baseline;
+}
+
+.math-content__math--display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 4px;
+}
+
+.math-content__fallback {
+  white-space: pre-wrap;
+}
+
+.admin-question-extraction-review-workspace {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.admin-question-extraction-navigator {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  border: 1px solid #e2e7f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.admin-question-extraction-navigator button {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 8px 13px;
+  border: 1px solid #dfe4ee;
+  border-radius: 10px;
+  background: #f8f9fc;
+  color: #4a566d;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.admin-question-extraction-navigator button:hover {
+  border-color: #aaa0ef;
+  background: #f4f1ff;
+}
+
+.admin-question-extraction-navigator button.active {
+  border-color: #6957df;
+  background: #6957df;
+  color: #fff;
+  box-shadow: 0 5px 14px rgba(88, 70, 199, 0.2);
+}
+
+.admin-question-extraction-navigator-review {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e0a134;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.admin-question-extraction-active-question {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-question-extraction-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.admin-question-extraction-pagination span {
+  min-width: 54px;
+  color: #6b7487;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: center;
+}
+
+.admin-question-extraction-pagination button {
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 1px solid #dfe4ee;
+  border-radius: 9px;
+  background: #fff;
+  color: #465269;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.admin-question-extraction-pagination button:hover:not(:disabled) {
+  border-color: #6957df;
+  color: #5b48d5;
+}
+
+.admin-question-extraction-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 700px) {
+  .admin-question-extraction-pagination {
+    justify-content: space-between;
+  }
+}
