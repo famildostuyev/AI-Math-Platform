@@ -1,6 +1,7 @@
 ﻿from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
+from app.api.ai_authoring import router as ai_authoring_router
 from app.api.catalog import router as catalog_router
 from app.api.media import router as media_router
 from app.api.question_bank import router as question_bank_router
@@ -23,6 +24,11 @@ app.include_router(
 
 app.include_router(
     teacher_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    ai_authoring_router,
     prefix="/api/v1",
 )
 
