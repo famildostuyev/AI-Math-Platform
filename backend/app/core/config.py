@@ -28,6 +28,17 @@ class Settings(BaseSettings):
     ] = "development"
     DEBUG: bool = False
 
+    # Provider-neutral AI authoring context boundary
+    AI_AUTHORING_CONTEXT_MAX_CHARS: int = Field(
+        default=100_000,
+        ge=1,
+        le=1_000_000,
+        strict=True,
+    )
+    AI_AUTHORING_MODEL: str = "gpt-5-mini"
+    AI_AUTHORING_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0, le=300)
+    AI_AUTHORING_MAX_RETRIES: int = Field(default=0, ge=0, le=5, strict=True)
+
     # API
     API_V1_PREFIX: str = "/api/v1"
 

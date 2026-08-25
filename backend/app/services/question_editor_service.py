@@ -54,6 +54,15 @@ from app.services.structured_text_service import (
     normalize_text_content,
     prepare_structured_text_write,
 )
+from app.services.authoring_action import (
+    AuthoringAction,
+    CreateFormulaBlockAction,
+    CreateTextBlockAction,
+    DeleteBlockAction,
+    ReorderBlockAction,
+    UpdateFormulaBlockAction,
+    UpdateTextBlockAction,
+)
 
 
 def _utc_now() -> datetime:
@@ -114,6 +123,10 @@ class BlockOrderSetMismatchError(QuestionEditorServiceError):
 
 class MediaAssetNotFoundError(QuestionEditorServiceError):
     """Raised when a referenced media asset is unavailable."""
+
+
+class InvalidAuthoringActionTargetError(QuestionEditorServiceError):
+    """Raised when an atomic authoring action targets invalid block state."""
 
 
 class QuestionEditorService:
@@ -642,6 +655,169 @@ class QuestionEditorService:
             raise RevisionConflictError(
                 "Question revision was modified by another request."
             )
+
+    def apply_action_set(
+        self,
+        *,
+        revision_id: uuid.UUID,
+        expected_revision_updated_at: datetime,
+        actions: list[AuthoringAction],
+    ) -> QuestionRevision:
+        """Apply validated authoring actions without committing the transaction.
+
+        The caller owns commit/rollback so canonical mutations and the proposal
+        lifecycle transition can share one transaction.
+        """
+
+        revision = self.db.scalar(
+            select(QuestionRevision)
+            .join(QuestionForm, QuestionForm.id == QuestionRevision.question_form_id)
+            .join(QuestionFamily, QuestionFamily.id == QuestionForm.question_family_id)
+            .where(
+                QuestionRevision.id == revision_id,
+                QuestionRevision.deleted_at.is_(None),
+                QuestionForm.is_active.is_(True),
+                QuestionForm.deleted_at.is_(None),
+                QuestionFamily.is_active.is_(True),
+                QuestionFamily.deleted_at.is_(None),
+            )
+            .with_for_update()
+        )
+        if revision is None:
+            raise RevisionNotFoundError("Question revision was not found.")
+        self.ensure_revision_editable(revision)
+        self.ensure_revision_timestamp_matches(
+            revision, expected_revision_updated_at
+        )
+
+        blocks = list(
+            self.db.scalars(
+                select(ContentBlock)
+                .where(
+                    ContentBlock.question_revision_id == revision.id,
+                    ContentBlock.deleted_at.is_(None),
+                )
+                .order_by(ContentBlock.sort_order, ContentBlock.id)
+                .with_for_update()
+            ).all()
+        )
+        block_by_id = {block.id: block for block in blocks}
+
+        # Validate every target and payload before mutating persistent state.
+        active_ids = set(block_by_id)
+        for action in actions:
+            if isinstance(action, (UpdateTextBlockAction, UpdateFormulaBlockAction)):
+                block = block_by_id.get(action.block_id)
+                expected_type = (
+                    ContentBlockType.TEXT
+                    if isinstance(action, UpdateTextBlockAction)
+                    else ContentBlockType.FORMULA
+                )
+                if block is None or action.block_id not in active_ids:
+                    raise InvalidAuthoringActionTargetError(
+                        "Authoring action block was not found in the revision."
+                    )
+                if block.block_type != expected_type:
+                    raise InvalidAuthoringActionTargetError(
+                        "Authoring action block type does not match its target."
+                    )
+                if expected_type == ContentBlockType.TEXT:
+                    if block.text_content is None:
+                        raise EditorBlockContentMissingError(
+                            "Text block content is missing."
+                        )
+                    prepare_structured_text_write(
+                        action.payload.document, action.payload.format_version
+                    )
+                elif block.formula_content is None:
+                    raise EditorBlockContentMissingError(
+                        "Formula block content is missing."
+                    )
+            elif isinstance(action, DeleteBlockAction):
+                if action.block_id not in active_ids:
+                    raise InvalidAuthoringActionTargetError(
+                        "Authoring action block was not found in the revision."
+                    )
+                active_ids.remove(action.block_id)
+            elif isinstance(action, ReorderBlockAction):
+                if set(action.ordered_block_ids) != active_ids:
+                    raise BlockOrderSetMismatchError(
+                        "Block order must contain exactly every active existing block."
+                    )
+            elif isinstance(action, CreateTextBlockAction):
+                prepare_structured_text_write(
+                    action.payload.document, action.payload.format_version
+                )
+
+        maximum_sort_order = max((block.sort_order for block in blocks), default=0)
+        next_sort_order = maximum_sort_order + 1000
+        now = _utc_now()
+        for action in actions:
+            if isinstance(action, UpdateTextBlockAction):
+                block = block_by_id[action.block_id]
+                prepared = prepare_structured_text_write(
+                    action.payload.document, action.payload.format_version
+                )
+                block.text_content.source_text = prepared.source_text
+                block.text_content.document_data = prepared.document_data
+                block.text_content.format_version = prepared.format_version
+            elif isinstance(action, UpdateFormulaBlockAction):
+                content = block_by_id[action.block_id].formula_content
+                content.source_latex = action.payload.source_latex
+                content.format_version = action.payload.format_version
+            elif isinstance(action, CreateTextBlockAction):
+                prepared = prepare_structured_text_write(
+                    action.payload.document, action.payload.format_version
+                )
+                block = ContentBlock(
+                    question_revision_id=revision.id,
+                    block_type=ContentBlockType.TEXT,
+                    sort_order=next_sort_order,
+                )
+                next_sort_order += 1000
+                self.db.add(block)
+                self.db.flush()
+                self.db.add(
+                    TextBlockContent(
+                        content_block_id=block.id,
+                        source_text=prepared.source_text,
+                        document_data=prepared.document_data,
+                        format_version=prepared.format_version,
+                    )
+                )
+            elif isinstance(action, CreateFormulaBlockAction):
+                block = ContentBlock(
+                    question_revision_id=revision.id,
+                    block_type=ContentBlockType.FORMULA,
+                    sort_order=next_sort_order,
+                )
+                next_sort_order += 1000
+                self.db.add(block)
+                self.db.flush()
+                self.db.add(
+                    FormulaBlockContent(
+                        content_block_id=block.id,
+                        source_latex=action.payload.source_latex,
+                        format_version=action.payload.format_version,
+                    )
+                )
+            elif isinstance(action, DeleteBlockAction):
+                block_by_id[action.block_id].deleted_at = now
+            elif isinstance(action, ReorderBlockAction):
+                current_max = max(
+                    (block_by_id[block_id].sort_order for block_id in action.ordered_block_ids),
+                    default=0,
+                )
+                temporary_base = max(current_max, len(action.ordered_block_ids) * 1000) + 1_000_000
+                for position, block_id in enumerate(action.ordered_block_ids):
+                    block_by_id[block_id].sort_order = temporary_base + ((position + 1) * 1000)
+                self.db.flush()
+                for position, block_id in enumerate(action.ordered_block_ids):
+                    block_by_id[block_id].sort_order = (position + 1) * 1000
+
+        revision.updated_at = now
+        self.db.flush()
+        return revision
 
     def update_text_block(
         self,

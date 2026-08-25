@@ -93,6 +93,24 @@ class QuestionRevisionProvenanceKind(str, Enum):
     ADMIN_EDITED = "admin_edited"
 
 
+class AIAuthoringProposalStatus(str, Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    OBSOLETE = "obsolete"
+
+
+class AIAuthoringConversationStatus(str, Enum):
+    ACTIVE = "active"
+    CLOSED = "closed"
+
+
+class AIAuthoringMessageRole(str, Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+
+
 class QuestionDifficulty(str, Enum):
     EASY = "easy"
     MEDIUM = "medium"

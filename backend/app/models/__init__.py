@@ -1,3 +1,6 @@
+from app.models.ai_authoring_proposal import AIAuthoringProposal
+from app.models.ai_authoring_conversation import AIAuthoringConversation
+from app.models.ai_authoring_message import AIAuthoringMessage
 from app.models.grade import Grade
 from app.models.content_block import ContentBlock
 from app.models.curriculum_course import CurriculumCourse
@@ -40,6 +43,9 @@ from app.models.user_session import UserSession
 from app.models.verification_challenge import VerificationChallenge
 
 __all__ = [
+    "AIAuthoringProposal",
+    "AIAuthoringConversation",
+    "AIAuthoringMessage",
     "ContentBlock",
     "CurriculumCourse",
     "CurriculumProgram",
