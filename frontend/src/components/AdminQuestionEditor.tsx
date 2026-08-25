@@ -34,6 +34,8 @@ import {
   type QuestionRevisionEditorRead,
   type StructuredTextDocument,
 } from '../api/questionEditor'
+import AIAuthoringPanel from './AIAuthoringPanel'
+import MathContent from './MathContent'
 
 type AuthenticatedRequest = <T>(
   request: (accessToken: string) => Promise<T>,
@@ -149,7 +151,7 @@ function BlockCard({
           {block.block_type === 'formula' && (
             <>
               <code>{block.payload.source_latex || 'Boş formula'}</code>
-              <p className="admin-editor-block__note">LaTeX mənbəyi · önizləmə deaktivdir</p>
+              {block.payload.source_latex && <div className="admin-editor-formula-preview"><MathContent content={{ format_version: 1, segments: [{ type: 'math', latex: block.payload.source_latex, source_text: block.payload.source_latex, display_mode: false }] }} fallbackText={block.payload.source_latex} /></div>}
             </>
           )}
           {block.block_type === 'image' && (
@@ -464,6 +466,22 @@ export default function AdminQuestionEditor({
         {mutationPending && <div className="admin-editor-pending"><LoaderCircle className="admin-editor-spinner" size={17} /> Dəyişiklik saxlanılır və reviziya yenilənir…</div>}
 
         {revision && <>
+          <nav className="admin-editor-tabs" aria-label="Müəlliflik bölmələri">
+            <button type="button" aria-current="page">Sual</button>
+            {['Həll', 'İpucu', 'Qiymətləndirmə', 'Tarixçə'].map((label) => <button type="button" disabled key={label}>{label}<small>Sonrakı mərhələ</small></button>)}
+          </nav>
+          <div className="admin-authoring-workspace-grid">
+            <aside className="admin-authoring-source" aria-labelledby="source-panel-title">
+              <span>Mənbə</span>
+              <h2 id="source-panel-title">{revision.source_display_name ?? 'Təyin edilməyib'}</h2>
+              <dl>
+                <div><dt>Mənbə ID</dt><dd>{revision.source_id ?? 'Yoxdur'}</dd></div>
+                <div><dt>Detal / səhifə</dt><dd>{revision.source_detail ?? 'Yoxdur'}</dd></div>
+                <div><dt>Reviziya</dt><dd>#{revision.revision_number} · {revision.status}</dd></div>
+              </dl>
+              <div className="admin-authoring-source__placeholder">Orijinal mənbə görünüşü növbəti mərhələdə əlavə olunacaq.</div>
+            </aside>
+            <section className="admin-authoring-editor-column" aria-label="Manual sual redaktoru">
           <section className="admin-editor-metadata" aria-label="Reviziya məlumatları">
             <div><span>Reviziya</span><strong>#{revision.revision_number}</strong></div><div><span>Status</span><strong>{revision.status}</strong></div><div><span>Sual tipi ID</span><strong title={revision.question_type_id}>{revision.question_type_id}</strong></div><div><span>Mənbə</span><strong>{revision.source_display_name ?? 'Təyin edilməyib'}</strong></div><div><span>Mənbə ID</span><strong title={revision.source_id ?? undefined}>{revision.source_id ?? 'Təyin edilməyib'}</strong></div><div><span>Mənbə detalı</span><strong>{revision.source_detail ?? 'Təyin edilməyib'}</strong></div><div><span>Çətinlik</span><strong>{revision.difficulty ?? 'Təyin edilməyib'}</strong></div><div><span>Yenilənib</span><strong>{formatUpdatedAt(revision.updated_at)}</strong></div>
           </section>
@@ -490,6 +508,9 @@ export default function AdminQuestionEditor({
             {revision.blocks.length === 0 ? <div className="admin-editor-empty"><FileText size={34} /><strong>Bu reviziyada hələ kontent bloku yoxdur</strong><p>Yuxarıdakı sahələrdən ilk Mətn və ya Formula blokunu əlavə edin.</p></div> :
               <div className="admin-editor-block-list">{revision.blocks.map((block, index) => <BlockCard key={block.id} block={block} index={index} blockCount={revision.blocks.length} disabled={mutationDisabled} editingBlockId={editingBlockId} editingValue={editingValue} onEditingValueChange={setEditingValue} onStartEdit={startEditing} onCancelEdit={() => { setEditingBlockId(null); setEditingValue('') }} onSaveEdit={saveEditing} onDelete={removeBlock} onMove={moveBlock} />)}</div>}
           </section>
+            </section>
+            <AIAuthoringPanel authenticatedRequest={authenticatedRequest} revisionId={revision.revision_id} onAccepted={() => fetchRevision(revision.revision_id).then(() => undefined)} />
+          </div>
         </>}
       </div>
     </main>
