@@ -29,6 +29,26 @@ from app.schemas.question_editor import (
     TextBlockRead,
     TextBlockUpdate,
 )
+from app.schemas.question_answer import (
+    AcceptedAnswerCreate,
+    AcceptedAnswerRead,
+    AcceptedAnswerUpdate,
+    AnswerOptionCreate,
+    AnswerOptionRead,
+    AnswerOptionUpdate,
+    AnswerOrderRequest,
+    SetCorrectOptionsRequest,
+)
+from app.services.question_answer_service import (
+    AnswerIntegrityConflictError,
+    AnswerOrderSetMismatchError,
+    AnswerRecordNotFoundError,
+    AnswerRevisionConflictError,
+    AnswerRevisionNotEditableError,
+    AnswerRevisionNotFoundError,
+    CorrectOptionDeleteError,
+    QuestionAnswerService,
+)
 from app.services.question_editor_service import (
     BlockOrderSetMismatchError,
     ContentBlockOrderConflictError,
@@ -62,6 +82,28 @@ def _require_aware_datetime(value: datetime) -> datetime:
             detail="Concurrency timestamp must include a timezone.",
         )
     return value
+
+
+def _raise_answer_error(exc: Exception) -> None:
+    if isinstance(exc, AnswerRevisionNotFoundError):
+        code, detail = status.HTTP_404_NOT_FOUND, "Question revision was not found."
+    elif isinstance(exc, AnswerRecordNotFoundError):
+        code, detail = status.HTTP_404_NOT_FOUND, "Answer record was not found."
+    elif isinstance(exc, AnswerRevisionNotEditableError):
+        code, detail = status.HTTP_409_CONFLICT, "Question revision is not editable."
+    elif isinstance(exc, AnswerRevisionConflictError):
+        code, detail = status.HTTP_409_CONFLICT, "Question revision was modified by another request."
+    elif isinstance(exc, CorrectOptionDeleteError):
+        code, detail = status.HTTP_409_CONFLICT, "A correct option must be unselected before deletion."
+    elif isinstance(exc, AnswerOrderSetMismatchError):
+        code, detail = status.HTTP_409_CONFLICT, "Answer order does not match active records."
+    elif isinstance(exc, AnswerIntegrityConflictError):
+        code, detail = status.HTTP_409_CONFLICT, "Answer data conflicts with an active record."
+    elif isinstance(exc, UnsupportedStructuredTextVersionError):
+        code, detail = status.HTTP_422_UNPROCESSABLE_CONTENT, "Structured text format version is unsupported."
+    else:
+        raise exc
+    raise HTTPException(status_code=code, detail=detail) from exc
 
 
 @router.post(
@@ -582,6 +624,78 @@ def create_image_block(
             status_code=status.HTTP_409_CONFLICT,
             detail="Content block order conflict.",
         ) from exc
+
+
+@router.post("/revisions/{revision_id}/answer-options", response_model=AnswerOptionRead, status_code=status.HTTP_201_CREATED)
+def create_answer_option(revision_id: uuid.UUID, request: AnswerOptionCreate, _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))], db: Annotated[Session, Depends(get_db)]) -> AnswerOptionRead:
+    try:
+        return QuestionAnswerService(db).create_option(revision_id=revision_id, request=request)
+    except Exception as exc:
+        _raise_answer_error(exc)
+
+
+@router.patch("/revisions/{revision_id}/answer-options/{option_id}", response_model=AnswerOptionRead)
+def update_answer_option(revision_id: uuid.UUID, option_id: uuid.UUID, request: AnswerOptionUpdate, _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))], db: Annotated[Session, Depends(get_db)]) -> AnswerOptionRead:
+    try:
+        return QuestionAnswerService(db).update_option(revision_id=revision_id, option_id=option_id, request=request)
+    except Exception as exc:
+        _raise_answer_error(exc)
+
+
+@router.delete("/revisions/{revision_id}/answer-options/{option_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_answer_option(revision_id: uuid.UUID, option_id: uuid.UUID, expected_revision_updated_at: datetime, _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))], db: Annotated[Session, Depends(get_db)]) -> None:
+    try:
+        QuestionAnswerService(db).delete_option(revision_id=revision_id, option_id=option_id, expected_revision_updated_at=_require_aware_datetime(expected_revision_updated_at))
+    except Exception as exc:
+        _raise_answer_error(exc)
+
+
+@router.put("/revisions/{revision_id}/answer-options/actions/order", response_model=list[AnswerOptionRead])
+def reorder_answer_options(revision_id: uuid.UUID, request: AnswerOrderRequest, _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))], db: Annotated[Session, Depends(get_db)]) -> list[AnswerOptionRead]:
+    try:
+        return QuestionAnswerService(db).reorder_options(revision_id=revision_id, request=request)
+    except Exception as exc:
+        _raise_answer_error(exc)
+
+
+@router.put("/revisions/{revision_id}/answer-options/actions/correct", response_model=list[AnswerOptionRead])
+def set_correct_answer_options(revision_id: uuid.UUID, request: SetCorrectOptionsRequest, _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))], db: Annotated[Session, Depends(get_db)]) -> list[AnswerOptionRead]:
+    try:
+        return QuestionAnswerService(db).set_correct_options(revision_id=revision_id, request=request)
+    except Exception as exc:
+        _raise_answer_error(exc)
+
+
+@router.post("/revisions/{revision_id}/accepted-answers", response_model=AcceptedAnswerRead, status_code=status.HTTP_201_CREATED)
+def create_accepted_answer(revision_id: uuid.UUID, request: AcceptedAnswerCreate, _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))], db: Annotated[Session, Depends(get_db)]) -> AcceptedAnswerRead:
+    try:
+        return QuestionAnswerService(db).create_accepted_answer(revision_id=revision_id, request=request)
+    except Exception as exc:
+        _raise_answer_error(exc)
+
+
+@router.patch("/revisions/{revision_id}/accepted-answers/{answer_id}", response_model=AcceptedAnswerRead)
+def update_accepted_answer(revision_id: uuid.UUID, answer_id: uuid.UUID, request: AcceptedAnswerUpdate, _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))], db: Annotated[Session, Depends(get_db)]) -> AcceptedAnswerRead:
+    try:
+        return QuestionAnswerService(db).update_accepted_answer(revision_id=revision_id, answer_id=answer_id, request=request)
+    except Exception as exc:
+        _raise_answer_error(exc)
+
+
+@router.delete("/revisions/{revision_id}/accepted-answers/{answer_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_accepted_answer(revision_id: uuid.UUID, answer_id: uuid.UUID, expected_revision_updated_at: datetime, _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))], db: Annotated[Session, Depends(get_db)]) -> None:
+    try:
+        QuestionAnswerService(db).delete_accepted_answer(revision_id=revision_id, answer_id=answer_id, expected_revision_updated_at=_require_aware_datetime(expected_revision_updated_at))
+    except Exception as exc:
+        _raise_answer_error(exc)
+
+
+@router.put("/revisions/{revision_id}/accepted-answers/actions/order", response_model=list[AcceptedAnswerRead])
+def reorder_accepted_answers(revision_id: uuid.UUID, request: AnswerOrderRequest, _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))], db: Annotated[Session, Depends(get_db)]) -> list[AcceptedAnswerRead]:
+    try:
+        return QuestionAnswerService(db).reorder_accepted_answers(revision_id=revision_id, request=request)
+    except Exception as exc:
+        _raise_answer_error(exc)
 
 
 @router.patch(

@@ -651,6 +651,7 @@ class QuestionEditorServiceTest(unittest.TestCase):
             source_detail="Test source detail",
             source=source,
             question_family=family,
+            question_type=SimpleNamespace(name="open_response"),
         )
         revision = SimpleNamespace(
             id=uuid.uuid4(),
@@ -665,6 +666,7 @@ class QuestionEditorServiceTest(unittest.TestCase):
         db.scalar.return_value = revision
         db.scalars.side_effect = [
             scalar_result([]), scalar_result([]), scalar_result(blocks),
+            scalar_result([]), scalar_result([]),
         ]
         return db, revision
 
@@ -675,6 +677,9 @@ class QuestionEditorServiceTest(unittest.TestCase):
         )
         self.assertIsInstance(response, QuestionRevisionEditorRead)
         self.assertEqual(response.blocks, [])
+        self.assertEqual(response.answer_policy.value, "accepted_answer")
+        self.assertEqual(response.answer_options, [])
+        self.assertEqual(response.accepted_answers, [])
         self.assertEqual(response.source_id, revision.question_form.source_id)
         self.assertEqual(
             response.source_detail,

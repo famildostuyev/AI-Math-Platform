@@ -193,3 +193,17 @@ class QuestionRevision(BaseModel):
         order_by="ContentBlock.sort_order",
         passive_deletes=True,
     )
+
+    answer_options: Mapped[list["AnswerOption"]] = relationship(
+        "AnswerOption",
+        back_populates="revision",
+        order_by="AnswerOption.order_index",
+        passive_deletes=True,
+    )
+
+    accepted_answers: Mapped[list["AcceptedAnswer"]] = relationship(
+        "AcceptedAnswer",
+        back_populates="revision",
+        order_by="AcceptedAnswer.order_index",
+        passive_deletes=True,
+    )

@@ -119,7 +119,7 @@ class ImageBlockContentModelMetadataTest(unittest.TestCase):
         for excluded_table in {
             "graph_block_contents",
             "table_block_contents", "table_rows", "table_cells",
-            "diagram_block_contents", "answer_options", "accepted_answers",
+            "diagram_block_contents",
             "solutions", "hints", "rubrics", "situation_contexts",
             "matching_items", "assessment_rules",
         }:

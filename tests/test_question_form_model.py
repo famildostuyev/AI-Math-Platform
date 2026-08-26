@@ -139,8 +139,6 @@ class QuestionFormModelMetadataTest(unittest.TestCase):
         self.assertEqual(QuestionFamily.__table__.name, "question_families")
         self.assertEqual(QuestionSource.__table__.name, "question_sources")
         for excluded_table in {
-            "answer_options",
-            "accepted_answers",
             "solutions",
             "hints",
             "rubrics",

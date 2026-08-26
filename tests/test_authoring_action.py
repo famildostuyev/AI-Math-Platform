@@ -19,6 +19,15 @@ from app.services.authoring_action import (
     ReorderBlockAction,
     UpdateFormulaBlockAction,
     UpdateTextBlockAction,
+    CreateAnswerOptionAction,
+    UpdateAnswerOptionAction,
+    DeleteAnswerOptionAction,
+    ReorderAnswerOptionsAction,
+    SetCorrectAnswersAction,
+    CreateAcceptedAnswerAction,
+    UpdateAcceptedAnswerAction,
+    DeleteAcceptedAnswerAction,
+    ReorderAcceptedAnswersAction,
 )
 
 
@@ -36,6 +45,38 @@ def text_payload(text: str = "Draft") -> dict[str, object]:
 
 
 class AuthoringActionContractTest(unittest.TestCase):
+    def test_answer_actions_are_strict_typed_and_ordered(self) -> None:
+        option_id, answer_id = uuid.uuid4(), uuid.uuid4()
+        envelope = AuthoringActionEnvelope.model_validate({"schema_version": 1, "actions": [
+            {"action_type": "create_answer_option", "label": "A", "payload": text_payload("One")},
+            {"action_type": "update_answer_option", "option_id": str(option_id), "label": "B", "payload": text_payload("Two")},
+            {"action_type": "delete_answer_option", "option_id": str(option_id)},
+            {"action_type": "reorder_answer_options", "ordered_option_ids": [str(option_id)]},
+            {"action_type": "set_correct_answers", "option_ids": [str(option_id)]},
+            {"action_type": "create_accepted_answer", "payload": text_payload("42")},
+            {"action_type": "update_accepted_answer", "answer_id": str(answer_id), "payload": text_payload("43")},
+            {"action_type": "delete_accepted_answer", "answer_id": str(answer_id)},
+            {"action_type": "reorder_accepted_answers", "ordered_answer_ids": [str(answer_id)]},
+        ]})
+        self.assertEqual([type(action) for action in envelope.actions], [
+            CreateAnswerOptionAction, UpdateAnswerOptionAction,
+            DeleteAnswerOptionAction, ReorderAnswerOptionsAction,
+            SetCorrectAnswersAction, CreateAcceptedAnswerAction,
+            UpdateAcceptedAnswerAction, DeleteAcceptedAnswerAction,
+            ReorderAcceptedAnswersAction,
+        ])
+
+    def test_answer_actions_reject_unknown_fields_and_invalid_content(self) -> None:
+        with self.assertRaises(ValidationError):
+            AuthoringActionEnvelope.model_validate({"actions": [{
+                "action_type": "create_answer_option", "label": "A",
+                "payload": text_payload(), "is_correct": True,
+            }]})
+        with self.assertRaises(ValidationError):
+            AuthoringActionEnvelope.model_validate({"actions": [{
+                "action_type": "create_accepted_answer",
+                "payload": {"document": {"type": "invalid", "content": []}, "format_version": 1},
+            }]})
     def test_update_actions_use_existing_editor_payload_shapes(self) -> None:
         text = AuthoringActionEnvelope.model_validate({
             "schema_version": 1,

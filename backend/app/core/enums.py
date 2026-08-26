@@ -78,6 +78,14 @@ class OpenResponseMode(str, Enum):
     DETAILED_SOLUTION = "detailed_solution"
 
 
+class AnswerPolicy(str, Enum):
+    OPTION_SINGLE = "option_single"
+    OPTION_MULTIPLE = "option_multiple"
+    ACCEPTED_ANSWER = "accepted_answer"
+    NONE = "none"
+    UNSUPPORTED = "unsupported"
+
+
 class QuestionRevisionStatus(str, Enum):
     DRAFT = "draft"
     PROPOSED = "proposed"

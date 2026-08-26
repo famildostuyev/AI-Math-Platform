@@ -10,6 +10,8 @@ export type QuestionRevisionStatus =
   | 'rejected'
 
 export type QuestionDifficulty = 'easy' | 'medium' | 'hard'
+export type AnswerPolicy = 'option_single' | 'option_multiple'
+  | 'accepted_answer' | 'none' | 'unsupported'
 
 export type BoldMark = {
   type: 'bold'
@@ -253,7 +255,38 @@ export type ContentBlockRead =
 
 export type QuestionRevisionEditorRead = QuestionDraftRead & {
   blocks: ContentBlockRead[]
+  answer_policy: AnswerPolicy
+  answer_options: AnswerOptionRead[]
+  accepted_answers: AcceptedAnswerRead[]
 }
+
+export type AnswerOptionRead = {
+  id: UUID
+  label: string | null
+  order_index: number
+  source_text: string
+  document: StructuredTextDocument
+  format_version: 1
+  is_correct: boolean
+}
+
+export type AcceptedAnswerRead = {
+  id: UUID
+  order_index: number
+  source_text: string
+  document: StructuredTextDocument
+  format_version: 1
+}
+
+export type AnswerContentRequest = {
+  document: StructuredTextDocument
+  format_version?: 1
+  expected_revision_updated_at: IsoDateTime
+}
+
+export type AnswerOptionRequest = AnswerContentRequest & { label?: string | null }
+export type AnswerOrderRequest = { answer_ids: UUID[]; expected_revision_updated_at: IsoDateTime }
+export type SetCorrectOptionsRequest = { option_ids: UUID[]; expected_revision_updated_at: IsoDateTime }
 
 export function createQuestionDraft(
   accessToken: string,
@@ -500,5 +533,45 @@ export function reorderBlocks(
       body: JSON.stringify(request),
     },
   )
+}
+
+function answerPath(revisionId: UUID, collection: 'answer-options' | 'accepted-answers'): string {
+  return `/api/v1/question-editor/revisions/${encodeURIComponent(revisionId)}/${collection}`
+}
+
+export function createOption(accessToken: string, revisionId: UUID, request: AnswerOptionRequest): Promise<AnswerOptionRead> {
+  return requestJson<AnswerOptionRead>(answerPath(revisionId, 'answer-options'), { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request) })
+}
+
+export function updateOption(accessToken: string, revisionId: UUID, optionId: UUID, request: AnswerOptionRequest): Promise<AnswerOptionRead> {
+  return requestJson<AnswerOptionRead>(`${answerPath(revisionId, 'answer-options')}/${encodeURIComponent(optionId)}`, { method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request) })
+}
+
+export function deleteOption(accessToken: string, revisionId: UUID, optionId: UUID, expectedAt: IsoDateTime): Promise<void> {
+  return requestJson<void>(`${answerPath(revisionId, 'answer-options')}/${encodeURIComponent(optionId)}?expected_revision_updated_at=${encodeURIComponent(expectedAt)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } })
+}
+
+export function reorderOptions(accessToken: string, revisionId: UUID, request: AnswerOrderRequest): Promise<AnswerOptionRead[]> {
+  return requestJson<AnswerOptionRead[]>(`${answerPath(revisionId, 'answer-options')}/actions/order`, { method: 'PUT', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request) })
+}
+
+export function setCorrectOptions(accessToken: string, revisionId: UUID, request: SetCorrectOptionsRequest): Promise<AnswerOptionRead[]> {
+  return requestJson<AnswerOptionRead[]>(`${answerPath(revisionId, 'answer-options')}/actions/correct`, { method: 'PUT', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request) })
+}
+
+export function createAcceptedAnswer(accessToken: string, revisionId: UUID, request: AnswerContentRequest): Promise<AcceptedAnswerRead> {
+  return requestJson<AcceptedAnswerRead>(answerPath(revisionId, 'accepted-answers'), { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request) })
+}
+
+export function updateAcceptedAnswer(accessToken: string, revisionId: UUID, answerId: UUID, request: AnswerContentRequest): Promise<AcceptedAnswerRead> {
+  return requestJson<AcceptedAnswerRead>(`${answerPath(revisionId, 'accepted-answers')}/${encodeURIComponent(answerId)}`, { method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request) })
+}
+
+export function deleteAcceptedAnswer(accessToken: string, revisionId: UUID, answerId: UUID, expectedAt: IsoDateTime): Promise<void> {
+  return requestJson<void>(`${answerPath(revisionId, 'accepted-answers')}/${encodeURIComponent(answerId)}?expected_revision_updated_at=${encodeURIComponent(expectedAt)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } })
+}
+
+export function reorderAcceptedAnswers(accessToken: string, revisionId: UUID, request: AnswerOrderRequest): Promise<AcceptedAnswerRead[]> {
+  return requestJson<AcceptedAnswerRead[]>(`${answerPath(revisionId, 'accepted-answers')}/actions/order`, { method: 'PUT', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request) })
 }
 

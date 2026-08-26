@@ -10,6 +10,7 @@ from openai import APIConnectionError, APIError, APITimeoutError, OpenAI, RateLi
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.models.ai_authoring_message import AI_AUTHORING_MESSAGE_MAX_LENGTH
+from app.core.enums import AnswerPolicy
 from app.schemas.structured_text import StructuredTextDocument
 from app.services.authoring_action import AuthoringActionEnvelope
 from app.services.authoring_assistant_provider import (
@@ -25,6 +26,8 @@ from app.services.authoring_assistant_provider import (
     AuthoringAssistantUnknownProviderError,
 )
 from app.services.question_authoring_context import (
+    AuthoringAcceptedAnswerContext,
+    AuthoringAnswerOptionContext,
     AuthoringRevisionContext,
     AuthoringTextBlockContext,
     AuthoringFormulaBlockContext,
@@ -52,6 +55,12 @@ modify unrelated blocks. Propose delete actions only when deletion is explicitly
 requested. Preserve valid LaTeX for formula changes. Always return canonical
 structured-text payloads for text actions. The output is a proposal only: never
 claim that a database, revision, block, or canonical question was mutated.
+For answer changes, obey answer_policy and change only the answer portion the
+admin requested. Reuse active option/accepted-answer IDs for update, delete,
+reorder, and correctness actions. Correctness always uses option IDs, never
+labels. Keep labels separate from structured content and do not touch unrelated
+options. Do not invent a correct answer; do not change correctness unless the
+admin explicitly requests it. Deletion must be an explicit action.
 """.strip()
 
 
@@ -183,6 +192,55 @@ class _OpenAIReorderAction(_StrictOpenAIModel):
     ordered_block_ids: list[uuid.UUID] = Field(min_length=1)
 
 
+class _OpenAICreateAnswerOptionAction(_StrictOpenAIModel):
+    action_type: Literal["create_answer_option"]
+    label: str | None
+    payload: _OpenAITextPayload
+
+
+class _OpenAIUpdateAnswerOptionAction(_StrictOpenAIModel):
+    action_type: Literal["update_answer_option"]
+    option_id: uuid.UUID
+    label: str | None
+    payload: _OpenAITextPayload
+
+
+class _OpenAIDeleteAnswerOptionAction(_StrictOpenAIModel):
+    action_type: Literal["delete_answer_option"]
+    option_id: uuid.UUID
+
+
+class _OpenAIReorderAnswerOptionsAction(_StrictOpenAIModel):
+    action_type: Literal["reorder_answer_options"]
+    ordered_option_ids: list[uuid.UUID]
+
+
+class _OpenAISetCorrectAnswersAction(_StrictOpenAIModel):
+    action_type: Literal["set_correct_answers"]
+    option_ids: list[uuid.UUID]
+
+
+class _OpenAICreateAcceptedAnswerAction(_StrictOpenAIModel):
+    action_type: Literal["create_accepted_answer"]
+    payload: _OpenAITextPayload
+
+
+class _OpenAIUpdateAcceptedAnswerAction(_StrictOpenAIModel):
+    action_type: Literal["update_accepted_answer"]
+    answer_id: uuid.UUID
+    payload: _OpenAITextPayload
+
+
+class _OpenAIDeleteAcceptedAnswerAction(_StrictOpenAIModel):
+    action_type: Literal["delete_accepted_answer"]
+    answer_id: uuid.UUID
+
+
+class _OpenAIReorderAcceptedAnswersAction(_StrictOpenAIModel):
+    action_type: Literal["reorder_accepted_answers"]
+    ordered_answer_ids: list[uuid.UUID]
+
+
 _OpenAIAuthoringAction = (
     _OpenAIUpdateTextAction
     | _OpenAIUpdateFormulaAction
@@ -190,6 +248,15 @@ _OpenAIAuthoringAction = (
     | _OpenAICreateFormulaAction
     | _OpenAIDeleteAction
     | _OpenAIReorderAction
+    | _OpenAICreateAnswerOptionAction
+    | _OpenAIUpdateAnswerOptionAction
+    | _OpenAIDeleteAnswerOptionAction
+    | _OpenAIReorderAnswerOptionsAction
+    | _OpenAISetCorrectAnswersAction
+    | _OpenAICreateAcceptedAnswerAction
+    | _OpenAIUpdateAcceptedAnswerAction
+    | _OpenAIDeleteAcceptedAnswerAction
+    | _OpenAIReorderAcceptedAnswersAction
 )
 
 
@@ -401,6 +468,32 @@ class OpenAIAuthoringAssistantProvider:
                     raise AuthoringAssistantInvalidActionTargetError(
                         "Authoring block order does not match canonical context."
                     )
+            elif action_type in {
+                "create_answer_option", "update_answer_option", "delete_answer_option",
+                "reorder_answer_options", "set_correct_answers",
+            }:
+                if context.answer_policy not in {AnswerPolicy.OPTION_SINGLE, AnswerPolicy.OPTION_MULTIPLE}:
+                    raise AuthoringAssistantInvalidActionTargetError("Answer option action violates canonical answer policy.")
+                option_ids = {item.option_id for item in context.answer_options}
+                if action_type in {"update_answer_option", "delete_answer_option"} and action.option_id not in option_ids:
+                    raise AuthoringAssistantInvalidActionTargetError("Answer option action targets an unavailable option.")
+                if action_type == "reorder_answer_options" and set(action.ordered_option_ids) != option_ids:
+                    raise AuthoringAssistantInvalidActionTargetError("Answer option order does not match canonical context.")
+                if action_type == "set_correct_answers" and not set(action.option_ids).issubset(option_ids):
+                    raise AuthoringAssistantInvalidActionTargetError("Correct answer targets an unavailable option.")
+                if action_type == "set_correct_answers" and context.answer_policy == AnswerPolicy.OPTION_SINGLE and len(action.option_ids) > 1:
+                    raise AuthoringAssistantInvalidActionTargetError("Single-answer policy permits at most one correct option.")
+            elif action_type in {
+                "create_accepted_answer", "update_accepted_answer",
+                "delete_accepted_answer", "reorder_accepted_answers",
+            }:
+                if context.answer_policy != AnswerPolicy.ACCEPTED_ANSWER:
+                    raise AuthoringAssistantInvalidActionTargetError("Accepted-answer action violates canonical answer policy.")
+                answer_ids = {item.answer_id for item in context.accepted_answers}
+                if action_type in {"update_accepted_answer", "delete_accepted_answer"} and action.answer_id not in answer_ids:
+                    raise AuthoringAssistantInvalidActionTargetError("Accepted-answer action targets an unavailable answer.")
+                if action_type == "reorder_accepted_answers" and set(action.ordered_answer_ids) != answer_ids:
+                    raise AuthoringAssistantInvalidActionTargetError("Accepted-answer order does not match canonical context.")
 
     def _log_validation_failure(self, exception: ValidationError) -> None:
         errors = exception.errors(include_input=False, include_url=False, include_context=False)

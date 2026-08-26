@@ -1,6 +1,8 @@
 from app.models.ai_authoring_proposal import AIAuthoringProposal
 from app.models.ai_authoring_conversation import AIAuthoringConversation
 from app.models.ai_authoring_message import AIAuthoringMessage
+from app.models.answer_option import AnswerOption
+from app.models.accepted_answer import AcceptedAnswer
 from app.models.grade import Grade
 from app.models.content_block import ContentBlock
 from app.models.curriculum_course import CurriculumCourse
@@ -46,6 +48,8 @@ __all__ = [
     "AIAuthoringProposal",
     "AIAuthoringConversation",
     "AIAuthoringMessage",
+    "AnswerOption",
+    "AcceptedAnswer",
     "ContentBlock",
     "CurriculumCourse",
     "CurriculumProgram",

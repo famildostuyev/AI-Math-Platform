@@ -1669,7 +1669,7 @@ class QuestionEditorApiTest(unittest.TestCase):
         self.assertEqual(forbidden.status_code, 403)
         service_class.assert_not_called()
 
-    def test_router_contains_exactly_twelve_routes_with_geometry_writes(self) -> None:
+    def test_router_contains_editor_and_answer_routes(self) -> None:
         route_methods = {
             (method, route.path)
             for route in question_editor_router.routes
@@ -1703,6 +1703,15 @@ class QuestionEditorApiTest(unittest.TestCase):
                 "PATCH",
                 "/question-editor/revisions/{revision_id}/blocks/{block_id}/image",
             ),
+            ("POST", "/question-editor/revisions/{revision_id}/answer-options"),
+            ("PATCH", "/question-editor/revisions/{revision_id}/answer-options/{option_id}"),
+            ("DELETE", "/question-editor/revisions/{revision_id}/answer-options/{option_id}"),
+            ("PUT", "/question-editor/revisions/{revision_id}/answer-options/actions/order"),
+            ("PUT", "/question-editor/revisions/{revision_id}/answer-options/actions/correct"),
+            ("POST", "/question-editor/revisions/{revision_id}/accepted-answers"),
+            ("PATCH", "/question-editor/revisions/{revision_id}/accepted-answers/{answer_id}"),
+            ("DELETE", "/question-editor/revisions/{revision_id}/accepted-answers/{answer_id}"),
+            ("PUT", "/question-editor/revisions/{revision_id}/accepted-answers/actions/order"),
         })
 
 

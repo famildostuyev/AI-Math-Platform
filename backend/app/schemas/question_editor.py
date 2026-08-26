@@ -10,10 +10,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from typing_extensions import TypeAliasType
 
 from app.core.enums import (
+    AnswerPolicy,
     ContentBlockType,
     QuestionDifficulty,
     QuestionRevisionStatus,
 )
+from app.schemas.question_answer import AcceptedAnswerRead, AnswerOptionRead
 from app.schemas.structured_text import StructuredTextDocument
 
 
@@ -200,6 +202,9 @@ ContentBlockRead = Annotated[
 
 class QuestionRevisionEditorRead(QuestionDraftRead):
     blocks: list[ContentBlockRead]
+    answer_policy: AnswerPolicy = AnswerPolicy.UNSUPPORTED
+    answer_options: list[AnswerOptionRead] = Field(default_factory=list)
+    accepted_answers: list[AcceptedAnswerRead] = Field(default_factory=list)
 
 
 class TextBlockWritePayload(StrictEditorSchema):

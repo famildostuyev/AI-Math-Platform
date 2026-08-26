@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.enums import AIAuthoringProposalStatus, ContentBlockType
+from app.core.enums import AIAuthoringProposalStatus, AnswerPolicy, ContentBlockType
 from app.models.ai_authoring_proposal import AIAuthoringProposal
 from app.services.authoring_action import (
     AuthoringActionEnvelope,
@@ -18,12 +18,18 @@ from app.services.authoring_action import (
     ReorderBlockAction,
     UpdateFormulaBlockAction,
     UpdateTextBlockAction,
+    CreateAnswerOptionAction, UpdateAnswerOptionAction, DeleteAnswerOptionAction,
+    ReorderAnswerOptionsAction, SetCorrectAnswersAction,
+    CreateAcceptedAnswerAction, UpdateAcceptedAnswerAction,
+    DeleteAcceptedAnswerAction, ReorderAcceptedAnswersAction,
 )
 from app.services.question_authoring_context import (
     AuthoringBlockContext,
     AuthoringFormulaBlockContext,
     AuthoringRevisionContext,
     AuthoringTextBlockContext,
+    AuthoringAnswerOptionContext,
+    AuthoringAcceptedAnswerContext,
     QuestionAuthoringContextService,
 )
 
@@ -34,6 +40,9 @@ PreviewWarningCode = Literal[
     "destructive_delete",
     "formula_changed",
     "multiple_actions",
+    "answer_option_deleted",
+    "correct_answer_changed",
+    "multiple_answer_changes",
 ]
 
 
@@ -45,7 +54,19 @@ class AuthoringBlockOrderPreview(StrictFrozenPreviewModel):
     ordered_block_ids: tuple[uuid.UUID, ...]
 
 
-AuthoringPreviewValue = Union[AuthoringBlockContext, AuthoringBlockOrderPreview]
+class AuthoringAnswerOrderPreview(StrictFrozenPreviewModel):
+    ordered_answer_ids: tuple[uuid.UUID, ...]
+
+
+class AuthoringCorrectAnswerPreview(StrictFrozenPreviewModel):
+    correct_option_ids: tuple[uuid.UUID, ...]
+
+
+AuthoringPreviewValue = Union[
+    AuthoringBlockContext, AuthoringBlockOrderPreview,
+    AuthoringAnswerOptionContext, AuthoringAcceptedAnswerContext,
+    AuthoringAnswerOrderPreview, AuthoringCorrectAnswerPreview,
+]
 
 
 class AuthoringProposalChange(StrictFrozenPreviewModel):
@@ -142,6 +163,13 @@ class AIAuthoringProposalPreviewService:
             warnings.append("formula_changed")
         if len(envelope.actions) > 1:
             warnings.append("multiple_actions")
+        answer_actions = [action for action in envelope.actions if "answer" in action.action_type or "option" in action.action_type]
+        if any(isinstance(action, DeleteAnswerOptionAction) for action in answer_actions):
+            warnings.append("answer_option_deleted")
+        if any(isinstance(action, SetCorrectAnswersAction) for action in answer_actions):
+            warnings.append("correct_answer_changed")
+        if len(answer_actions) > 1:
+            warnings.append("multiple_answer_changes")
 
         return AuthoringProposalPreview(
             proposal_id=proposal.id,
@@ -166,6 +194,12 @@ class AIAuthoringProposalPreviewService:
         block_by_id = {block.block_id: block for block in ordered}
         created_ids: set[uuid.UUID] = set()
         changes: list[AuthoringProposalChange] = []
+        options = list(context.answer_options)
+        option_by_id = {item.option_id: item for item in options}
+        accepted = list(context.accepted_answers)
+        accepted_by_id = {item.answer_id: item for item in accepted}
+        created_option_ids: set[uuid.UUID] = set()
+        created_answer_ids: set[uuid.UUID] = set()
 
         for action_index, action in enumerate(envelope.actions):
             if isinstance(action, UpdateTextBlockAction):
@@ -260,7 +294,106 @@ class AIAuthoringProposalPreviewService:
                     AuthoringBlockOrderPreview(ordered_block_ids=before_order),
                     AuthoringBlockOrderPreview(ordered_block_ids=after_order),
                 ))
+            elif isinstance(action, CreateAnswerOptionAction):
+                self._require_option_policy(context.answer_policy)
+                option_id = uuid.uuid5(proposal_id, f"preview:{action_index}:{action.action_type}")
+                after = AuthoringAnswerOptionContext(option_id=option_id, label=action.label,
+                    order=max((item.order for item in options), default=0) + 1000,
+                    source_text=self._project_text(action.payload.document), document=action.payload.document,
+                    format_version=action.payload.format_version, is_correct=False)
+                options.append(after); option_by_id[option_id] = after; created_option_ids.add(option_id)
+                changes.append(self._change(action_index, action.action_type, "created", option_id, None, after))
+            elif isinstance(action, UpdateAnswerOptionAction):
+                self._require_option_policy(context.answer_policy)
+                before = self._require_answer_target(option_by_id, action.option_id)
+                after = before.model_copy(update={"label": action.label, "source_text": self._project_text(action.payload.document), "document": action.payload.document, "format_version": action.payload.format_version})
+                options = [after if item.option_id == after.option_id else item for item in options]; option_by_id[after.option_id] = after
+                changes.append(self._change(action_index, action.action_type, "updated", before.option_id, before, after))
+            elif isinstance(action, SetCorrectAnswersAction):
+                self._require_option_policy(context.answer_policy)
+                active_ids = set(option_by_id)
+                if not set(action.option_ids).issubset(active_ids) or (context.answer_policy == AnswerPolicy.OPTION_SINGLE and len(action.option_ids) > 1):
+                    raise AIAuthoringProposalPreviewInvalidTargetError("Correct answer target violates canonical policy.")
+                before_ids = tuple(item.option_id for item in options if item.is_correct)
+                selected = set(action.option_ids)
+                options = [item.model_copy(update={"is_correct": item.option_id in selected}) for item in options]
+                option_by_id = {item.option_id: item for item in options}
+                changes.append(self._change(action_index, action.action_type, "updated", None,
+                    AuthoringCorrectAnswerPreview(correct_option_ids=before_ids),
+                    AuthoringCorrectAnswerPreview(correct_option_ids=tuple(action.option_ids))))
+            elif isinstance(action, DeleteAnswerOptionAction):
+                self._require_option_policy(context.answer_policy)
+                before = self._require_answer_target(option_by_id, action.option_id)
+                if action.option_id in created_option_ids or before.is_correct:
+                    raise AIAuthoringProposalPreviewInvalidTargetError("Correct or transient option cannot be deleted.")
+                options = [item for item in options if item.option_id != action.option_id]; del option_by_id[action.option_id]
+                changes.append(self._change(action_index, action.action_type, "deleted", before.option_id, before, None))
+            elif isinstance(action, ReorderAnswerOptionsAction):
+                self._require_option_policy(context.answer_policy)
+                existing_ids = [item.option_id for item in options if item.option_id not in created_option_ids]
+                if set(action.ordered_option_ids) != set(existing_ids):
+                    raise AIAuthoringProposalPreviewInvalidOrderError("Option order does not match canonical options.")
+                before = tuple(item.option_id for item in options)
+                created = [item for item in options if item.option_id in created_option_ids]
+                options = [option_by_id[item_id] for item_id in action.ordered_option_ids] + created
+                options = [item.model_copy(update={"order": index * 1000}) for index, item in enumerate(options, 1)]
+                option_by_id = {item.option_id: item for item in options}
+                changes.append(self._change(action_index, action.action_type, "reordered", None,
+                    AuthoringAnswerOrderPreview(ordered_answer_ids=before),
+                    AuthoringAnswerOrderPreview(ordered_answer_ids=tuple(item.option_id for item in options))))
+            elif isinstance(action, CreateAcceptedAnswerAction):
+                self._require_accepted_policy(context.answer_policy)
+                answer_id = uuid.uuid5(proposal_id, f"preview:{action_index}:{action.action_type}")
+                after = AuthoringAcceptedAnswerContext(answer_id=answer_id,
+                    order=max((item.order for item in accepted), default=0) + 1000,
+                    source_text=self._project_text(action.payload.document), document=action.payload.document,
+                    format_version=action.payload.format_version)
+                accepted.append(after); accepted_by_id[answer_id] = after; created_answer_ids.add(answer_id)
+                changes.append(self._change(action_index, action.action_type, "created", answer_id, None, after))
+            elif isinstance(action, UpdateAcceptedAnswerAction):
+                self._require_accepted_policy(context.answer_policy)
+                before = self._require_answer_target(accepted_by_id, action.answer_id)
+                after = before.model_copy(update={"source_text": self._project_text(action.payload.document), "document": action.payload.document, "format_version": action.payload.format_version})
+                accepted = [after if item.answer_id == after.answer_id else item for item in accepted]; accepted_by_id[after.answer_id] = after
+                changes.append(self._change(action_index, action.action_type, "updated", before.answer_id, before, after))
+            elif isinstance(action, DeleteAcceptedAnswerAction):
+                self._require_accepted_policy(context.answer_policy)
+                before = self._require_answer_target(accepted_by_id, action.answer_id)
+                if action.answer_id in created_answer_ids:
+                    raise AIAuthoringProposalPreviewInvalidTargetError("Transient accepted answer cannot be deleted.")
+                accepted = [item for item in accepted if item.answer_id != action.answer_id]; del accepted_by_id[action.answer_id]
+                changes.append(self._change(action_index, action.action_type, "deleted", before.answer_id, before, None))
+            elif isinstance(action, ReorderAcceptedAnswersAction):
+                self._require_accepted_policy(context.answer_policy)
+                existing_ids = [item.answer_id for item in accepted if item.answer_id not in created_answer_ids]
+                if set(action.ordered_answer_ids) != set(existing_ids):
+                    raise AIAuthoringProposalPreviewInvalidOrderError("Accepted-answer order does not match canonical answers.")
+                before = tuple(item.answer_id for item in accepted)
+                created = [item for item in accepted if item.answer_id in created_answer_ids]
+                accepted = [accepted_by_id[item_id] for item_id in action.ordered_answer_ids] + created
+                accepted = [item.model_copy(update={"order": index * 1000}) for index, item in enumerate(accepted, 1)]
+                accepted_by_id = {item.answer_id: item for item in accepted}
+                changes.append(self._change(action_index, action.action_type, "reordered", None,
+                    AuthoringAnswerOrderPreview(ordered_answer_ids=before),
+                    AuthoringAnswerOrderPreview(ordered_answer_ids=tuple(item.answer_id for item in accepted))))
         return changes
+
+    @staticmethod
+    def _require_option_policy(policy: AnswerPolicy) -> None:
+        if policy not in {AnswerPolicy.OPTION_SINGLE, AnswerPolicy.OPTION_MULTIPLE}:
+            raise AIAuthoringProposalPreviewInvalidTargetError("Option action violates canonical policy.")
+
+    @staticmethod
+    def _require_accepted_policy(policy: AnswerPolicy) -> None:
+        if policy != AnswerPolicy.ACCEPTED_ANSWER:
+            raise AIAuthoringProposalPreviewInvalidTargetError("Accepted-answer action violates canonical policy.")
+
+    @staticmethod
+    def _require_answer_target(by_id, target_id):
+        target = by_id.get(target_id)
+        if target is None:
+            raise AIAuthoringProposalPreviewInvalidTargetError("Answer action targets an unavailable record.")
+        return target
 
     @staticmethod
     def _project_text(document) -> str:

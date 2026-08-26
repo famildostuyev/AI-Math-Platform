@@ -71,6 +71,76 @@ class ReorderBlockAction(StrictAuthoringActionModel):
         return value
 
 
+class CreateAnswerOptionAction(StrictAuthoringActionModel):
+    action_type: Literal["create_answer_option"]
+    label: str | None
+    payload: TextAuthoringPayload
+
+
+class UpdateAnswerOptionAction(StrictAuthoringActionModel):
+    action_type: Literal["update_answer_option"]
+    option_id: uuid.UUID
+    label: str | None
+    payload: TextAuthoringPayload
+
+
+class DeleteAnswerOptionAction(StrictAuthoringActionModel):
+    action_type: Literal["delete_answer_option"]
+    option_id: uuid.UUID
+
+
+class ReorderAnswerOptionsAction(StrictAuthoringActionModel):
+    action_type: Literal["reorder_answer_options"]
+    ordered_option_ids: list[uuid.UUID]
+
+    @field_validator("ordered_option_ids")
+    @classmethod
+    def unique_ids(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("ordered_option_ids must contain unique IDs.")
+        return value
+
+
+class SetCorrectAnswersAction(StrictAuthoringActionModel):
+    action_type: Literal["set_correct_answers"]
+    option_ids: list[uuid.UUID]
+
+    @field_validator("option_ids")
+    @classmethod
+    def unique_ids(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("option_ids must contain unique IDs.")
+        return value
+
+
+class CreateAcceptedAnswerAction(StrictAuthoringActionModel):
+    action_type: Literal["create_accepted_answer"]
+    payload: TextAuthoringPayload
+
+
+class UpdateAcceptedAnswerAction(StrictAuthoringActionModel):
+    action_type: Literal["update_accepted_answer"]
+    answer_id: uuid.UUID
+    payload: TextAuthoringPayload
+
+
+class DeleteAcceptedAnswerAction(StrictAuthoringActionModel):
+    action_type: Literal["delete_accepted_answer"]
+    answer_id: uuid.UUID
+
+
+class ReorderAcceptedAnswersAction(StrictAuthoringActionModel):
+    action_type: Literal["reorder_accepted_answers"]
+    ordered_answer_ids: list[uuid.UUID]
+
+    @field_validator("ordered_answer_ids")
+    @classmethod
+    def unique_ids(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("ordered_answer_ids must contain unique IDs.")
+        return value
+
+
 AuthoringAction = Annotated[
     Union[
         UpdateTextBlockAction,
@@ -79,6 +149,15 @@ AuthoringAction = Annotated[
         CreateFormulaBlockAction,
         DeleteBlockAction,
         ReorderBlockAction,
+        CreateAnswerOptionAction,
+        UpdateAnswerOptionAction,
+        DeleteAnswerOptionAction,
+        ReorderAnswerOptionsAction,
+        SetCorrectAnswersAction,
+        CreateAcceptedAnswerAction,
+        UpdateAcceptedAnswerAction,
+        DeleteAcceptedAnswerAction,
+        ReorderAcceptedAnswersAction,
     ],
     Field(discriminator="action_type"),
 ]

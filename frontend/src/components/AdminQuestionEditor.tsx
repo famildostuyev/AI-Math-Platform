@@ -35,6 +35,7 @@ import {
   type StructuredTextDocument,
 } from '../api/questionEditor'
 import AIAuthoringPanel from './AIAuthoringPanel'
+import AnswerEditorSection from './AnswerEditorSection'
 import MathContent from './MathContent'
 
 type AuthenticatedRequest = <T>(
@@ -48,7 +49,7 @@ type AdminQuestionEditorProps = {
 }
 
 type MutationName = 'text-create' | 'text-update' | 'formula-create'
-  | 'formula-update' | 'delete' | 'reorder'
+  | 'formula-update' | 'delete' | 'reorder' | 'answer'
 
 function editorErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -336,6 +337,7 @@ export default function AdminQuestionEditor({
     name: MutationName,
     operation: (token: string, current: QuestionRevisionEditorRead) => Promise<unknown>,
     afterReload?: () => void,
+    conflictMessage?: string,
   ) => {
     const current = revision
     if (
@@ -358,7 +360,9 @@ export default function AdminQuestionEditor({
         setError(`Əməliyyat tamamlandı, lakin yenilənmiş reviziya yüklənmədi. Redaktə bloklanıb: ${editorErrorMessage(reloadError)}`)
       }
     } catch (mutationError: unknown) {
-      if (mutationError instanceof ApiError && mutationError.status === 409) {
+      if (mutationError instanceof ApiError && mutationError.status === 409 && conflictMessage) {
+        setError(conflictMessage)
+      } else if (mutationError instanceof ApiError && mutationError.status === 409) {
         setIsStale(true)
         setError('Reviziya başqa sorğu tərəfindən dəyişdirilib. Son vəziyyət yüklənir; əməliyyatı yenidən özünüz başladın.')
         try {
@@ -508,6 +512,13 @@ export default function AdminQuestionEditor({
             {revision.blocks.length === 0 ? <div className="admin-editor-empty"><FileText size={34} /><strong>Bu reviziyada hələ kontent bloku yoxdur</strong><p>Yuxarıdakı sahələrdən ilk Mətn və ya Formula blokunu əlavə edin.</p></div> :
               <div className="admin-editor-block-list">{revision.blocks.map((block, index) => <BlockCard key={block.id} block={block} index={index} blockCount={revision.blocks.length} disabled={mutationDisabled} editingBlockId={editingBlockId} editingValue={editingValue} onEditingValueChange={setEditingValue} onStartEdit={startEditing} onCancelEdit={() => { setEditingBlockId(null); setEditingValue('') }} onSaveEdit={saveEditing} onDelete={removeBlock} onMove={moveBlock} />)}</div>}
           </section>
+          <AnswerEditorSection
+            revision={revision}
+            disabled={mutationDisabled}
+            runMutation={(operation, afterReload, conflictMessage) => {
+              void runMutation('answer', operation, afterReload, conflictMessage)
+            }}
+          />
             </section>
             <AIAuthoringPanel authenticatedRequest={authenticatedRequest} revisionId={revision.revision_id} onAccepted={() => fetchRevision(revision.revision_id).then(() => undefined)} />
           </div>

@@ -31,6 +31,21 @@ const warningLabels: Record<PreviewWarningCode, string> = {
   destructive_delete: 'Blok silinəcək',
   formula_changed: 'Formula dəyişəcək',
   multiple_actions: 'Bir neçə dəyişiklik',
+  answer_option_deleted: 'Cavab variantı silinəcək',
+  correct_answer_changed: 'Düzgün cavab dəyişəcək',
+  multiple_answer_changes: 'Bir neçə cavab dəyişikliyi',
+}
+
+const answerActionLabels: Record<string, string> = {
+  create_answer_option: 'Cavab variantı yaradılacaq',
+  update_answer_option: 'Cavab variantı dəyişəcək',
+  delete_answer_option: 'Cavab variantı silinəcək',
+  reorder_answer_options: 'Cavab variantlarının sırası dəyişəcək',
+  set_correct_answers: 'Düzgün cavab dəyişəcək',
+  create_accepted_answer: 'Qəbul edilən cavab yaradılacaq',
+  update_accepted_answer: 'Qəbul edilən cavab dəyişəcək',
+  delete_accepted_answer: 'Qəbul edilən cavab silinəcək',
+  reorder_accepted_answers: 'Qəbul edilən cavabların sırası dəyişəcək',
 }
 
 const proposalStatusLabels: Record<ProposalRead['status'], string> = {
@@ -61,6 +76,10 @@ function safeErrorMessage(error: unknown, operation: 'create' | 'submit' | 'prev
 function PreviewValueView({ value }: { value: PreviewValue | null }) {
   if (!value) return <span className="ai-authoring-empty-value">Yoxdur</span>
   if ('ordered_block_ids' in value) return <code>{value.ordered_block_ids.join(' → ')}</code>
+  if ('ordered_answer_ids' in value) return <code>{value.ordered_answer_ids.join(' → ')}</code>
+  if ('correct_option_ids' in value) return <code>{value.correct_option_ids.length ? value.correct_option_ids.join(', ') : 'Seçilməyib'}</code>
+  if ('option_id' in value) return <p>Variant {value.label ?? '—'}: {value.source_text}{value.is_correct ? ' · düzgün' : ''}</p>
+  if ('answer_id' in value) return <p>{value.source_text}</p>
   if (value.block_type === 'text') return <p>{value.source_text || 'Boş mətn'}</p>
   if (value.block_type === 'formula') {
     return <MathContent content={{ format_version: 1, segments: [{ type: 'math', latex: value.source_latex, source_text: value.source_latex, display_mode: false }] }} fallbackText={value.source_latex} />
@@ -205,7 +224,7 @@ export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onA
             {preview.warnings.length > 0 && <ul className="ai-authoring-warnings">{preview.warnings.map((warning) => <li key={warning}><AlertTriangle size={14} /> {warningLabels[warning]}</li>)}</ul>}
             {isStale && <div className="ai-authoring-stale" role="alert">Sual dəyişdirilib. Bu təklifi qəbul etməyin; yeni AI təklifi istəyin.</div>}
             <div className="ai-authoring-changes">{preview.changes.map((change) => <article key={change.action_index}>
-              <header><strong>{change.action_type}</strong><span>{change.change_kind}</span></header>
+              <header><strong>{answerActionLabels[change.action_type] ?? change.action_type}</strong><span>{change.change_kind}</span></header>
               <div><section><small>Əvvəl</small><PreviewValueView value={change.before} /></section><section><small>Sonra</small><PreviewValueView value={change.after} /></section></div>
             </article>)}</div>
           </>}

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.enums import (
+    AnswerPolicy,
     ContentBlockType,
     QuestionDifficulty,
     QuestionRevisionProvenanceKind,
@@ -24,6 +25,7 @@ from app.schemas.question_editor import (
     QuestionRevisionEditorRead,
     TextBlockRead,
 )
+from app.schemas.question_answer import AcceptedAnswerRead, AnswerOptionRead
 from app.schemas.structured_text import StructuredTextDocument
 from app.services.question_editor_service import (
     EditorBlockContentMissingError,
@@ -87,6 +89,24 @@ AuthoringBlockContext = Annotated[
 ]
 
 
+class AuthoringAnswerOptionContext(StrictFrozenContextModel):
+    option_id: uuid.UUID
+    label: str | None
+    order: int = Field(gt=0)
+    source_text: str
+    document: StructuredTextDocument
+    format_version: Literal[1]
+    is_correct: bool
+
+
+class AuthoringAcceptedAnswerContext(StrictFrozenContextModel):
+    answer_id: uuid.UUID
+    order: int = Field(gt=0)
+    source_text: str
+    document: StructuredTextDocument
+    format_version: Literal[1]
+
+
 class AuthoringRevisionContext(StrictFrozenContextModel):
     revision_id: uuid.UUID
     revision_number: int = Field(gt=0)
@@ -102,6 +122,9 @@ class AuthoringRevisionContext(StrictFrozenContextModel):
     difficulty: QuestionDifficulty | None
     source: AuthoringSourceContext
     blocks: tuple[AuthoringBlockContext, ...]
+    answer_policy: AnswerPolicy = AnswerPolicy.UNSUPPORTED
+    answer_options: tuple[AuthoringAnswerOptionContext, ...] = ()
+    accepted_answers: tuple[AuthoringAcceptedAnswerContext, ...] = ()
 
 
 class QuestionAuthoringContextError(Exception):
@@ -242,6 +265,9 @@ class QuestionAuthoringContextService:
                     detail=read.source_detail,
                 ),
                 blocks=tuple(self._map_block(block) for block in read.blocks),
+                answer_policy=read.answer_policy,
+                answer_options=tuple(self._map_option(item) for item in read.answer_options),
+                accepted_answers=tuple(self._map_accepted(item) for item in read.accepted_answers),
             )
         except (ValidationError, TypeError, ValueError) as exc:
             raise AuthoringContextInvalidBlockPayloadError(
@@ -301,4 +327,20 @@ class QuestionAuthoringContextService:
             )
         raise AuthoringContextInvalidBlockPayloadError(
             "Question revision contains an unsupported block type."
+        )
+
+    @staticmethod
+    def _map_option(item: AnswerOptionRead) -> AuthoringAnswerOptionContext:
+        return AuthoringAnswerOptionContext(
+            option_id=item.id, label=item.label, order=item.order_index,
+            source_text=item.source_text, document=item.document,
+            format_version=item.format_version, is_correct=item.is_correct,
+        )
+
+    @staticmethod
+    def _map_accepted(item: AcceptedAnswerRead) -> AuthoringAcceptedAnswerContext:
+        return AuthoringAcceptedAnswerContext(
+            answer_id=item.id, order=item.order_index,
+            source_text=item.source_text, document=item.document,
+            format_version=item.format_version,
         )

@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.enums import (
+    AnswerPolicy,
     ContentBlockType,
     QuestionFamilyOriginKind,
     QuestionFormDerivationKind,
@@ -15,6 +16,8 @@ from app.core.enums import (
     QuestionRevisionStatus,
 )
 from app.models.content_block import ContentBlock
+from app.models.answer_option import AnswerOption
+from app.models.accepted_answer import AcceptedAnswer
 from app.models.formula_block_content import FormulaBlockContent
 from app.models.geometry_block_content import GeometryBlockContent
 from app.models.image_block_content import ImageBlockContent
@@ -54,6 +57,7 @@ from app.services.structured_text_service import (
     normalize_text_content,
     prepare_structured_text_write,
 )
+from app.services.question_answer_service import QuestionAnswerService
 from app.services.authoring_action import (
     AuthoringAction,
     CreateFormulaBlockAction,
@@ -62,7 +66,17 @@ from app.services.authoring_action import (
     ReorderBlockAction,
     UpdateFormulaBlockAction,
     UpdateTextBlockAction,
+    CreateAnswerOptionAction,
+    UpdateAnswerOptionAction,
+    DeleteAnswerOptionAction,
+    ReorderAnswerOptionsAction,
+    SetCorrectAnswersAction,
+    CreateAcceptedAnswerAction,
+    UpdateAcceptedAnswerAction,
+    DeleteAcceptedAnswerAction,
+    ReorderAcceptedAnswersAction,
 )
+from app.services.question_answer_service import AnswerPolicyService
 
 
 def _utc_now() -> datetime:
@@ -289,9 +303,13 @@ class QuestionEditorService:
             related_topic_ids=related_topic_ids,
             purpose_ids=purpose_ids,
         )
+        answers = QuestionAnswerService(self.db).read_answers_for_revision(
+            revision_id=revision.id
+        )
         return QuestionRevisionEditorRead(
             **draft_read.model_dump(),
             blocks=[self._serialize_block(block) for block in blocks],
+            **answers.model_dump(),
         )
 
     def create_text_block(
@@ -815,9 +833,112 @@ class QuestionEditorService:
                 for position, block_id in enumerate(action.ordered_block_ids):
                     block_by_id[block_id].sort_order = (position + 1) * 1000
 
+        answer_actions = [action for action in actions if isinstance(action, (
+            CreateAnswerOptionAction, UpdateAnswerOptionAction,
+            DeleteAnswerOptionAction, ReorderAnswerOptionsAction,
+            SetCorrectAnswersAction, CreateAcceptedAnswerAction,
+            UpdateAcceptedAnswerAction, DeleteAcceptedAnswerAction,
+            ReorderAcceptedAnswersAction,
+        ))]
+        if answer_actions:
+            self._apply_answer_action_set(revision, answer_actions, now)
+
         revision.updated_at = now
         self.db.flush()
         return revision
+
+    def _apply_answer_action_set(self, revision, actions, now) -> None:
+        policy = AnswerPolicyService.for_question_type_name(
+            revision.question_form.question_type.name
+        )
+        option_action_types = (
+            CreateAnswerOptionAction, UpdateAnswerOptionAction,
+            DeleteAnswerOptionAction, ReorderAnswerOptionsAction,
+            SetCorrectAnswersAction,
+        )
+        if any(isinstance(action, option_action_types) for action in actions) and policy not in {
+            AnswerPolicy.OPTION_SINGLE, AnswerPolicy.OPTION_MULTIPLE,
+        }:
+            raise InvalidAuthoringActionTargetError("Answer option action violates canonical policy.")
+        if any(isinstance(action, (
+            CreateAcceptedAnswerAction, UpdateAcceptedAnswerAction,
+            DeleteAcceptedAnswerAction, ReorderAcceptedAnswersAction,
+        )) for action in actions) and policy != AnswerPolicy.ACCEPTED_ANSWER:
+            raise InvalidAuthoringActionTargetError("Accepted-answer action violates canonical policy.")
+
+        options = list(self.db.scalars(select(AnswerOption).where(
+            AnswerOption.revision_id == revision.id, AnswerOption.deleted_at.is_(None),
+        ).order_by(AnswerOption.order_index, AnswerOption.id).with_for_update()).all())
+        accepted = list(self.db.scalars(select(AcceptedAnswer).where(
+            AcceptedAnswer.revision_id == revision.id, AcceptedAnswer.deleted_at.is_(None),
+        ).order_by(AcceptedAnswer.order_index, AcceptedAnswer.id).with_for_update()).all())
+        option_by_id = {item.id: item for item in options}
+        answer_by_id = {item.id: item for item in accepted}
+        created_option_ids: set[uuid.UUID] = set()
+        created_answer_ids: set[uuid.UUID] = set()
+
+        for action in actions:
+            if isinstance(action, CreateAnswerOptionAction):
+                prepared = prepare_structured_text_write(action.payload.document, action.payload.format_version)
+                item = AnswerOption(revision_id=revision.id, label=action.label,
+                    order_index=max((value.order_index for value in option_by_id.values()), default=0) + 1000,
+                    source_text=prepared.source_text, document_data=prepared.document_data,
+                    format_version=prepared.format_version, is_correct=False)
+                self.db.add(item); self.db.flush(); option_by_id[item.id] = item; created_option_ids.add(item.id)
+            elif isinstance(action, UpdateAnswerOptionAction):
+                item = option_by_id.get(action.option_id)
+                if item is None or item.deleted_at is not None:
+                    raise InvalidAuthoringActionTargetError("Answer option target is unavailable.")
+                prepared = prepare_structured_text_write(action.payload.document, action.payload.format_version)
+                item.label, item.source_text, item.document_data, item.format_version = action.label, prepared.source_text, prepared.document_data, prepared.format_version
+            elif isinstance(action, SetCorrectAnswersAction):
+                active = {item_id for item_id, item in option_by_id.items() if item.deleted_at is None}
+                if not set(action.option_ids).issubset(active) or (policy == AnswerPolicy.OPTION_SINGLE and len(action.option_ids) > 1):
+                    raise InvalidAuthoringActionTargetError("Correct answer selection violates canonical policy.")
+                selected = set(action.option_ids)
+                for item_id in active: option_by_id[item_id].is_correct = item_id in selected
+            elif isinstance(action, DeleteAnswerOptionAction):
+                item = option_by_id.get(action.option_id)
+                if item is None or item.deleted_at is not None or action.option_id in created_option_ids:
+                    raise InvalidAuthoringActionTargetError("Answer option target is unavailable.")
+                if item.is_correct:
+                    raise InvalidAuthoringActionTargetError("Correct option must be unselected before deletion.")
+                item.deleted_at = now
+            elif isinstance(action, ReorderAnswerOptionsAction):
+                active_existing = {item_id for item_id, item in option_by_id.items() if item.deleted_at is None and item_id not in created_option_ids}
+                if set(action.ordered_option_ids) != active_existing:
+                    raise InvalidAuthoringActionTargetError("Answer option order does not match canonical options.")
+                self._apply_authoring_order(option_by_id, action.ordered_option_ids, "order_index")
+            elif isinstance(action, CreateAcceptedAnswerAction):
+                prepared = prepare_structured_text_write(action.payload.document, action.payload.format_version)
+                item = AcceptedAnswer(revision_id=revision.id,
+                    order_index=max((value.order_index for value in answer_by_id.values()), default=0) + 1000,
+                    source_text=prepared.source_text, document_data=prepared.document_data,
+                    format_version=prepared.format_version)
+                self.db.add(item); self.db.flush(); answer_by_id[item.id] = item; created_answer_ids.add(item.id)
+            elif isinstance(action, UpdateAcceptedAnswerAction):
+                item = answer_by_id.get(action.answer_id)
+                if item is None or item.deleted_at is not None:
+                    raise InvalidAuthoringActionTargetError("Accepted-answer target is unavailable.")
+                prepared = prepare_structured_text_write(action.payload.document, action.payload.format_version)
+                item.source_text, item.document_data, item.format_version = prepared.source_text, prepared.document_data, prepared.format_version
+            elif isinstance(action, DeleteAcceptedAnswerAction):
+                item = answer_by_id.get(action.answer_id)
+                if item is None or item.deleted_at is not None or action.answer_id in created_answer_ids:
+                    raise InvalidAuthoringActionTargetError("Accepted-answer target is unavailable.")
+                item.deleted_at = now
+            elif isinstance(action, ReorderAcceptedAnswersAction):
+                active_existing = {item_id for item_id, item in answer_by_id.items() if item.deleted_at is None and item_id not in created_answer_ids}
+                if set(action.ordered_answer_ids) != active_existing:
+                    raise InvalidAuthoringActionTargetError("Accepted-answer order does not match canonical answers.")
+                self._apply_authoring_order(answer_by_id, action.ordered_answer_ids, "order_index")
+
+    def _apply_authoring_order(self, by_id, ordered_ids, attribute) -> None:
+        maximum = max((getattr(by_id[item_id], attribute) for item_id in ordered_ids), default=0)
+        temporary = max(maximum, len(ordered_ids) * 1000) + 1_000_000
+        for position, item_id in enumerate(ordered_ids, start=1): setattr(by_id[item_id], attribute, temporary + position * 1000)
+        self.db.flush()
+        for position, item_id in enumerate(ordered_ids, start=1): setattr(by_id[item_id], attribute, position * 1000)
 
     def update_text_block(
         self,

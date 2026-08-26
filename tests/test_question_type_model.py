@@ -110,8 +110,6 @@ class QuestionTypeModelMetadataTest(unittest.TestCase):
         )
 
         for excluded_table in {
-            "answer_options",
-            "accepted_answers",
             "solutions",
             "hints",
             "rubrics",
