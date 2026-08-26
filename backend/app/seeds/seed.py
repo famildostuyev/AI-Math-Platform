@@ -1,4 +1,5 @@
 ﻿from app.database.session import SessionLocal
+from app.seeds.question_types import seed_question_types
 from app.seeds.roles import seed_roles
 
 
@@ -10,6 +11,7 @@ def run_seeds() -> None:
 
     try:
         seed_roles(db)
+        seed_question_types(db)
         print("Database seeds completed successfully.")
     except Exception:
         db.rollback()

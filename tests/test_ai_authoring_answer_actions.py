@@ -92,6 +92,69 @@ class AIAuthoringAnswerActionTest(unittest.TestCase):
         action = AuthoringActionEnvelope.model_validate({"actions": [{"action_type": "update_accepted_answer", "answer_id": str(answer_id), "payload": payload("43")}]})
         self.assertEqual(service._simulate(proposal_id=proposal_id, envelope=action, context=context(AnswerPolicy.ACCEPTED_ANSWER, accepted=(accepted,)))[0].after.source_text, "43")
 
+    def test_correct_answer_preview_maps_before_c_to_after_b(self):
+        option_ids = [uuid.uuid4() for _ in range(3)]
+        options = tuple(AuthoringAnswerOptionContext(
+            option_id=option_id, label=label, order=index * 1000,
+            source_text=text, document=document(text), format_version=1,
+            is_correct=label == "C",
+        ) for index, (option_id, label, text) in enumerate(zip(
+            option_ids, ("A", "B", "C"), ("2", "3", "4"), strict=True
+        ), start=1))
+        envelope = AuthoringActionEnvelope.model_validate({"actions": [{
+            "action_type": "set_correct_answers",
+            "option_ids": [str(option_ids[1])],
+        }]})
+
+        change = AIAuthoringProposalPreviewService(MagicMock())._simulate(
+            proposal_id=uuid.uuid4(), envelope=envelope,
+            context=context(options=options),
+        )[0]
+
+        self.assertEqual(
+            [(item.label, item.source_text) for item in change.before.correct_options],
+            [("C", "4")],
+        )
+        self.assertEqual(
+            [(item.label, item.source_text) for item in change.after.correct_options],
+            [("B", "3")],
+        )
+
+    def test_correct_answer_preview_preserves_multiple_option_order(self):
+        option_ids = [uuid.uuid4() for _ in range(3)]
+        options = tuple(AuthoringAnswerOptionContext(
+            option_id=option_id, label=label, order=index * 1000,
+            source_text=text, document=document(text), format_version=1,
+            is_correct=False,
+        ) for index, (option_id, label, text) in enumerate(zip(
+            option_ids, ("A", "B", "C"), ("2", "3", "4"), strict=True
+        ), start=1))
+        envelope = AuthoringActionEnvelope.model_validate({"actions": [{
+            "action_type": "set_correct_answers",
+            "option_ids": [str(option_ids[2]), str(option_ids[0])],
+        }]})
+
+        change = AIAuthoringProposalPreviewService(MagicMock())._simulate(
+            proposal_id=uuid.uuid4(), envelope=envelope,
+            context=context(AnswerPolicy.OPTION_MULTIPLE, options=options),
+        )[0]
+
+        self.assertEqual(
+            [item.label for item in change.after.correct_options],
+            ["C", "A"],
+        )
+
+    def test_correct_answer_preview_uses_safe_missing_option_fallback(self):
+        missing_id = uuid.uuid4()
+
+        preview = AIAuthoringProposalPreviewService._correct_answer_preview(
+            (missing_id,), {},
+        )
+
+        self.assertEqual(preview.correct_options[0].option_id, missing_id)
+        self.assertIsNone(preview.correct_options[0].label)
+        self.assertIsNone(preview.correct_options[0].source_text)
+
     def test_atomic_answer_application_has_no_internal_commit(self):
         option_id = uuid.uuid4(); revision = QuestionRevision(id=uuid.uuid4(), status=QuestionRevisionStatus.DRAFT, updated_at=NOW)
         revision.question_form = SimpleNamespace(question_type=SimpleNamespace(name="multiple_choice"))

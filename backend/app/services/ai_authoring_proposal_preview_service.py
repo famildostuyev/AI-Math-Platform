@@ -58,8 +58,14 @@ class AuthoringAnswerOrderPreview(StrictFrozenPreviewModel):
     ordered_answer_ids: tuple[uuid.UUID, ...]
 
 
+class AuthoringCorrectAnswerOptionPreview(StrictFrozenPreviewModel):
+    option_id: uuid.UUID
+    label: str | None
+    source_text: str | None
+
+
 class AuthoringCorrectAnswerPreview(StrictFrozenPreviewModel):
-    correct_option_ids: tuple[uuid.UUID, ...]
+    correct_options: tuple[AuthoringCorrectAnswerOptionPreview, ...]
 
 
 AuthoringPreviewValue = Union[
@@ -319,8 +325,8 @@ class AIAuthoringProposalPreviewService:
                 options = [item.model_copy(update={"is_correct": item.option_id in selected}) for item in options]
                 option_by_id = {item.option_id: item for item in options}
                 changes.append(self._change(action_index, action.action_type, "updated", None,
-                    AuthoringCorrectAnswerPreview(correct_option_ids=before_ids),
-                    AuthoringCorrectAnswerPreview(correct_option_ids=tuple(action.option_ids))))
+                    self._correct_answer_preview(before_ids, option_by_id),
+                    self._correct_answer_preview(tuple(action.option_ids), option_by_id)))
             elif isinstance(action, DeleteAnswerOptionAction):
                 self._require_option_policy(context.answer_policy)
                 before = self._require_answer_target(option_by_id, action.option_id)
@@ -377,6 +383,23 @@ class AIAuthoringProposalPreviewService:
                     AuthoringAnswerOrderPreview(ordered_answer_ids=before),
                     AuthoringAnswerOrderPreview(ordered_answer_ids=tuple(item.answer_id for item in accepted))))
         return changes
+
+    @staticmethod
+    def _correct_answer_preview(
+        option_ids: tuple[uuid.UUID, ...],
+        option_by_id: dict[uuid.UUID, AuthoringAnswerOptionContext],
+    ) -> AuthoringCorrectAnswerPreview:
+        return AuthoringCorrectAnswerPreview(correct_options=tuple(
+            AuthoringCorrectAnswerOptionPreview(
+                option_id=option_id,
+                label=option_by_id[option_id].label if option_id in option_by_id else None,
+                source_text=(
+                    option_by_id[option_id].source_text
+                    if option_id in option_by_id else None
+                ),
+            )
+            for option_id in option_ids
+        ))
 
     @staticmethod
     def _require_option_policy(policy: AnswerPolicy) -> None:

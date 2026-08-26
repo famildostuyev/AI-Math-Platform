@@ -77,7 +77,9 @@ function PreviewValueView({ value }: { value: PreviewValue | null }) {
   if (!value) return <span className="ai-authoring-empty-value">Yoxdur</span>
   if ('ordered_block_ids' in value) return <code>{value.ordered_block_ids.join(' → ')}</code>
   if ('ordered_answer_ids' in value) return <code>{value.ordered_answer_ids.join(' → ')}</code>
-  if ('correct_option_ids' in value) return <code>{value.correct_option_ids.length ? value.correct_option_ids.join(', ') : 'Seçilməyib'}</code>
+  if ('correct_options' in value) return value.correct_options.length > 0
+    ? <ul>{value.correct_options.map((option) => <li key={option.option_id}>{option.label && option.source_text ? `${option.label} — ${option.source_text}` : 'Variant tapılmadı'}</li>)}</ul>
+    : <span>Seçilməyib</span>
   if ('option_id' in value) return <p>Variant {value.label ?? '—'}: {value.source_text}{value.is_correct ? ' · düzgün' : ''}</p>
   if ('answer_id' in value) return <p>{value.source_text}</p>
   if (value.block_type === 'text') return <p>{value.source_text || 'Boş mətn'}</p>

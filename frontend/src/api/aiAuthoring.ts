@@ -101,7 +101,8 @@ export type OrderPreviewValue = { ordered_block_ids: UUID[] }
 export type AnswerOptionPreviewValue = { option_id: UUID; label: string | null; order: number; source_text: string; document: StructuredTextDocument; format_version: 1; is_correct: boolean }
 export type AcceptedAnswerPreviewValue = { answer_id: UUID; order: number; source_text: string; document: StructuredTextDocument; format_version: 1 }
 export type AnswerOrderPreviewValue = { ordered_answer_ids: UUID[] }
-export type CorrectAnswerPreviewValue = { correct_option_ids: UUID[] }
+export type CorrectAnswerOptionPreviewValue = { option_id: UUID; label: string | null; source_text: string | null }
+export type CorrectAnswerPreviewValue = { correct_options: CorrectAnswerOptionPreviewValue[] }
 export type PreviewValue = TextPreviewValue | FormulaPreviewValue
   | ImagePreviewValue | GeometryPreviewValue | OrderPreviewValue
   | AnswerOptionPreviewValue | AcceptedAnswerPreviewValue
