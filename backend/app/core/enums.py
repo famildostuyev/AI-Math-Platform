@@ -108,6 +108,17 @@ class AIAuthoringProposalStatus(str, Enum):
     OBSOLETE = "obsolete"
 
 
+class AIAuthoringProposalKind(str, Enum):
+    AUTHORING_ACTIONS = "authoring_actions"
+    CAPABILITY_BUNDLE = "capability_bundle"
+
+
+class AdminAIResultKind(str, Enum):
+    INFORMATIONAL = "informational"
+    MUTATION_PROPOSAL = "mutation_proposal"
+    UNSUPPORTED = "unsupported"
+
+
 class AIAuthoringConversationStatus(str, Enum):
     ACTIVE = "active"
     CLOSED = "closed"

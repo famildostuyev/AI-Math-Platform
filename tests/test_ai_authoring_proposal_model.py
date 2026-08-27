@@ -20,8 +20,9 @@ class AIAuthoringProposalModelTest(unittest.TestCase):
         table = AIAuthoringProposal.__table__
         self.assertEqual(table.name, "ai_authoring_proposals")
         self.assertEqual(set(table.columns.keys()), {
-            "id", "source_revision_id", "source_revision_updated_at", "status",
-            "action_schema_version", "actions", "provider_name", "model_name",
+            "id", "source_revision_id", "source_revision_updated_at", "status", "proposal_kind",
+            "result_kind", "action_schema_version", "actions", "capability_bundle_schema_version",
+            "capability_bundle", "capability_bundle_hash", "provider_name", "model_name",
             "prompt_version", "provider_schema_version", "requested_by_user_id",
             "request_message_id",
             "accepted_by_user_id", "rejected_by_user_id", "accepted_at",
@@ -29,6 +30,12 @@ class AIAuthoringProposalModelTest(unittest.TestCase):
         })
         self.assertIsInstance(table.c.actions.type, JSONB)
         self.assertIsInstance(table.c.status.type, SQLEnum)
+        self.assertIsInstance(table.c.proposal_kind.type, SQLEnum)
+        self.assertEqual(
+            table.c.proposal_kind.type.enums,
+            ["authoring_actions", "capability_bundle"],
+        )
+        self.assertEqual(table.c.result_kind.type.enums, ["informational", "mutation_proposal", "unsupported"])
         self.assertEqual(
             table.c.status.type.enums,
             ["pending", "accepted", "rejected", "obsolete"],
@@ -55,6 +62,8 @@ class AIAuthoringProposalModelTest(unittest.TestCase):
         }
         self.assertIn("pending", checks["ck_ai_authoring_proposals_lifecycle_consistent"])
         self.assertIn("provider_name", checks["ck_ai_authoring_proposals_provenance_nonblank"])
+        self.assertIn("capability_bundle_hash", checks["ck_ai_authoring_proposals_payload_kind_consistent"])
+        self.assertIn("64", checks["ck_ai_authoring_proposals_bundle_hash_sha256"])
         self.assertTrue({
             "raw_provider_response", "prompt_text", "api_key", "credential",
         }.isdisjoint(table.c.keys()))

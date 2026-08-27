@@ -8,7 +8,7 @@ from sqlalchemy import CheckConstraint, DateTime, Enum as SQLEnum, ForeignKey, I
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import AIAuthoringProposalStatus
+from app.core.enums import AdminAIResultKind, AIAuthoringProposalKind, AIAuthoringProposalStatus
 from app.database.base_model import BaseModel
 
 if TYPE_CHECKING:
@@ -24,8 +24,29 @@ class AIAuthoringProposal(BaseModel):
 
     __table_args__ = (
         CheckConstraint(
-            "action_schema_version > 0",
+            "action_schema_version IS NULL OR action_schema_version > 0",
             name="ck_ai_authoring_proposals_action_schema_version_positive",
+        ),
+        CheckConstraint(
+            "capability_bundle_schema_version IS NULL OR capability_bundle_schema_version > 0",
+            name="ck_ai_authoring_proposals_bundle_schema_version_positive",
+        ),
+        CheckConstraint(
+            "capability_bundle_hash IS NULL OR capability_bundle_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_ai_authoring_proposals_bundle_hash_sha256",
+        ),
+        CheckConstraint(
+            "(proposal_kind = 'authoring_actions' AND action_schema_version IS NOT NULL AND actions IS NOT NULL "
+            "AND capability_bundle_schema_version IS NULL AND capability_bundle IS NULL "
+            "AND capability_bundle_hash IS NULL) OR "
+            "(proposal_kind = 'capability_bundle' AND action_schema_version IS NULL AND actions IS NULL "
+            "AND capability_bundle_schema_version IS NOT NULL AND capability_bundle IS NOT NULL "
+            "AND capability_bundle_hash IS NOT NULL)",
+            name="ck_ai_authoring_proposals_payload_kind_consistent",
+        ),
+        CheckConstraint(
+            "result_kind = 'mutation_proposal'",
+            name="ck_ai_authoring_proposals_result_kind_consistent",
         ),
         CheckConstraint(
             "provider_schema_version > 0",
@@ -73,8 +94,31 @@ class AIAuthoringProposal(BaseModel):
         ),
         nullable=False,
     )
-    action_schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    actions: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    proposal_kind: Mapped[AIAuthoringProposalKind] = mapped_column(
+        SQLEnum(
+            AIAuthoringProposalKind,
+            name="ai_authoring_proposal_kind",
+            native_enum=False,
+            create_constraint=True,
+            values_callable=lambda enum_class: [member.value for member in enum_class],
+        ),
+        nullable=False,
+    )
+    result_kind: Mapped[AdminAIResultKind] = mapped_column(
+        SQLEnum(
+            AdminAIResultKind,
+            name="admin_ai_result_kind",
+            native_enum=False,
+            create_constraint=True,
+            values_callable=lambda enum_class: [member.value for member in enum_class],
+        ),
+        nullable=False,
+    )
+    action_schema_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actions: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    capability_bundle_schema_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    capability_bundle: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    capability_bundle_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     provider_name: Mapped[str] = mapped_column(String(100), nullable=False)
     model_name: Mapped[str] = mapped_column(String(200), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)

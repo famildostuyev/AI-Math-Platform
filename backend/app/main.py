@@ -1,6 +1,7 @@
 ﻿from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
+from app.api.admin_ai import router as admin_ai_router
 from app.api.ai_authoring import router as ai_authoring_router
 from app.api.catalog import router as catalog_router
 from app.api.media import router as media_router
@@ -10,6 +11,10 @@ from app.api.source_documents import router as source_documents_router
 from app.api.source_pre_analysis import router as source_pre_analysis_router
 from app.api.question_extraction import router as question_extraction_router
 from app.api.teacher import router as teacher_router
+from app.core.logging_config import configure_safe_admin_ai_diagnostic_logging
+
+
+configure_safe_admin_ai_diagnostic_logging()
 
 
 app = FastAPI(
@@ -19,6 +24,11 @@ app = FastAPI(
 
 app.include_router(
     auth_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    admin_ai_router,
     prefix="/api/v1",
 )
 

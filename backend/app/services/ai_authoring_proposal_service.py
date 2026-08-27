@@ -8,7 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.core.enums import AIAuthoringMessageRole, AIAuthoringProposalStatus
+from app.core.enums import (
+    AdminAIResultKind,
+    AIAuthoringMessageRole,
+    AIAuthoringProposalKind,
+    AIAuthoringProposalStatus,
+)
 from app.models.ai_authoring_proposal import AIAuthoringProposal
 from app.models.ai_authoring_conversation import AIAuthoringConversation
 from app.models.ai_authoring_message import AIAuthoringMessage
@@ -173,8 +178,13 @@ class AIAuthoringProposalService:
             source_revision_id=revision.id,
             source_revision_updated_at=revision.updated_at,
             status=AIAuthoringProposalStatus.PENDING,
+            proposal_kind=AIAuthoringProposalKind.AUTHORING_ACTIONS,
+            result_kind=AdminAIResultKind.MUTATION_PROPOSAL,
             action_schema_version=envelope.schema_version,
             actions=envelope.model_dump(mode="json"),
+            capability_bundle_schema_version=None,
+            capability_bundle=None,
+            capability_bundle_hash=None,
             provider_name=provider_name,
             model_name=model_name,
             prompt_version=prompt_version,
