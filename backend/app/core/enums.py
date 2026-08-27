@@ -135,6 +135,11 @@ class ContentBlockType(str, Enum):
     DIAGRAM = "diagram"
 
 
+class SolutionBlockType(str, Enum):
+    TEXT = "text"
+    FORMULA = "formula"
+
+
 class SourcePreAnalysisRunStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"

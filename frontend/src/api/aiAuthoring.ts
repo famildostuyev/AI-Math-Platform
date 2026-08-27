@@ -18,6 +18,10 @@ export type PreviewWarningCode =
   | 'answer_option_deleted'
   | 'correct_answer_changed'
   | 'multiple_answer_changes'
+  | 'solution_created'
+  | 'solution_deleted'
+  | 'solution_block_deleted'
+  | 'multiple_solution_changes'
 
 export type ConversationRead = {
   id: UUID
@@ -103,10 +107,18 @@ export type AcceptedAnswerPreviewValue = { answer_id: UUID; order: number; sourc
 export type AnswerOrderPreviewValue = { ordered_answer_ids: UUID[] }
 export type CorrectAnswerOptionPreviewValue = { option_id: UUID; label: string | null; source_text: string | null }
 export type CorrectAnswerPreviewValue = { correct_options: CorrectAnswerOptionPreviewValue[] }
+export type SolutionStatePreviewValue = { exists: boolean }
+export type SolutionBlockPreviewValue = {
+  block_type: 'text' | 'formula'; block_id: UUID; order: number
+  source_text?: string; document?: StructuredTextDocument
+  source_latex?: string; format_version: 1
+}
+export type SolutionOrderPreviewValue = { blocks: SolutionBlockPreviewValue[] }
 export type PreviewValue = TextPreviewValue | FormulaPreviewValue
   | ImagePreviewValue | GeometryPreviewValue | OrderPreviewValue
   | AnswerOptionPreviewValue | AcceptedAnswerPreviewValue
   | AnswerOrderPreviewValue | CorrectAnswerPreviewValue
+  | SolutionStatePreviewValue | SolutionBlockPreviewValue | SolutionOrderPreviewValue
 
 export type ProposalPreviewChange = {
   action_index: number

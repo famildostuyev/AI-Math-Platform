@@ -30,6 +30,7 @@ from app.models.question_revision_purpose import QuestionRevisionPurpose
 from app.models.question_revision_related_topic import QuestionRevisionRelatedTopic
 from app.models.question_type import QuestionType
 from app.models.text_block_content import TextBlockContent
+from app.models.solution import Solution
 from app.models.topic import Topic
 from app.schemas.question_editor import (
     BlockOrderRequest,
@@ -58,6 +59,7 @@ from app.services.structured_text_service import (
     prepare_structured_text_write,
 )
 from app.services.question_answer_service import QuestionAnswerService
+from app.services.question_solution_service import QuestionSolutionService, QuestionSolutionServiceError
 from app.services.authoring_action import (
     AuthoringAction,
     CreateFormulaBlockAction,
@@ -75,6 +77,10 @@ from app.services.authoring_action import (
     UpdateAcceptedAnswerAction,
     DeleteAcceptedAnswerAction,
     ReorderAcceptedAnswersAction,
+    CreateSolutionAction, DeleteSolutionAction,
+    CreateSolutionTextBlockAction, UpdateSolutionTextBlockAction,
+    CreateSolutionFormulaBlockAction, UpdateSolutionFormulaBlockAction,
+    DeleteSolutionBlockAction, ReorderSolutionBlocksAction,
 )
 from app.services.question_answer_service import AnswerPolicyService
 
@@ -306,10 +312,20 @@ class QuestionEditorService:
         answers = QuestionAnswerService(self.db).read_answers_for_revision(
             revision_id=revision.id
         )
+        solution_model = self.db.scalar(select(Solution).where(
+            Solution.question_revision_id == revision.id,
+            Solution.deleted_at.is_(None),
+        ))
+        solution = (
+            None
+            if solution_model is None
+            else QuestionSolutionService(self.db).project_solution(solution_model)
+        )
         return QuestionRevisionEditorRead(
             **draft_read.model_dump(),
             blocks=[self._serialize_block(block) for block in blocks],
             **answers.model_dump(),
+            solution=solution,
         )
 
     def create_text_block(
@@ -842,6 +858,22 @@ class QuestionEditorService:
         ))]
         if answer_actions:
             self._apply_answer_action_set(revision, answer_actions, now)
+
+        solution_actions = [action for action in actions if isinstance(action, (
+            CreateSolutionAction, DeleteSolutionAction,
+            CreateSolutionTextBlockAction, UpdateSolutionTextBlockAction,
+            CreateSolutionFormulaBlockAction, UpdateSolutionFormulaBlockAction,
+            DeleteSolutionBlockAction, ReorderSolutionBlocksAction,
+        ))]
+        if solution_actions:
+            try:
+                QuestionSolutionService(self.db).apply_authoring_actions(
+                    revision=revision, actions=solution_actions, now=now
+                )
+            except QuestionSolutionServiceError as exc:
+                raise InvalidAuthoringActionTargetError(
+                    "Solution authoring action violates canonical state."
+                ) from exc
 
         revision.updated_at = now
         self.db.flush()

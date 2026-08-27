@@ -33,6 +33,8 @@ from app.services.question_authoring_context import (
     AuthoringRevisionContext,
     AuthoringSourceContext,
     AuthoringTextBlockContext,
+    AuthoringSolutionContext,
+    AuthoringSolutionTextBlockContext,
 )
 
 
@@ -106,6 +108,44 @@ def proposal(actions: list[dict[str, object]], *, snapshot: datetime = NOW):
 
 
 class AIAuthoringProposalPreviewServiceTest(unittest.TestCase):
+    def test_create_solution_and_blocks_preview_is_ordered(self) -> None:
+        preview, _, _ = self.build(proposal([
+            {"action_type": "create_solution"},
+            {"action_type": "create_solution_text_block", "payload": {"document": document("First step"), "format_version": 1}},
+            {"action_type": "create_solution_formula_block", "payload": {"source_latex": "x=2", "format_version": 1}},
+        ]))
+        self.assertEqual([change.action_type for change in preview.changes], [
+            "create_solution", "create_solution_text_block", "create_solution_formula_block",
+        ])
+        self.assertEqual(preview.changes[1].after.source_text, "First step")
+        self.assertEqual(preview.changes[2].after.source_latex, "x=2")
+        self.assertIn("solution_created", preview.warnings)
+        self.assertIn("multiple_solution_changes", preview.warnings)
+
+    def test_existing_solution_update_reorder_delete_preview(self) -> None:
+        block_id = uuid.uuid4()
+        aggregate = revision_context().model_copy(update={"solution": AuthoringSolutionContext(
+            solution_id=uuid.uuid4(),
+            blocks=(AuthoringSolutionTextBlockContext(
+                block_type="text", block_id=block_id, order=1000,
+                source_text="Before", document=StructuredTextDocument.model_validate(document("Before")),
+                format_version=1,
+            ),),
+        )})
+        preview, _, _ = self.build(proposal([
+            {"action_type": "update_solution_text_block", "solution_block_id": str(block_id), "payload": {"document": document("After"), "format_version": 1}},
+            {"action_type": "reorder_solution_blocks", "ordered_solution_block_ids": [str(block_id)]},
+            {"action_type": "delete_solution_block", "solution_block_id": str(block_id)},
+            {"action_type": "delete_solution"},
+        ]), aggregate)
+        self.assertEqual(preview.changes[0].after.source_text, "After")
+        self.assertIn("solution_deleted", preview.warnings)
+        self.assertIn("solution_block_deleted", preview.warnings)
+
+    def test_solution_create_block_without_solution_rejects(self) -> None:
+        with self.assertRaises(AIAuthoringProposalPreviewInvalidTargetError):
+            self.build(proposal([{"action_type": "create_solution_text_block", "payload": {"document": document("Step"), "format_version": 1}}]))
+
     def build(self, item: AIAuthoringProposal, context=None):
         db = MagicMock()
         db.scalar.return_value = item

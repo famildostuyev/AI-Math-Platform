@@ -34,6 +34,10 @@ const warningLabels: Record<PreviewWarningCode, string> = {
   answer_option_deleted: 'Cavab variantı silinəcək',
   correct_answer_changed: 'Düzgün cavab dəyişəcək',
   multiple_answer_changes: 'Bir neçə cavab dəyişikliyi',
+  solution_created: 'Əsas həll yaradılacaq',
+  solution_deleted: 'Əsas həll silinəcək',
+  solution_block_deleted: 'Həll addımı silinəcək',
+  multiple_solution_changes: 'Bir neçə həll dəyişikliyi',
 }
 
 const answerActionLabels: Record<string, string> = {
@@ -46,6 +50,14 @@ const answerActionLabels: Record<string, string> = {
   update_accepted_answer: 'Qəbul edilən cavab dəyişəcək',
   delete_accepted_answer: 'Qəbul edilən cavab silinəcək',
   reorder_accepted_answers: 'Qəbul edilən cavabların sırası dəyişəcək',
+  create_solution: 'Əsas həll yaradılacaq',
+  delete_solution: 'Əsas həll silinəcək',
+  create_solution_text_block: 'Mətn addımı yaradılacaq',
+  update_solution_text_block: 'Mətn addımı dəyişəcək',
+  create_solution_formula_block: 'Formula addımı yaradılacaq',
+  update_solution_formula_block: 'Formula dəyişəcək',
+  delete_solution_block: 'Həll addımı silinəcək',
+  reorder_solution_blocks: 'Həll addımlarının sırası dəyişəcək',
 }
 
 const proposalStatusLabels: Record<ProposalRead['status'], string> = {
@@ -82,12 +94,15 @@ function PreviewValueView({ value }: { value: PreviewValue | null }) {
     : <span>Seçilməyib</span>
   if ('option_id' in value) return <p>Variant {value.label ?? '—'}: {value.source_text}{value.is_correct ? ' · düzgün' : ''}</p>
   if ('answer_id' in value) return <p>{value.source_text}</p>
+  if ('exists' in value) return <p>{value.exists ? 'Əsas həll' : 'Həll yoxdur'}</p>
+  if ('blocks' in value) return value.blocks.length > 0 ? <ol>{value.blocks.map((block) => <li key={block.block_id}>{block.block_type === 'text' ? (block.source_text || 'Boş mətn') : <MathContent content={{ format_version: 1, segments: [{ type: 'math', latex: block.source_latex ?? '', source_text: 'Formula göstərilə bilmədi', display_mode: false }] }} fallbackText="Formula göstərilə bilmədi" />}</li>)}</ol> : <span>Həll addımı yoxdur</span>
   if (value.block_type === 'text') return <p>{value.source_text || 'Boş mətn'}</p>
   if (value.block_type === 'formula') {
-    return <MathContent content={{ format_version: 1, segments: [{ type: 'math', latex: value.source_latex, source_text: value.source_latex, display_mode: false }] }} fallbackText={value.source_latex} />
+    return <MathContent content={{ format_version: 1, segments: [{ type: 'math', latex: value.source_latex ?? '', source_text: 'Formula göstərilə bilmədi', display_mode: false }] }} fallbackText="Formula göstərilə bilmədi" />
   }
   if (value.block_type === 'image') return <p>Şəkil: {value.alt_text || value.media_asset_id}</p>
-  return <pre>{JSON.stringify(value.source_data, null, 2)}</pre>
+  if ('source_data' in value) return <pre>{JSON.stringify(value.source_data, null, 2)}</pre>
+  return <span>Önizləmə mövcud deyil</span>
 }
 
 export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onAccepted }: AIAuthoringPanelProps) {

@@ -90,7 +90,7 @@ class QuestionRevisionPurposeModelMetadataTest(unittest.TestCase):
             "question_revision_related_topics",
         )
         for excluded_table in {
-            "solutions", "hints",
+            "hints",
             "rubrics", "media", "situation_contexts", "matching_items",
             "assessment_rules",
         }:

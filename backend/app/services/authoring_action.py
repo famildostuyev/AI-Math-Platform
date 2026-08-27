@@ -141,6 +141,53 @@ class ReorderAcceptedAnswersAction(StrictAuthoringActionModel):
         return value
 
 
+class CreateSolutionAction(StrictAuthoringActionModel):
+    action_type: Literal["create_solution"]
+
+
+class DeleteSolutionAction(StrictAuthoringActionModel):
+    action_type: Literal["delete_solution"]
+
+
+class CreateSolutionTextBlockAction(StrictAuthoringActionModel):
+    action_type: Literal["create_solution_text_block"]
+    payload: TextAuthoringPayload
+
+
+class UpdateSolutionTextBlockAction(StrictAuthoringActionModel):
+    action_type: Literal["update_solution_text_block"]
+    solution_block_id: uuid.UUID
+    payload: TextAuthoringPayload
+
+
+class CreateSolutionFormulaBlockAction(StrictAuthoringActionModel):
+    action_type: Literal["create_solution_formula_block"]
+    payload: FormulaAuthoringPayload
+
+
+class UpdateSolutionFormulaBlockAction(StrictAuthoringActionModel):
+    action_type: Literal["update_solution_formula_block"]
+    solution_block_id: uuid.UUID
+    payload: FormulaAuthoringPayload
+
+
+class DeleteSolutionBlockAction(StrictAuthoringActionModel):
+    action_type: Literal["delete_solution_block"]
+    solution_block_id: uuid.UUID
+
+
+class ReorderSolutionBlocksAction(StrictAuthoringActionModel):
+    action_type: Literal["reorder_solution_blocks"]
+    ordered_solution_block_ids: list[uuid.UUID]
+
+    @field_validator("ordered_solution_block_ids")
+    @classmethod
+    def unique_ids(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("ordered_solution_block_ids must contain unique IDs.")
+        return value
+
+
 AuthoringAction = Annotated[
     Union[
         UpdateTextBlockAction,
@@ -158,6 +205,14 @@ AuthoringAction = Annotated[
         UpdateAcceptedAnswerAction,
         DeleteAcceptedAnswerAction,
         ReorderAcceptedAnswersAction,
+        CreateSolutionAction,
+        DeleteSolutionAction,
+        CreateSolutionTextBlockAction,
+        UpdateSolutionTextBlockAction,
+        CreateSolutionFormulaBlockAction,
+        UpdateSolutionFormulaBlockAction,
+        DeleteSolutionBlockAction,
+        ReorderSolutionBlocksAction,
     ],
     Field(discriminator="action_type"),
 ]

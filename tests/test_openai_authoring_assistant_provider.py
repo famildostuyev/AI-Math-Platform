@@ -49,6 +49,13 @@ from app.services.openai_authoring_assistant_provider import (
     _OpenAITextPayload,
     _OpenAIUpdateFormulaAction,
     _OpenAIUpdateTextAction,
+    _OpenAICreateSolutionAction,
+    _OpenAICreateSolutionTextBlockAction,
+    _OpenAIDeleteSolutionAction,
+    _OpenAICreateSolutionFormulaBlockAction,
+    _OpenAIUpdateSolutionTextBlockAction,
+    _OpenAICreateAnswerOptionAction,
+    is_solution_intent,
     OpenAIAuthoringAssistantProvider,
 )
 from app.services.question_authoring_context import (
@@ -56,6 +63,8 @@ from app.services.question_authoring_context import (
     AuthoringRevisionContext,
     AuthoringSourceContext,
     AuthoringTextBlockContext,
+    AuthoringSolutionContext,
+    AuthoringSolutionTextBlockContext,
 )
 
 
@@ -144,6 +153,119 @@ def envelope(*actions) -> _OpenAIAuthoringEnvelope:
 
 
 class OpenAIAuthoringAssistantProviderTest(unittest.TestCase):
+    def test_deterministic_solution_intent_phrases(self) -> None:
+        for instruction in (
+            "Bu məsələni həll et.", "Bu sualı həll et", "Həllini yaz",
+            "Əsas həlli hazırla", "Həlli yaxşılaşdır", "Həlli redaktə et",
+            "Həlli sil",
+        ):
+            with self.subTest(instruction=instruction):
+                self.assertTrue(is_solution_intent(instruction))
+        self.assertFalse(is_solution_intent("Sual mətnini redaktə et"))
+
+    def test_solution_intent_rejects_question_and_answer_domains(self) -> None:
+        invalid = (
+            _OpenAIUpdateTextAction(
+                action_type="update_text_block", block_id=TEXT_ID, payload=text_payload("Wrong")
+            ),
+            _OpenAICreateAnswerOptionAction(
+                action_type="create_answer_option", label="A", payload=text_payload("Wrong")
+            ),
+        )
+        for action in invalid:
+            with self.subTest(action=action.action_type), self.assertRaises(
+                AuthoringAssistantInvalidActionTargetError
+            ):
+                self.provider(FakeClient(envelope(action))).propose_actions(
+                    instruction="Bu məsələni həll et", context=context()
+                )
+
+    def test_solution_intent_rejects_linear_fraction_in_text(self) -> None:
+        bad = envelope(
+            _OpenAICreateSolutionAction(action_type="create_solution"),
+            _OpenAICreateSolutionTextBlockAction(
+                action_type="create_solution_text_block",
+                payload=text_payload("m = (y2-y1)/(x2-x1)"),
+            ),
+        )
+        with self.assertRaises(AuthoringAssistantInvalidActionTargetError):
+            self.provider(FakeClient(bad)).propose_actions(
+                instruction="Bu məsələni həll et", context=context()
+            )
+
+    def test_solution_intent_accepts_semantic_text_formula_sequence_and_short_inline(self) -> None:
+        good = envelope(
+            _OpenAICreateSolutionAction(action_type="create_solution"),
+            _OpenAICreateSolutionTextBlockAction(
+                action_type="create_solution_text_block",
+                payload=text_payload("Bucaq əmsalı düsturuna görə:"),
+            ),
+            _OpenAICreateSolutionFormulaBlockAction(
+                action_type="create_solution_formula_block",
+                payload=_OpenAIFormulaPayload(
+                    source_latex=r"m=\frac{y_2-y_1}{x_2-x_1}", format_version=1
+                ),
+            ),
+            _OpenAICreateSolutionTextBlockAction(
+                action_type="create_solution_text_block",
+                payload=text_payload("Buradan n=3 alınır."),
+            ),
+        )
+        result = self.provider(FakeClient(good)).propose_actions(
+            instruction="Bu məsələni həll et", context=context()
+        )
+        self.assertEqual(len(result.action_envelope.actions), 4)
+
+    def test_existing_solution_update_and_explicit_delete_are_valid(self) -> None:
+        solution_block_id = uuid.uuid4()
+        aggregate = context().model_copy(update={"solution": AuthoringSolutionContext(
+            solution_id=uuid.uuid4(),
+            blocks=(AuthoringSolutionTextBlockContext(
+                block_type="text", block_id=solution_block_id, order=1000,
+                source_text="Old", document=StructuredTextDocument.model_validate(
+                    text_payload("Old").document.model_dump(mode="json")
+                ), format_version=1,
+            ),),
+        )})
+        update = envelope(_OpenAIUpdateSolutionTextBlockAction(
+            action_type="update_solution_text_block", solution_block_id=solution_block_id,
+            payload=text_payload("Improved"),
+        ))
+        self.provider(FakeClient(update)).propose_actions(
+            instruction="Həlli yaxşılaşdır", context=aggregate
+        )
+        self.provider(FakeClient(envelope(
+            _OpenAIDeleteSolutionAction(action_type="delete_solution")
+        ))).propose_actions(instruction="Həlli sil", context=aggregate)
+
+    def test_solution_create_sequence_maps_and_validates(self) -> None:
+        client = FakeClient(envelope(
+            _OpenAICreateSolutionAction(action_type="create_solution"),
+            _OpenAICreateSolutionTextBlockAction(
+                action_type="create_solution_text_block", payload=text_payload("Step")
+            ),
+        ))
+        result = self.provider(client).propose_actions(instruction="Məsələni həll et", context=context())
+        self.assertEqual(
+            [action.action_type for action in result.action_envelope.actions],
+            ["create_solution", "create_solution_text_block"],
+        )
+
+    def test_solution_block_without_solution_rejects(self) -> None:
+        client = FakeClient(envelope(_OpenAICreateSolutionTextBlockAction(
+            action_type="create_solution_text_block", payload=text_payload("Step")
+        )))
+        with self.assertRaises(AuthoringAssistantInvalidActionTargetError):
+            self.provider(client).propose_actions(instruction="Məsələni həll et", context=context())
+
+    def test_solution_create_then_delete_is_sequence_valid(self) -> None:
+        client = FakeClient(envelope(
+            _OpenAICreateSolutionAction(action_type="create_solution"),
+            _OpenAIDeleteSolutionAction(action_type="delete_solution"),
+        ))
+        result = self.provider(client).propose_actions(instruction="Həlli yarat və sil", context=context())
+        self.assertEqual(len(result.action_envelope.actions), 2)
+
     def provider(self, client: FakeClient) -> OpenAIAuthoringAssistantProvider:
         return OpenAIAuthoringAssistantProvider(
             client=client,
@@ -336,6 +458,27 @@ class OpenAIAuthoringAssistantProviderTest(unittest.TestCase):
             self.assertIn(phrase, prompt)
         self.assertNotIn("api key", prompt)
         self.assertNotIn("authorization", prompt)
+
+    def test_prompt_requires_solution_text_formula_separation_and_azerbaijani_quality(self) -> None:
+        prompt = AUTHORING_ASSISTANT_INSTRUCTIONS
+        normalized = prompt.casefold()
+        for phrase in (
+            "solution text blocks primarily for natural-language explanation",
+            "solution formula blocks",
+            "fractions",
+            "roots",
+            "powers",
+            "subscripts",
+            "equations",
+            "proportions",
+            "(a-b)/(c-d)",
+            "valid serialized latex",
+            "do not over-fragment",
+            "natural, terminologically correct azerbaijani",
+        ):
+            self.assertIn(phrase, normalized)
+        self.assertIn('"Bucaq əmsalı düsturu"', prompt)
+        self.assertIn('never use the incorrect form\n"Bucağ əmsalı"', prompt)
 
     def test_provider_has_no_database_or_mutation_dependencies(self) -> None:
         provider = self.provider(FakeClient())

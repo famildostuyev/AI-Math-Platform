@@ -604,6 +604,37 @@
 .admin-editor-tabs button:disabled { opacity: 0.62; }
 .admin-editor-tabs small { font-size: 9px; font-weight: 600; }
 
+.admin-solution-empty,
+.admin-solution-editor {
+  padding: 22px;
+  border: 1px solid #dfe6ef;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.admin-solution-empty {
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  color: #526176;
+}
+
+.admin-solution-empty h2,
+.admin-solution-empty p { margin: 0; }
+
+.admin-solution-empty button,
+.admin-solution-editor button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-solution-editor .admin-editor-section-heading { margin-bottom: 18px; }
+
 .admin-authoring-workspace-grid {
   display: grid;
   grid-template-columns: minmax(210px, 0.55fr) minmax(540px, 1.65fr) minmax(320px, 0.8fr);
@@ -11305,6 +11336,60 @@ button {
 
 .math-content__fallback {
   white-space: pre-wrap;
+}
+
+.visual-math-input {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.visual-math-input__field {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #dfe3ec;
+  border-radius: 9px;
+  background: #fff;
+  font-size: 1.15rem;
+}
+
+.visual-math-input__field:focus-within {
+  border-color: #6957df;
+  box-shadow: 0 0 0 3px rgba(105, 87, 223, 0.14);
+  outline: none;
+}
+
+.visual-math-input__palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.visual-math-input__palette button {
+  min-width: 35px;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 1px solid #dfe3ec;
+  border-radius: 7px;
+  background: #f8f9fc;
+  color: #30394b;
+  font: inherit;
+  cursor: pointer;
+}
+
+.visual-math-input__palette button:hover:not(:disabled),
+.visual-math-input__palette button:focus-visible {
+  border-color: #6957df;
+  background: #f2efff;
+  outline: 2px solid rgba(105, 87, 223, 0.2);
+  outline-offset: 1px;
+}
+
+.visual-math-input__palette button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .admin-question-extraction-review-workspace {

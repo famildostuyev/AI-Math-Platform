@@ -97,7 +97,7 @@ class QuestionRevisionRelatedTopicModelMetadataTest(unittest.TestCase):
         self.assertEqual(QuestionForm.__table__.name, "question_forms")
         self.assertEqual(QuestionRevision.__table__.name, "question_revisions")
         for excluded_table in {
-            "solutions", "hints",
+            "hints",
             "rubrics", "media", "situation_contexts", "matching_items",
         }:
             self.assertNotIn(excluded_table, Base.metadata.tables)

@@ -1712,6 +1712,15 @@ class QuestionEditorApiTest(unittest.TestCase):
             ("PATCH", "/question-editor/revisions/{revision_id}/accepted-answers/{answer_id}"),
             ("DELETE", "/question-editor/revisions/{revision_id}/accepted-answers/{answer_id}"),
             ("PUT", "/question-editor/revisions/{revision_id}/accepted-answers/actions/order"),
+            ("GET", "/question-editor/revisions/{revision_id}/solution"),
+            ("POST", "/question-editor/revisions/{revision_id}/solution"),
+            ("DELETE", "/question-editor/revisions/{revision_id}/solution"),
+            ("POST", "/question-editor/revisions/{revision_id}/solution/blocks/text"),
+            ("PATCH", "/question-editor/revisions/{revision_id}/solution/blocks/{block_id}/text"),
+            ("POST", "/question-editor/revisions/{revision_id}/solution/blocks/formula"),
+            ("PATCH", "/question-editor/revisions/{revision_id}/solution/blocks/{block_id}/formula"),
+            ("DELETE", "/question-editor/revisions/{revision_id}/solution/blocks/{block_id}"),
+            ("PUT", "/question-editor/revisions/{revision_id}/solution/blocks/actions/order"),
         })
 
 

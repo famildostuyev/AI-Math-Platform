@@ -39,6 +39,18 @@ from app.schemas.question_answer import (
     AnswerOrderRequest,
     SetCorrectOptionsRequest,
 )
+from app.schemas.question_solution import (
+    SolutionBlockOrderRequest,
+    SolutionCreate,
+    SolutionDelete,
+    SolutionFormulaBlockCreate,
+    SolutionFormulaBlockRead,
+    SolutionFormulaBlockUpdate,
+    SolutionRead,
+    SolutionTextBlockCreate,
+    SolutionTextBlockRead,
+    SolutionTextBlockUpdate,
+)
 from app.services.question_answer_service import (
     AnswerIntegrityConflictError,
     AnswerOrderSetMismatchError,
@@ -66,6 +78,18 @@ from app.services.question_editor_service import (
 )
 from app.services.structured_text_service import (
     UnsupportedStructuredTextVersionError,
+)
+from app.services.question_solution_service import (
+    QuestionSolutionService,
+    SolutionAlreadyExistsError,
+    SolutionBlockNotFoundError,
+    SolutionBlockOrderSetMismatchError,
+    SolutionBlockTypeMismatchError,
+    SolutionIntegrityConflictError,
+    SolutionNotFoundError,
+    SolutionRevisionConflictError,
+    SolutionRevisionNotEditableError,
+    SolutionRevisionNotFoundError,
 )
 
 
@@ -99,6 +123,30 @@ def _raise_answer_error(exc: Exception) -> None:
         code, detail = status.HTTP_409_CONFLICT, "Answer order does not match active records."
     elif isinstance(exc, AnswerIntegrityConflictError):
         code, detail = status.HTTP_409_CONFLICT, "Answer data conflicts with an active record."
+    elif isinstance(exc, UnsupportedStructuredTextVersionError):
+        code, detail = status.HTTP_422_UNPROCESSABLE_CONTENT, "Structured text format version is unsupported."
+    else:
+        raise exc
+    raise HTTPException(status_code=code, detail=detail) from exc
+
+
+def _raise_solution_error(exc: Exception) -> None:
+    if isinstance(exc, SolutionRevisionNotFoundError):
+        code, detail = status.HTTP_404_NOT_FOUND, "Question revision was not found."
+    elif isinstance(exc, (SolutionNotFoundError, SolutionBlockNotFoundError)):
+        code, detail = status.HTTP_404_NOT_FOUND, "Solution or solution block was not found."
+    elif isinstance(exc, SolutionRevisionNotEditableError):
+        code, detail = status.HTTP_409_CONFLICT, "Question revision is not editable."
+    elif isinstance(exc, SolutionRevisionConflictError):
+        code, detail = status.HTTP_409_CONFLICT, "Question revision was modified by another request."
+    elif isinstance(exc, SolutionAlreadyExistsError):
+        code, detail = status.HTTP_409_CONFLICT, "An active solution already exists."
+    elif isinstance(exc, SolutionBlockTypeMismatchError):
+        code, detail = status.HTTP_409_CONFLICT, "Solution block type does not match the requested operation."
+    elif isinstance(exc, SolutionBlockOrderSetMismatchError):
+        code, detail = status.HTTP_409_CONFLICT, "Solution block order does not match active blocks."
+    elif isinstance(exc, SolutionIntegrityConflictError):
+        code, detail = status.HTTP_409_CONFLICT, "Solution data conflicts with an active record."
     elif isinstance(exc, UnsupportedStructuredTextVersionError):
         code, detail = status.HTTP_422_UNPROCESSABLE_CONTENT, "Structured text format version is unsupported."
     else:
@@ -757,3 +805,166 @@ def update_image_block(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Media asset was not found.",
         ) from exc
+
+
+@router.get("/revisions/{revision_id}/solution", response_model=SolutionRead | None)
+def get_solution(
+    revision_id: uuid.UUID,
+    _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))],
+    db: Annotated[Session, Depends(get_db)],
+) -> SolutionRead | None:
+    try:
+        return QuestionSolutionService(db).get_solution(revision_id=revision_id)
+    except Exception as exc:
+        _raise_solution_error(exc)
+
+
+@router.post(
+    "/revisions/{revision_id}/solution",
+    response_model=SolutionRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_solution(
+    revision_id: uuid.UUID,
+    request: SolutionCreate,
+    _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))],
+    db: Annotated[Session, Depends(get_db)],
+) -> SolutionRead:
+    try:
+        return QuestionSolutionService(db).create_solution(
+            revision_id=revision_id,
+            expected_revision_updated_at=request.expected_revision_updated_at,
+        )
+    except Exception as exc:
+        _raise_solution_error(exc)
+
+
+@router.delete("/revisions/{revision_id}/solution", status_code=status.HTTP_204_NO_CONTENT)
+def delete_solution(
+    revision_id: uuid.UUID,
+    request: SolutionDelete,
+    _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    try:
+        QuestionSolutionService(db).delete_solution(
+            revision_id=revision_id,
+            expected_revision_updated_at=request.expected_revision_updated_at,
+        )
+    except Exception as exc:
+        _raise_solution_error(exc)
+
+
+@router.post(
+    "/revisions/{revision_id}/solution/blocks/text",
+    response_model=SolutionTextBlockRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_solution_text_block(
+    revision_id: uuid.UUID,
+    request: SolutionTextBlockCreate,
+    _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))],
+    db: Annotated[Session, Depends(get_db)],
+) -> SolutionTextBlockRead:
+    try:
+        return QuestionSolutionService(db).create_text_block(
+            revision_id=revision_id, request=request
+        )
+    except Exception as exc:
+        _raise_solution_error(exc)
+
+
+@router.patch(
+    "/revisions/{revision_id}/solution/blocks/{block_id}/text",
+    response_model=SolutionTextBlockRead,
+)
+def update_solution_text_block(
+    revision_id: uuid.UUID,
+    block_id: uuid.UUID,
+    request: SolutionTextBlockUpdate,
+    _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))],
+    db: Annotated[Session, Depends(get_db)],
+) -> SolutionTextBlockRead:
+    try:
+        return QuestionSolutionService(db).update_text_block(
+            revision_id=revision_id, block_id=block_id, request=request
+        )
+    except Exception as exc:
+        _raise_solution_error(exc)
+
+
+@router.post(
+    "/revisions/{revision_id}/solution/blocks/formula",
+    response_model=SolutionFormulaBlockRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_solution_formula_block(
+    revision_id: uuid.UUID,
+    request: SolutionFormulaBlockCreate,
+    _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))],
+    db: Annotated[Session, Depends(get_db)],
+) -> SolutionFormulaBlockRead:
+    try:
+        return QuestionSolutionService(db).create_formula_block(
+            revision_id=revision_id, request=request
+        )
+    except Exception as exc:
+        _raise_solution_error(exc)
+
+
+@router.patch(
+    "/revisions/{revision_id}/solution/blocks/{block_id}/formula",
+    response_model=SolutionFormulaBlockRead,
+)
+def update_solution_formula_block(
+    revision_id: uuid.UUID,
+    block_id: uuid.UUID,
+    request: SolutionFormulaBlockUpdate,
+    _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))],
+    db: Annotated[Session, Depends(get_db)],
+) -> SolutionFormulaBlockRead:
+    try:
+        return QuestionSolutionService(db).update_formula_block(
+            revision_id=revision_id, block_id=block_id, request=request
+        )
+    except Exception as exc:
+        _raise_solution_error(exc)
+
+
+@router.delete(
+    "/revisions/{revision_id}/solution/blocks/{block_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_solution_block(
+    revision_id: uuid.UUID,
+    block_id: uuid.UUID,
+    expected_revision_updated_at: datetime,
+    _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    try:
+        QuestionSolutionService(db).delete_block(
+            revision_id=revision_id,
+            block_id=block_id,
+            expected_revision_updated_at=_require_aware_datetime(expected_revision_updated_at),
+        )
+    except Exception as exc:
+        _raise_solution_error(exc)
+
+
+@router.put(
+    "/revisions/{revision_id}/solution/blocks/actions/order",
+    response_model=list[SolutionTextBlockRead | SolutionFormulaBlockRead],
+)
+def reorder_solution_blocks(
+    revision_id: uuid.UUID,
+    request: SolutionBlockOrderRequest,
+    _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[SolutionTextBlockRead | SolutionFormulaBlockRead]:
+    try:
+        return QuestionSolutionService(db).reorder_blocks(
+            revision_id=revision_id, request=request
+        )
+    except Exception as exc:
+        _raise_solution_error(exc)

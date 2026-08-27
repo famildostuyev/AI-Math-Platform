@@ -128,11 +128,13 @@ class QuestionRevisionModelMetadataTest(unittest.TestCase):
                 "question_form", "primary_topic", "created_by_user",
                 "reviewed_by_user", "based_on_revision", "derived_revisions",
                 "content_blocks", "answer_options", "accepted_answers",
+                "solution",
             },
         )
         for scalar_name in {
             "question_form", "primary_topic", "created_by_user",
             "reviewed_by_user", "based_on_revision",
+            "solution",
         }:
             self.assertFalse(relationships[scalar_name].uselist)
         self.assertTrue(relationships.derived_revisions.uselist)
@@ -142,6 +144,7 @@ class QuestionRevisionModelMetadataTest(unittest.TestCase):
         self.assertTrue(relationships.derived_revisions.passive_deletes)
         self.assertTrue(relationships.answer_options.passive_deletes)
         self.assertTrue(relationships.accepted_answers.passive_deletes)
+        self.assertTrue(relationships.solution.passive_deletes)
         for relationship in relationships:
             self.assertNotIn("delete", relationship.cascade)
             self.assertNotIn("delete-orphan", relationship.cascade)
@@ -154,7 +157,7 @@ class QuestionRevisionModelMetadataTest(unittest.TestCase):
         self.assertEqual(QuestionFamily.__table__.name, "question_families")
         self.assertEqual(QuestionForm.__table__.name, "question_forms")
         for excluded_table in {
-            "solutions", "hints",
+            "hints",
             "rubrics", "media", "situation_contexts", "matching_items",
         }:
             self.assertNotIn(excluded_table, Base.metadata.tables)

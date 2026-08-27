@@ -27,6 +27,7 @@ from app.schemas.question_editor import (
 )
 from app.schemas.question_answer import AcceptedAnswerRead, AnswerOptionRead
 from app.schemas.structured_text import StructuredTextDocument
+from app.schemas.question_solution import SolutionFormulaBlockRead, SolutionTextBlockRead
 from app.services.question_editor_service import (
     EditorBlockContentMissingError,
     QuestionEditorService,
@@ -107,6 +108,34 @@ class AuthoringAcceptedAnswerContext(StrictFrozenContextModel):
     format_version: Literal[1]
 
 
+class AuthoringSolutionTextBlockContext(StrictFrozenContextModel):
+    block_type: Literal["text"]
+    block_id: uuid.UUID
+    order: int = Field(gt=0)
+    source_text: str
+    document: StructuredTextDocument
+    format_version: Literal[1]
+
+
+class AuthoringSolutionFormulaBlockContext(StrictFrozenContextModel):
+    block_type: Literal["formula"]
+    block_id: uuid.UUID
+    order: int = Field(gt=0)
+    source_latex: str
+    format_version: Literal[1]
+
+
+AuthoringSolutionBlockContext = Annotated[
+    Union[AuthoringSolutionTextBlockContext, AuthoringSolutionFormulaBlockContext],
+    Field(discriminator="block_type"),
+]
+
+
+class AuthoringSolutionContext(StrictFrozenContextModel):
+    solution_id: uuid.UUID
+    blocks: tuple[AuthoringSolutionBlockContext, ...]
+
+
 class AuthoringRevisionContext(StrictFrozenContextModel):
     revision_id: uuid.UUID
     revision_number: int = Field(gt=0)
@@ -125,6 +154,7 @@ class AuthoringRevisionContext(StrictFrozenContextModel):
     answer_policy: AnswerPolicy = AnswerPolicy.UNSUPPORTED
     answer_options: tuple[AuthoringAnswerOptionContext, ...] = ()
     accepted_answers: tuple[AuthoringAcceptedAnswerContext, ...] = ()
+    solution: AuthoringSolutionContext | None = None
 
 
 class QuestionAuthoringContextError(Exception):
@@ -268,6 +298,12 @@ class QuestionAuthoringContextService:
                 answer_policy=read.answer_policy,
                 answer_options=tuple(self._map_option(item) for item in read.answer_options),
                 accepted_answers=tuple(self._map_accepted(item) for item in read.accepted_answers),
+                solution=(
+                    None if read.solution is None else AuthoringSolutionContext(
+                        solution_id=read.solution.id,
+                        blocks=tuple(self._map_solution_block(item) for item in read.solution.blocks),
+                    )
+                ),
             )
         except (ValidationError, TypeError, ValueError) as exc:
             raise AuthoringContextInvalidBlockPayloadError(
@@ -344,3 +380,18 @@ class QuestionAuthoringContextService:
             source_text=item.source_text, document=item.document,
             format_version=item.format_version,
         )
+
+    @staticmethod
+    def _map_solution_block(item):
+        if isinstance(item, SolutionTextBlockRead):
+            return AuthoringSolutionTextBlockContext(
+                block_type="text", block_id=item.id, order=item.sort_order,
+                source_text=item.source_text, document=item.document,
+                format_version=item.format_version,
+            )
+        if isinstance(item, SolutionFormulaBlockRead):
+            return AuthoringSolutionFormulaBlockContext(
+                block_type="formula", block_id=item.id, order=item.sort_order,
+                source_latex=item.source_latex, format_version=item.format_version,
+            )
+        raise AuthoringContextInvalidBlockPayloadError("Solution contains an unsupported block type.")

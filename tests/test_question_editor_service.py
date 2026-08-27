@@ -365,7 +365,7 @@ class QuestionEditorServiceTest(unittest.TestCase):
             for index, sort_order in enumerate(sort_orders)
         ]
         db = MagicMock()
-        db.scalar.return_value = revision
+        db.scalar.side_effect = [revision, revision, None]
         db.scalars.return_value = scalar_result(blocks)
         return db, revision, blocks
 
@@ -663,7 +663,7 @@ class QuestionEditorServiceTest(unittest.TestCase):
             updated_at=NOW,
         )
         db = MagicMock()
-        db.scalar.return_value = revision
+        db.scalar.side_effect = [revision, revision, None]
         db.scalars.side_effect = [
             scalar_result([]), scalar_result([]), scalar_result(blocks),
             scalar_result([]), scalar_result([]),
@@ -680,6 +680,7 @@ class QuestionEditorServiceTest(unittest.TestCase):
         self.assertEqual(response.answer_policy.value, "accepted_answer")
         self.assertEqual(response.answer_options, [])
         self.assertEqual(response.accepted_answers, [])
+        self.assertIsNone(response.solution)
         self.assertEqual(response.source_id, revision.question_form.source_id)
         self.assertEqual(
             response.source_detail,
@@ -690,10 +691,36 @@ class QuestionEditorServiceTest(unittest.TestCase):
             "Test source",
         )
         self.assertEqual(response.updated_at, NOW)
-        statement = str(db.scalar.call_args.args[0])
+        statement = str(db.scalar.call_args_list[0].args[0])
         self.assertIn("question_revisions.deleted_at IS NULL", statement)
         self.assertIn("question_forms.deleted_at IS NULL", statement)
         self.assertIn("question_families.deleted_at IS NULL", statement)
+
+    def test_editor_projects_ordered_solution_separately_from_question_blocks(self) -> None:
+        db, revision = self._read_db([])
+        solution = SimpleNamespace(id=uuid.uuid4())
+        solution_blocks = [
+            SimpleNamespace(
+                id=uuid.uuid4(), block_type="formula", sort_order=1000,
+                source_text=None, document_data=None, source_latex="x=1",
+                format_version=1,
+            ),
+        ]
+        db.scalar.side_effect = [revision, revision, solution]
+        db.scalars.side_effect = [
+            scalar_result([]), scalar_result([]), scalar_result([]),
+            scalar_result([]), scalar_result([]), scalar_result(solution_blocks),
+        ]
+        response = QuestionEditorService(db).get_revision_for_editor(
+            revision_id=revision.id,
+        )
+        self.assertEqual(response.blocks, [])
+        self.assertEqual(response.solution.id, solution.id)
+        self.assertEqual(response.solution.blocks[0].source_latex, "x=1")
+        self.assertIn(
+            "ORDER BY solution_blocks.sort_order, solution_blocks.id",
+            str(db.scalars.call_args_list[5].args[0]),
+        )
 
     def test_revision_not_found_is_rejected(self) -> None:
         db = MagicMock()

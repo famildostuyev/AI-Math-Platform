@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from app.models.ai_authoring_message import AI_AUTHORING_MESSAGE_MAX_LENGTH
 from app.core.enums import AnswerPolicy
 from app.schemas.structured_text import StructuredTextDocument
+from app.schemas.structured_text import project_source_text
 from app.services.authoring_action import AuthoringActionEnvelope
 from app.services.authoring_assistant_provider import (
     AuthoringAssistantAPIError,
@@ -31,6 +32,8 @@ from app.services.question_authoring_context import (
     AuthoringRevisionContext,
     AuthoringTextBlockContext,
     AuthoringFormulaBlockContext,
+    AuthoringSolutionFormulaBlockContext,
+    AuthoringSolutionTextBlockContext,
 )
 
 
@@ -44,6 +47,27 @@ VALIDATION_LOG_MAX_COMPONENT_LENGTH = 64
 _SAFE_COMPONENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SAFE_ERROR_TYPE = re.compile(r"^[a-z][a-z0-9_]*$")
 logger = logging.getLogger(__name__)
+
+SOLUTION_ACTION_TYPES = frozenset({
+    "create_solution", "delete_solution",
+    "create_solution_text_block", "update_solution_text_block",
+    "create_solution_formula_block", "update_solution_formula_block",
+    "delete_solution_block", "reorder_solution_blocks",
+})
+_SOLUTION_INTENT_PATTERNS = tuple(re.compile(pattern, re.IGNORECASE) for pattern in (
+    r"\b(?:bu\s+)?(?:məsələni|sualı)\s+həll\s+et\b",
+    r"\bhəllini\s+(?:yaz|hazırla)\b",
+    r"\bəsas\s+həlli\s+hazırla\b",
+    r"\bhəlli\s+(?:yaxşılaşdır|redaktə\s+et|sil)\b",
+))
+_DISPLAY_LINEAR_FRACTION = re.compile(
+    r"\([^()\n]{1,80}\)\s*/\s*\([^()\n]{1,80}\)"
+)
+
+
+def is_solution_intent(instruction: str) -> bool:
+    normalized = " ".join(instruction.casefold().strip().split())
+    return any(pattern.search(normalized) for pattern in _SOLUTION_INTENT_PATTERNS)
 
 AUTHORING_ASSISTANT_INSTRUCTIONS = """
 Return only a typed authoring action envelope compatible with the canonical
@@ -61,6 +85,23 @@ reorder, and correctness actions. Correctness always uses option IDs, never
 labels. Keep labels separate from structured content and do not touch unrelated
 options. Do not invent a correct answer; do not change correctness unless the
 admin explicitly requests it. Deletion must be an explicit action.
+For requests to solve the problem, propose one concise, step-by-step ADF-1
+solution using solution actions only. Use the question data to derive a correct
+result and valid serialized LaTeX for formula steps. If no solution exists,
+create_solution must precede all solution-block actions. If a solution exists,
+update its active blocks or add steps without needless delete-and-recreate.
+Delete a solution only when explicitly requested. Never modify unrelated
+question blocks or answers while authoring a solution.
+Use solution text blocks primarily for natural-language explanation and
+transitions. Put display-style or structurally meaningful mathematics in
+solution formula blocks, preserving a semantic text/formula sequence. Fractions,
+roots, powers, subscripts, equations, and proportions should use valid serialized
+LaTeX formula actions whenever they are substantial; do not flatten expressions
+such as (a-b)/(c-d) into linear plain text. Do not over-fragment the solution:
+short, simple inline expressions may remain in explanatory text.
+Write solution narrative in natural, terminologically correct Azerbaijani. Use
+"Bucaq əmsalı" and "Bucaq əmsalı düsturu"; never use the incorrect form
+"Bucağ əmsalı". Keep the explanation concise, clear, and pedagogically natural.
 """.strip()
 
 
@@ -241,6 +282,46 @@ class _OpenAIReorderAcceptedAnswersAction(_StrictOpenAIModel):
     ordered_answer_ids: list[uuid.UUID]
 
 
+class _OpenAICreateSolutionAction(_StrictOpenAIModel):
+    action_type: Literal["create_solution"]
+
+
+class _OpenAIDeleteSolutionAction(_StrictOpenAIModel):
+    action_type: Literal["delete_solution"]
+
+
+class _OpenAICreateSolutionTextBlockAction(_StrictOpenAIModel):
+    action_type: Literal["create_solution_text_block"]
+    payload: _OpenAITextPayload
+
+
+class _OpenAIUpdateSolutionTextBlockAction(_StrictOpenAIModel):
+    action_type: Literal["update_solution_text_block"]
+    solution_block_id: uuid.UUID
+    payload: _OpenAITextPayload
+
+
+class _OpenAICreateSolutionFormulaBlockAction(_StrictOpenAIModel):
+    action_type: Literal["create_solution_formula_block"]
+    payload: _OpenAIFormulaPayload
+
+
+class _OpenAIUpdateSolutionFormulaBlockAction(_StrictOpenAIModel):
+    action_type: Literal["update_solution_formula_block"]
+    solution_block_id: uuid.UUID
+    payload: _OpenAIFormulaPayload
+
+
+class _OpenAIDeleteSolutionBlockAction(_StrictOpenAIModel):
+    action_type: Literal["delete_solution_block"]
+    solution_block_id: uuid.UUID
+
+
+class _OpenAIReorderSolutionBlocksAction(_StrictOpenAIModel):
+    action_type: Literal["reorder_solution_blocks"]
+    ordered_solution_block_ids: list[uuid.UUID]
+
+
 _OpenAIAuthoringAction = (
     _OpenAIUpdateTextAction
     | _OpenAIUpdateFormulaAction
@@ -257,6 +338,14 @@ _OpenAIAuthoringAction = (
     | _OpenAIUpdateAcceptedAnswerAction
     | _OpenAIDeleteAcceptedAnswerAction
     | _OpenAIReorderAcceptedAnswersAction
+    | _OpenAICreateSolutionAction
+    | _OpenAIDeleteSolutionAction
+    | _OpenAICreateSolutionTextBlockAction
+    | _OpenAIUpdateSolutionTextBlockAction
+    | _OpenAICreateSolutionFormulaBlockAction
+    | _OpenAIUpdateSolutionFormulaBlockAction
+    | _OpenAIDeleteSolutionBlockAction
+    | _OpenAIReorderSolutionBlocksAction
 )
 
 
@@ -378,7 +467,11 @@ class OpenAIAuthoringAssistantProvider:
             )
         try:
             envelope = self._map_envelope(parsed)
-            self._validate_targets(envelope=envelope, context=context)
+            self._validate_targets(
+                envelope=envelope,
+                context=context,
+                solution_intent=is_solution_intent(instruction),
+            )
         except AuthoringAssistantInvalidActionTargetError:
             raise
         except ValidationError as exc:
@@ -440,10 +533,38 @@ class OpenAIAuthoringAssistantProvider:
 
     @staticmethod
     def _validate_targets(
-        *, envelope: AuthoringActionEnvelope, context: AuthoringRevisionContext
+        *, envelope: AuthoringActionEnvelope, context: AuthoringRevisionContext,
+        solution_intent: bool = False,
     ) -> None:
+        if solution_intent:
+            wrong_domain = [
+                action.action_type for action in envelope.actions
+                if action.action_type not in SOLUTION_ACTION_TYPES
+            ]
+            if wrong_domain:
+                raise AuthoringAssistantInvalidActionTargetError(
+                    "Only solution-domain actions are permitted for a solution instruction."
+                )
+            if context.solution is None and envelope.actions[0].action_type != "create_solution":
+                raise AuthoringAssistantInvalidActionTargetError(
+                    "A solution instruction must create the missing solution first."
+                )
+            for action in envelope.actions:
+                if action.action_type in {
+                    "create_solution_text_block", "update_solution_text_block",
+                }:
+                    source_text = project_source_text(action.payload.document)
+                    if _DISPLAY_LINEAR_FRACTION.search(source_text):
+                        raise AuthoringAssistantInvalidActionTargetError(
+                            "Structured display mathematics must use a solution formula action."
+                        )
         block_by_id = {block.block_id: block for block in context.blocks}
         active_ids = set(block_by_id)
+        solution_active = context.solution is not None
+        solution_blocks = (
+            {} if context.solution is None
+            else {block.block_id: block for block in context.solution.blocks}
+        )
         for action in envelope.actions:
             action_type = action.action_type
             if action_type in {"update_text_block", "update_formula_block", "delete_block"}:
@@ -494,6 +615,33 @@ class OpenAIAuthoringAssistantProvider:
                     raise AuthoringAssistantInvalidActionTargetError("Accepted-answer action targets an unavailable answer.")
                 if action_type == "reorder_accepted_answers" and set(action.ordered_answer_ids) != answer_ids:
                     raise AuthoringAssistantInvalidActionTargetError("Accepted-answer order does not match canonical context.")
+            elif action_type == "create_solution":
+                if solution_active:
+                    raise AuthoringAssistantInvalidActionTargetError("An active solution already exists.")
+                solution_active = True
+            elif action_type == "delete_solution":
+                if not solution_active:
+                    raise AuthoringAssistantInvalidActionTargetError("Active solution is unavailable.")
+                solution_active = False
+                solution_blocks.clear()
+            elif action_type in {"create_solution_text_block", "create_solution_formula_block"}:
+                if not solution_active:
+                    raise AuthoringAssistantInvalidActionTargetError("Create solution before creating solution blocks.")
+            elif action_type in {"update_solution_text_block", "update_solution_formula_block", "delete_solution_block"}:
+                if not solution_active:
+                    raise AuthoringAssistantInvalidActionTargetError("Active solution is unavailable.")
+                target = solution_blocks.get(action.solution_block_id)
+                if target is None:
+                    raise AuthoringAssistantInvalidActionTargetError("Solution block target is unavailable.")
+                if action_type == "update_solution_text_block" and not isinstance(target, AuthoringSolutionTextBlockContext):
+                    raise AuthoringAssistantInvalidActionTargetError("Solution block has the wrong type.")
+                if action_type == "update_solution_formula_block" and not isinstance(target, AuthoringSolutionFormulaBlockContext):
+                    raise AuthoringAssistantInvalidActionTargetError("Solution block has the wrong type.")
+                if action_type == "delete_solution_block":
+                    del solution_blocks[action.solution_block_id]
+            elif action_type == "reorder_solution_blocks":
+                if not solution_active or set(action.ordered_solution_block_ids) != set(solution_blocks):
+                    raise AuthoringAssistantInvalidActionTargetError("Solution block order does not match canonical context.")
 
     def _log_validation_failure(self, exception: ValidationError) -> None:
         errors = exception.errors(include_input=False, include_url=False, include_context=False)

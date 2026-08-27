@@ -16,6 +16,7 @@ from app.core.enums import (
     QuestionRevisionStatus,
 )
 from app.schemas.question_answer import AcceptedAnswerRead, AnswerOptionRead
+from app.schemas.question_solution import SolutionRead
 from app.schemas.structured_text import StructuredTextDocument
 
 
@@ -205,6 +206,7 @@ class QuestionRevisionEditorRead(QuestionDraftRead):
     answer_policy: AnswerPolicy = AnswerPolicy.UNSUPPORTED
     answer_options: list[AnswerOptionRead] = Field(default_factory=list)
     accepted_answers: list[AcceptedAnswerRead] = Field(default_factory=list)
+    solution: SolutionRead | None = None
 
 
 class TextBlockWritePayload(StrictEditorSchema):

@@ -22,6 +22,10 @@ from app.services.authoring_action import (
     ReorderAnswerOptionsAction, SetCorrectAnswersAction,
     CreateAcceptedAnswerAction, UpdateAcceptedAnswerAction,
     DeleteAcceptedAnswerAction, ReorderAcceptedAnswersAction,
+    CreateSolutionAction, DeleteSolutionAction,
+    CreateSolutionTextBlockAction, UpdateSolutionTextBlockAction,
+    CreateSolutionFormulaBlockAction, UpdateSolutionFormulaBlockAction,
+    DeleteSolutionBlockAction, ReorderSolutionBlocksAction,
 )
 from app.services.question_authoring_context import (
     AuthoringBlockContext,
@@ -30,6 +34,8 @@ from app.services.question_authoring_context import (
     AuthoringTextBlockContext,
     AuthoringAnswerOptionContext,
     AuthoringAcceptedAnswerContext,
+    AuthoringSolutionContext, AuthoringSolutionBlockContext,
+    AuthoringSolutionTextBlockContext, AuthoringSolutionFormulaBlockContext,
     QuestionAuthoringContextService,
 )
 
@@ -43,6 +49,10 @@ PreviewWarningCode = Literal[
     "answer_option_deleted",
     "correct_answer_changed",
     "multiple_answer_changes",
+    "solution_created",
+    "solution_deleted",
+    "solution_block_deleted",
+    "multiple_solution_changes",
 ]
 
 
@@ -68,10 +78,20 @@ class AuthoringCorrectAnswerPreview(StrictFrozenPreviewModel):
     correct_options: tuple[AuthoringCorrectAnswerOptionPreview, ...]
 
 
+class AuthoringSolutionStatePreview(StrictFrozenPreviewModel):
+    exists: bool
+
+
+class AuthoringSolutionOrderPreview(StrictFrozenPreviewModel):
+    blocks: tuple[AuthoringSolutionBlockContext, ...]
+
+
 AuthoringPreviewValue = Union[
     AuthoringBlockContext, AuthoringBlockOrderPreview,
     AuthoringAnswerOptionContext, AuthoringAcceptedAnswerContext,
     AuthoringAnswerOrderPreview, AuthoringCorrectAnswerPreview,
+    AuthoringSolutionStatePreview, AuthoringSolutionBlockContext,
+    AuthoringSolutionOrderPreview,
 ]
 
 
@@ -176,6 +196,15 @@ class AIAuthoringProposalPreviewService:
             warnings.append("correct_answer_changed")
         if len(answer_actions) > 1:
             warnings.append("multiple_answer_changes")
+        solution_actions = [action for action in envelope.actions if "solution" in action.action_type]
+        if any(isinstance(action, CreateSolutionAction) for action in solution_actions):
+            warnings.append("solution_created")
+        if any(isinstance(action, DeleteSolutionAction) for action in solution_actions):
+            warnings.append("solution_deleted")
+        if any(isinstance(action, DeleteSolutionBlockAction) for action in solution_actions):
+            warnings.append("solution_block_deleted")
+        if len(solution_actions) > 1:
+            warnings.append("multiple_solution_changes")
 
         return AuthoringProposalPreview(
             proposal_id=proposal.id,
@@ -206,6 +235,9 @@ class AIAuthoringProposalPreviewService:
         accepted_by_id = {item.answer_id: item for item in accepted}
         created_option_ids: set[uuid.UUID] = set()
         created_answer_ids: set[uuid.UUID] = set()
+        solution = context.solution
+        solution_blocks = [] if solution is None else list(solution.blocks)
+        solution_by_id = {item.block_id: item for item in solution_blocks}
 
         for action_index, action in enumerate(envelope.actions):
             if isinstance(action, UpdateTextBlockAction):
@@ -382,6 +414,54 @@ class AIAuthoringProposalPreviewService:
                 changes.append(self._change(action_index, action.action_type, "reordered", None,
                     AuthoringAnswerOrderPreview(ordered_answer_ids=before),
                     AuthoringAnswerOrderPreview(ordered_answer_ids=tuple(item.answer_id for item in accepted))))
+            elif isinstance(action, CreateSolutionAction):
+                if solution is not None:
+                    raise AIAuthoringProposalPreviewInvalidTargetError("An active solution already exists.")
+                solution = AuthoringSolutionContext(solution_id=uuid.uuid5(proposal_id, "preview:solution"), blocks=())
+                changes.append(self._change(action_index, action.action_type, "created", None, None, AuthoringSolutionStatePreview(exists=True)))
+            elif isinstance(action, DeleteSolutionAction):
+                if solution is None:
+                    raise AIAuthoringProposalPreviewInvalidTargetError("Active solution is unavailable.")
+                changes.append(self._change(action_index, action.action_type, "deleted", None, AuthoringSolutionStatePreview(exists=True), None))
+                solution = None; solution_blocks = []; solution_by_id = {}
+            elif isinstance(action, (CreateSolutionTextBlockAction, CreateSolutionFormulaBlockAction)):
+                if solution is None:
+                    raise AIAuthoringProposalPreviewInvalidTargetError("Create solution before creating blocks.")
+                item_id = uuid.uuid5(proposal_id, f"preview:{action_index}:{action.action_type}")
+                order = max((item.order for item in solution_blocks), default=0) + 1000
+                if isinstance(action, CreateSolutionTextBlockAction):
+                    after = AuthoringSolutionTextBlockContext(block_type="text", block_id=item_id, order=order,
+                        source_text=self._project_text(action.payload.document), document=action.payload.document,
+                        format_version=action.payload.format_version)
+                else:
+                    after = AuthoringSolutionFormulaBlockContext(block_type="formula", block_id=item_id, order=order,
+                        source_latex=action.payload.source_latex, format_version=action.payload.format_version)
+                solution_blocks.append(after); solution_by_id[item_id] = after
+                changes.append(self._change(action_index, action.action_type, "created", item_id, None, after))
+            elif isinstance(action, (UpdateSolutionTextBlockAction, UpdateSolutionFormulaBlockAction)):
+                before = self._require_answer_target(solution_by_id, action.solution_block_id)
+                if isinstance(action, UpdateSolutionTextBlockAction):
+                    if not isinstance(before, AuthoringSolutionTextBlockContext):
+                        raise AIAuthoringProposalPreviewBlockTypeError("Solution text action targets the wrong type.")
+                    after = before.model_copy(update={"source_text": self._project_text(action.payload.document), "document": action.payload.document, "format_version": action.payload.format_version})
+                else:
+                    if not isinstance(before, AuthoringSolutionFormulaBlockContext):
+                        raise AIAuthoringProposalPreviewBlockTypeError("Solution formula action targets the wrong type.")
+                    after = before.model_copy(update={"source_latex": action.payload.source_latex, "format_version": action.payload.format_version})
+                solution_blocks = [after if item.block_id == after.block_id else item for item in solution_blocks]; solution_by_id[after.block_id] = after
+                changes.append(self._change(action_index, action.action_type, "updated", before.block_id, before, after))
+            elif isinstance(action, DeleteSolutionBlockAction):
+                before = self._require_answer_target(solution_by_id, action.solution_block_id)
+                solution_blocks = [item for item in solution_blocks if item.block_id != action.solution_block_id]; del solution_by_id[action.solution_block_id]
+                changes.append(self._change(action_index, action.action_type, "deleted", before.block_id, before, None))
+            elif isinstance(action, ReorderSolutionBlocksAction):
+                if set(action.ordered_solution_block_ids) != set(solution_by_id):
+                    raise AIAuthoringProposalPreviewInvalidOrderError("Solution block order does not match active blocks.")
+                before = AuthoringSolutionOrderPreview(blocks=tuple(solution_blocks))
+                solution_blocks = [solution_by_id[item] for item in action.ordered_solution_block_ids]
+                solution_blocks = [item.model_copy(update={"order": index * 1000}) for index, item in enumerate(solution_blocks, 1)]
+                solution_by_id = {item.block_id: item for item in solution_blocks}
+                changes.append(self._change(action_index, action.action_type, "reordered", None, before, AuthoringSolutionOrderPreview(blocks=tuple(solution_blocks))))
         return changes
 
     @staticmethod

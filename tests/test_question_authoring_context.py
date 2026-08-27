@@ -44,6 +44,7 @@ from app.services.question_authoring_context import (
     QuestionAuthoringContextService,
 )
 from app.services.question_editor_service import RevisionNotFoundError
+from app.schemas.question_solution import SolutionRead, SolutionTextBlockRead, SolutionFormulaBlockRead
 
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
@@ -120,6 +121,23 @@ def editor_read(*, text: str = "Find x") -> QuestionRevisionEditorRead:
 
 
 class QuestionAuthoringContextServiceTest(unittest.TestCase):
+    def test_solution_context_is_nullable_and_preserves_ordered_typed_blocks(self) -> None:
+        service = QuestionAuthoringContextService(MagicMock(), max_chars=100_000)
+        base = editor_read()
+        self.assertIsNone(service._build(base, QuestionRevisionProvenanceKind.HUMAN_AUTHORED).solution)
+        text_id, formula_id = uuid.uuid4(), uuid.uuid4()
+        read = base.model_copy(update={"solution": SolutionRead(id=uuid.uuid4(), blocks=[
+            SolutionTextBlockRead(id=text_id, block_type="text", sort_order=1000,
+                source_text="Step", document=document("Step"), format_version=1),
+            SolutionFormulaBlockRead(id=formula_id, block_type="formula", sort_order=2000,
+                source_latex="x=2", format_version=1),
+        ])})
+        solution = service._build(read, QuestionRevisionProvenanceKind.HUMAN_AUTHORED).solution
+        self.assertIsNotNone(solution)
+        assert solution is not None
+        self.assertEqual([item.block_id for item in solution.blocks], [text_id, formula_id])
+        self.assertEqual([item.block_type for item in solution.blocks], ["text", "formula"])
+
     def build(self, read: QuestionRevisionEditorRead | None = None, *, max_chars: int = 100_000):
         aggregate = read or editor_read()
         db = MagicMock()

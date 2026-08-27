@@ -253,11 +253,44 @@ export type ContentBlockRead =
   | ImageBlockRead
   | GeometryBlockRead
 
+export type SolutionTextBlockRead = {
+  id: UUID
+  block_type: 'text'
+  sort_order: number
+  source_text: string
+  document: StructuredTextDocument
+  format_version: 1
+}
+
+export type SolutionFormulaBlockRead = {
+  id: UUID
+  block_type: 'formula'
+  sort_order: number
+  source_latex: string
+  format_version: 1
+}
+
+export type SolutionBlockRead = SolutionTextBlockRead | SolutionFormulaBlockRead
+export type SolutionRead = { id: UUID; blocks: SolutionBlockRead[] }
+export type SolutionMutationRequest = { expected_revision_updated_at: IsoDateTime }
+export type SolutionTextBlockCreate = SolutionMutationRequest & {
+  block_type: 'text'
+  payload: TextBlockWritePayload
+}
+export type SolutionTextBlockUpdate = SolutionMutationRequest & { payload: TextBlockWritePayload }
+export type SolutionFormulaBlockCreate = SolutionMutationRequest & {
+  block_type: 'formula'
+  payload: FormulaBlockWritePayload
+}
+export type SolutionFormulaBlockUpdate = SolutionMutationRequest & { payload: FormulaBlockWritePayload }
+export type SolutionBlockOrderRequest = SolutionMutationRequest & { block_ids: UUID[] }
+
 export type QuestionRevisionEditorRead = QuestionDraftRead & {
   blocks: ContentBlockRead[]
   answer_policy: AnswerPolicy
   answer_options: AnswerOptionRead[]
   accepted_answers: AcceptedAnswerRead[]
+  solution: SolutionRead | null
 }
 
 export type AnswerOptionRead = {
@@ -573,5 +606,63 @@ export function deleteAcceptedAnswer(accessToken: string, revisionId: UUID, answ
 
 export function reorderAcceptedAnswers(accessToken: string, revisionId: UUID, request: AnswerOrderRequest): Promise<AcceptedAnswerRead[]> {
   return requestJson<AcceptedAnswerRead[]>(`${answerPath(revisionId, 'accepted-answers')}/actions/order`, { method: 'PUT', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request) })
+}
+
+function solutionPath(revisionId: UUID): string {
+  return `/api/v1/question-editor/revisions/${encodeURIComponent(revisionId)}/solution`
+}
+
+export function getSolution(accessToken: string, revisionId: UUID): Promise<SolutionRead | null> {
+  return requestJson<SolutionRead | null>(solutionPath(revisionId), {
+    method: 'GET', headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
+
+export function createSolution(accessToken: string, revisionId: UUID, request: SolutionMutationRequest): Promise<SolutionRead> {
+  return requestJson<SolutionRead>(solutionPath(revisionId), {
+    method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  })
+}
+
+export function deleteSolution(accessToken: string, revisionId: UUID, request: SolutionMutationRequest): Promise<void> {
+  return requestJson<void>(solutionPath(revisionId), {
+    method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  })
+}
+
+export function createSolutionTextBlock(accessToken: string, revisionId: UUID, request: SolutionTextBlockCreate): Promise<SolutionTextBlockRead> {
+  return requestJson<SolutionTextBlockRead>(`${solutionPath(revisionId)}/blocks/text`, {
+    method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  })
+}
+
+export function updateSolutionTextBlock(accessToken: string, revisionId: UUID, blockId: UUID, request: SolutionTextBlockUpdate): Promise<SolutionTextBlockRead> {
+  return requestJson<SolutionTextBlockRead>(`${solutionPath(revisionId)}/blocks/${encodeURIComponent(blockId)}/text`, {
+    method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  })
+}
+
+export function createSolutionFormulaBlock(accessToken: string, revisionId: UUID, request: SolutionFormulaBlockCreate): Promise<SolutionFormulaBlockRead> {
+  return requestJson<SolutionFormulaBlockRead>(`${solutionPath(revisionId)}/blocks/formula`, {
+    method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  })
+}
+
+export function updateSolutionFormulaBlock(accessToken: string, revisionId: UUID, blockId: UUID, request: SolutionFormulaBlockUpdate): Promise<SolutionFormulaBlockRead> {
+  return requestJson<SolutionFormulaBlockRead>(`${solutionPath(revisionId)}/blocks/${encodeURIComponent(blockId)}/formula`, {
+    method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  })
+}
+
+export function deleteSolutionBlock(accessToken: string, revisionId: UUID, blockId: UUID, expectedAt: IsoDateTime): Promise<void> {
+  return requestJson<void>(`${solutionPath(revisionId)}/blocks/${encodeURIComponent(blockId)}?expected_revision_updated_at=${encodeURIComponent(expectedAt)}`, {
+    method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
+
+export function reorderSolutionBlocks(accessToken: string, revisionId: UUID, request: SolutionBlockOrderRequest): Promise<SolutionBlockRead[]> {
+  return requestJson<SolutionBlockRead[]>(`${solutionPath(revisionId)}/blocks/actions/order`, {
+    method: 'PUT', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  })
 }
 

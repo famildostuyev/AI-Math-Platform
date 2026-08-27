@@ -37,6 +37,8 @@ import {
 import AIAuthoringPanel from './AIAuthoringPanel'
 import AnswerEditorSection from './AnswerEditorSection'
 import MathContent from './MathContent'
+import SolutionEditorSection from './SolutionEditorSection'
+import VisualMathInput from './VisualMathInput'
 
 type AuthenticatedRequest = <T>(
   request: (accessToken: string) => Promise<T>,
@@ -49,7 +51,7 @@ type AdminQuestionEditorProps = {
 }
 
 type MutationName = 'text-create' | 'text-update' | 'formula-create'
-  | 'formula-update' | 'delete' | 'reorder' | 'answer'
+  | 'formula-update' | 'delete' | 'reorder' | 'answer' | 'solution'
 
 function editorErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -59,6 +61,16 @@ function editorErrorMessage(error: unknown): string {
   }
   if (error instanceof Error && error.message) return error.message
   return 'Əməliyyatı tamamlamaq mümkün olmadı.'
+}
+
+function solutionErrorMessage(error: ApiError): string {
+  const detail = typeof error.detail === 'string' ? error.detail : ''
+  if (detail.includes('already exists')) return 'Bu reviziya üçün həll artıq mövcuddur.'
+  if (detail.includes('not editable')) return 'Bu reviziya redaktə edilə bilməz.'
+  if (detail.includes('type does not match')) return 'Həll blokunun tipi əməliyyata uyğun deyil.'
+  if (detail.includes('not found')) return 'Həll və ya həll bloku tapılmadı.'
+  if (detail.includes('order does not match')) return 'Həll bloklarının sırası mövcud bloklarla uyğun deyil.'
+  return 'Həll əməliyyatını icra etmək mümkün olmadı.'
 }
 
 function formatUpdatedAt(value: string): string {
@@ -127,12 +139,12 @@ function BlockCard({
 
       {isEditing ? (
         <div className="admin-editor-inline-edit">
-          <textarea
+          {block.block_type === 'text' ? <textarea
             value={editingValue}
             onChange={(event) => onEditingValueChange(event.target.value)}
             disabled={disabled}
-            aria-label={block.block_type === 'text' ? 'Mətn bloku' : 'Formula LaTeX'}
-          />
+            aria-label="Mətn bloku"
+          /> : <VisualMathInput value={editingValue} onChange={onEditingValueChange} disabled={disabled} ariaLabel="Formula blokunu redaktə et" />}
           <div>
             <button type="button" onClick={() => onSaveEdit(block)} disabled={disabled}>
               Yadda saxla
@@ -150,10 +162,9 @@ function BlockCard({
             </p>
           )}
           {block.block_type === 'formula' && (
-            <>
-              <code>{block.payload.source_latex || 'Boş formula'}</code>
-              {block.payload.source_latex && <div className="admin-editor-formula-preview"><MathContent content={{ format_version: 1, segments: [{ type: 'math', latex: block.payload.source_latex, source_text: block.payload.source_latex, display_mode: false }] }} fallbackText={block.payload.source_latex} /></div>}
-            </>
+            block.payload.source_latex
+              ? <div className="admin-editor-formula-preview"><MathContent content={{ format_version: 1, segments: [{ type: 'math', latex: block.payload.source_latex, source_text: block.payload.source_latex, display_mode: false }] }} fallbackText="Formula göstərilə bilmədi" /></div>
+              : <span>Boş formula</span>
           )}
           {block.block_type === 'image' && (
             <>
@@ -215,6 +226,7 @@ export default function AdminQuestionEditor({
   const [newFormula, setNewFormula] = useState('')
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
+  const [activeSection, setActiveSection] = useState<'question' | 'solution'>('question')
   const runAuthenticatedRequest = useEffectEvent(authenticatedRequest)
   const initialRevisionLoadId = useRef<string | null>(null)
 
@@ -362,6 +374,12 @@ export default function AdminQuestionEditor({
     } catch (mutationError: unknown) {
       if (mutationError instanceof ApiError && mutationError.status === 409 && conflictMessage) {
         setError(conflictMessage)
+      } else if (
+        name === 'solution'
+        && mutationError instanceof ApiError
+        && !(mutationError.status === 409 && typeof mutationError.detail === 'string' && mutationError.detail.includes('modified by another request'))
+      ) {
+        setError(solutionErrorMessage(mutationError))
       } else if (mutationError instanceof ApiError && mutationError.status === 409) {
         setIsStale(true)
         setError('Reviziya başqa sorğu tərəfindən dəyişdirilib. Son vəziyyət yüklənir; əməliyyatı yenidən özünüz başladın.')
@@ -471,8 +489,9 @@ export default function AdminQuestionEditor({
 
         {revision && <>
           <nav className="admin-editor-tabs" aria-label="Müəlliflik bölmələri">
-            <button type="button" aria-current="page">Sual</button>
-            {['Həll', 'İpucu', 'Qiymətləndirmə', 'Tarixçə'].map((label) => <button type="button" disabled key={label}>{label}<small>Sonrakı mərhələ</small></button>)}
+            <button type="button" aria-current={activeSection === 'question' ? 'page' : undefined} onClick={() => setActiveSection('question')}>Sual</button>
+            <button type="button" aria-current={activeSection === 'solution' ? 'page' : undefined} onClick={() => setActiveSection('solution')}>Həll</button>
+            {['İpucu', 'Qiymətləndirmə', 'Tarixçə'].map((label) => <button type="button" disabled key={label}>{label}<small>Sonrakı mərhələ</small></button>)}
           </nav>
           <div className="admin-authoring-workspace-grid">
             <aside className="admin-authoring-source" aria-labelledby="source-panel-title">
@@ -486,6 +505,7 @@ export default function AdminQuestionEditor({
               <div className="admin-authoring-source__placeholder">Orijinal mənbə görünüşü növbəti mərhələdə əlavə olunacaq.</div>
             </aside>
             <section className="admin-authoring-editor-column" aria-label="Manual sual redaktoru">
+          {activeSection === 'question' ? <>
           <section className="admin-editor-metadata" aria-label="Reviziya məlumatları">
             <div><span>Reviziya</span><strong>#{revision.revision_number}</strong></div><div><span>Status</span><strong>{revision.status}</strong></div><div><span>Sual tipi ID</span><strong title={revision.question_type_id}>{revision.question_type_id}</strong></div><div><span>Mənbə</span><strong>{revision.source_display_name ?? 'Təyin edilməyib'}</strong></div><div><span>Mənbə ID</span><strong title={revision.source_id ?? undefined}>{revision.source_id ?? 'Təyin edilməyib'}</strong></div><div><span>Mənbə detalı</span><strong>{revision.source_detail ?? 'Təyin edilməyib'}</strong></div><div><span>Çətinlik</span><strong>{revision.difficulty ?? 'Təyin edilməyib'}</strong></div><div><span>Yenilənib</span><strong>{formatUpdatedAt(revision.updated_at)}</strong></div>
           </section>
@@ -501,9 +521,9 @@ export default function AdminQuestionEditor({
               <label><span><FileText size={17} /> Mətn əlavə et</span><textarea value={newText} onChange={(event) => setNewText(event.target.value)} placeholder="Mətn blokunun məzmunu" disabled={mutationDisabled} /></label>
               <button type="submit" disabled={mutationDisabled}><Plus size={16} /> Mətn əlavə et</button>
             </form>
-            <form onSubmit={(event) => { event.preventDefault(); void runMutation('formula-create', (token, current) => createFormulaBlock(token, current.revision_id, { block_type: 'formula', payload: { source_latex: newFormula, format_version: 1 }, expected_revision_updated_at: current.updated_at }), () => setNewFormula('')) }}>
-              <label><span><SquareFunction size={17} /> Formula əlavə et</span><textarea value={newFormula} onChange={(event) => setNewFormula(event.target.value)} placeholder="LaTeX mənbəyi" disabled={mutationDisabled} /></label>
-              <button type="submit" disabled={mutationDisabled}><Plus size={16} /> Formula əlavə et</button>
+            <form onSubmit={(event) => { event.preventDefault(); if (!newFormula.trim()) return; void runMutation('formula-create', (token, current) => createFormulaBlock(token, current.revision_id, { block_type: 'formula', payload: { source_latex: newFormula, format_version: 1 }, expected_revision_updated_at: current.updated_at }), () => setNewFormula('')) }}>
+              <label><span><SquareFunction size={17} /> Formula əlavə et</span><VisualMathInput value={newFormula} onChange={setNewFormula} disabled={mutationDisabled} ariaLabel="Yeni formula" /></label>
+              <button type="submit" disabled={mutationDisabled || !newFormula.trim()}><Plus size={16} /> Formula əlavə et</button>
             </form>
           </section>
 
@@ -519,8 +539,15 @@ export default function AdminQuestionEditor({
               void runMutation('answer', operation, afterReload, conflictMessage)
             }}
           />
+          </> : <SolutionEditorSection
+            revision={revision}
+            disabled={mutationDisabled}
+            runMutation={(operation, afterReload, conflictMessage) => {
+              void runMutation('solution', operation, afterReload, conflictMessage)
+            }}
+          />}
             </section>
-            <AIAuthoringPanel authenticatedRequest={authenticatedRequest} revisionId={revision.revision_id} onAccepted={() => fetchRevision(revision.revision_id).then(() => undefined)} />
+            {activeSection === 'question' && <AIAuthoringPanel authenticatedRequest={authenticatedRequest} revisionId={revision.revision_id} onAccepted={() => fetchRevision(revision.revision_id).then(() => undefined)} />}
           </div>
         </>}
       </div>

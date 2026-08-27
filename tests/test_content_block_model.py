@@ -132,7 +132,7 @@ class ContentBlockModelMetadataTest(unittest.TestCase):
             "graph_block_contents",
             "table_block_contents", "table_rows", "table_cells",
             "diagram_block_contents",
-            "solutions", "hints", "rubrics", "media", "situation_contexts",
+            "hints", "rubrics", "media", "situation_contexts",
             "matching_items", "assessment_rules",
         }:
             self.assertNotIn(excluded_table, Base.metadata.tables)

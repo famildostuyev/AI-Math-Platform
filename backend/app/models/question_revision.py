@@ -207,3 +207,10 @@ class QuestionRevision(BaseModel):
         order_by="AcceptedAnswer.order_index",
         passive_deletes=True,
     )
+
+    solution: Mapped["Solution | None"] = relationship(
+        "Solution",
+        back_populates="question_revision",
+        uselist=False,
+        passive_deletes=True,
+    )

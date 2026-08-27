@@ -28,6 +28,10 @@ from app.services.authoring_action import (
     UpdateAcceptedAnswerAction,
     DeleteAcceptedAnswerAction,
     ReorderAcceptedAnswersAction,
+    CreateSolutionAction, DeleteSolutionAction,
+    CreateSolutionTextBlockAction, UpdateSolutionTextBlockAction,
+    CreateSolutionFormulaBlockAction, UpdateSolutionFormulaBlockAction,
+    DeleteSolutionBlockAction, ReorderSolutionBlocksAction,
 )
 
 
@@ -45,6 +49,35 @@ def text_payload(text: str = "Draft") -> dict[str, object]:
 
 
 class AuthoringActionContractTest(unittest.TestCase):
+    def test_solution_actions_are_strict_typed_and_ordered(self) -> None:
+        block_id = uuid.uuid4()
+        envelope = AuthoringActionEnvelope.model_validate({"actions": [
+            {"action_type": "create_solution"},
+            {"action_type": "create_solution_text_block", "payload": text_payload("Step")},
+            {"action_type": "create_solution_formula_block", "payload": {"source_latex": "x=2", "format_version": 1}},
+            {"action_type": "update_solution_text_block", "solution_block_id": str(block_id), "payload": text_payload("Updated")},
+            {"action_type": "update_solution_formula_block", "solution_block_id": str(block_id), "payload": {"source_latex": "x=3", "format_version": 1}},
+            {"action_type": "delete_solution_block", "solution_block_id": str(block_id)},
+            {"action_type": "reorder_solution_blocks", "ordered_solution_block_ids": [str(block_id)]},
+            {"action_type": "delete_solution"},
+        ]})
+        self.assertEqual([type(action) for action in envelope.actions], [
+            CreateSolutionAction, CreateSolutionTextBlockAction,
+            CreateSolutionFormulaBlockAction, UpdateSolutionTextBlockAction,
+            UpdateSolutionFormulaBlockAction, DeleteSolutionBlockAction,
+            ReorderSolutionBlocksAction, DeleteSolutionAction,
+        ])
+
+    def test_solution_actions_reject_unknown_fields_and_duplicate_order(self) -> None:
+        block_id = uuid.uuid4()
+        for value in (
+            {"actions": [{"action_type": "create_solution", "solution_id": str(uuid.uuid4())}]},
+            {"actions": [{"action_type": "reorder_solution_blocks", "ordered_solution_block_ids": [str(block_id), str(block_id)]}]},
+            {"actions": [{"action_type": "create_solution_formula_block", "payload": {"source_latex": " ", "format_version": 1}}]},
+        ):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                AuthoringActionEnvelope.model_validate(value)
+
     def test_answer_actions_are_strict_typed_and_ordered(self) -> None:
         option_id, answer_id = uuid.uuid4(), uuid.uuid4()
         envelope = AuthoringActionEnvelope.model_validate({"schema_version": 1, "actions": [

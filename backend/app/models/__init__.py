@@ -30,6 +30,8 @@ from app.models.question_type import QuestionType
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.section import Section
+from app.models.solution import Solution
+from app.models.solution_block import SolutionBlock
 from app.models.source_document import SourceDocument
 from app.models.source_document_page import SourceDocumentPage
 from app.models.source_pre_analysis_finding import SourcePreAnalysisFinding
@@ -77,6 +79,8 @@ __all__ = [
     "Role",
     "RolePermission",
     "Section",
+    "Solution",
+    "SolutionBlock",
     "SourceDocument",
     "SourceDocumentPage",
     "SourcePreAnalysisFinding",
