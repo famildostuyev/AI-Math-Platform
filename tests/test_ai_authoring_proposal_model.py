@@ -29,6 +29,9 @@ class AIAuthoringProposalModelTest(unittest.TestCase):
             "rejected_at", "created_at", "updated_at", "deleted_at",
         })
         self.assertIsInstance(table.c.actions.type, JSONB)
+        self.assertTrue(table.c.actions.type.none_as_null)
+        self.assertIsInstance(table.c.capability_bundle.type, JSONB)
+        self.assertTrue(table.c.capability_bundle.type.none_as_null)
         self.assertIsInstance(table.c.status.type, SQLEnum)
         self.assertIsInstance(table.c.proposal_kind.type, SQLEnum)
         self.assertEqual(

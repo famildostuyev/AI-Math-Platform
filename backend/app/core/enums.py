@@ -119,6 +119,12 @@ class AdminAIResultKind(str, Enum):
     UNSUPPORTED = "unsupported"
 
 
+class AdminAIGeneratedQuestionDraftStatus(str, Enum):
+    ACTIVE = "active"
+    PROMOTED = "promoted"
+    DISCARDED = "discarded"
+
+
 class AIAuthoringConversationStatus(str, Enum):
     ACTIVE = "active"
     CLOSED = "closed"

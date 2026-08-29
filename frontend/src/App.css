@@ -718,6 +718,31 @@
 .ai-authoring-messages article { padding: 9px 10px; border-radius: 10px; background: #fff; }
 .ai-authoring-messages article strong { color: #7253df; font-size: 11px; }
 .ai-authoring-messages article p { margin: 4px 0 0; color: #44475c; font-size: 13px; white-space: pre-wrap; }
+.admin-ai-exchange { display: grid; gap: 6px; }
+.admin-ai-response { border-left: 3px solid #7253df; }
+.admin-ai-response > strong { display: block; margin-bottom: 6px; }
+.admin-ai-capability-results { display: grid; gap: 8px; }
+.admin-ai-answer-text { margin: 0; line-height: 1.55; white-space: pre-wrap; }
+.admin-ai-generated-draft { border-left: 3px solid var(--color-primary, #2563eb); }
+.admin-ai-draft-options { display: grid; gap: 6px; margin: 8px 0; padding-left: 24px; }
+.admin-ai-correct-option { color: #166534; font-weight: 600; }
+.admin-ai-result-section { padding-top: 7px; border-top: 1px solid #ececf3; }
+.admin-ai-result-section:first-child { padding-top: 0; border-top: 0; }
+.admin-ai-result-section h4 { margin: 0 0 6px; color: #35384c; font-size: 12px; }
+.admin-ai-result-section > p { margin: 5px 0; }
+.admin-ai-question-summary { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
+.admin-ai-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 8px 0 0; }
+.admin-ai-metadata div { min-width: 0; padding: 6px; border-radius: 7px; background: #f7f7fa; }
+.admin-ai-metadata dt { color: #8a8da0; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.admin-ai-metadata dd { margin: 2px 0 0; overflow-wrap: anywhere; color: #45485d; font-size: 11px; font-weight: 700; }
+.admin-ai-search-results { display: grid; gap: 6px; margin-top: 7px; }
+.admin-ai-search-results article { border: 1px solid #e5e6ef; }
+.admin-ai-search-results article strong { color: #45485d; }
+.admin-ai-search-results article small { color: #85889b; font-size: 10px; }
+.admin-ai-statistics { display: grid; gap: 5px; margin: 7px 0 0; padding: 0; list-style: none; }
+.admin-ai-statistics li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 7px; border-radius: 7px; background: #f7f7fa; }
+.admin-ai-statistics li strong { color: #7253df; }
+.admin-ai-result-note { color: #815f09 !important; font-size: 10px !important; }
 
 .ai-authoring-panel > form { display: grid; gap: 7px; }
 .ai-authoring-panel > form label { color: #4a4d62; font-size: 12px; font-weight: 800; }
@@ -11324,17 +11349,23 @@ button {
 }
 /* Admin AI question review navigator */
 .math-content__math {
+  display: inline-block;
+  margin-inline: 0.12em;
   vertical-align: baseline;
 }
 
 .math-content__math--display {
+  display: block;
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  padding-block: 4px;
+  margin: 0.5em 0;
+  padding-block: 2px;
 }
 
 .math-content__fallback {
+  display: inline-block;
+  margin-inline: 0.12em;
   white-space: pre-wrap;
 }
 

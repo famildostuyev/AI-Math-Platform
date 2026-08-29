@@ -7,6 +7,7 @@ from app.services.admin_ai_capability_registry import (
     AdminAICapabilityRegistry,
     CapabilityAuthorizationPolicy,
     CapabilityContextRequirement,
+    AdminAIExecutionRequirement,
 )
 from app.services.admin_ai_result import (
     CapabilityClassification,
@@ -40,6 +41,10 @@ def build_admin_ai_foundation_registry() -> AdminAICapabilityRegistry:
         output_schema=AuthoringRevisionContext,
         authorization_policy=CapabilityAuthorizationPolicy.ADMIN_ONLY,
         context_requirements=(CapabilityContextRequirement.CURRENT_REVISION,),
+        satisfies_requirements=(
+            AdminAIExecutionRequirement.CURRENT_QUESTION_CONTENT,
+            AdminAIExecutionRequirement.PLATFORM_READ,
+        ),
         effect_scope=CapabilityEffectScope.NONE,
         safe_description="Inspect one active question revision and its authoring context.",
         execution_handler_id="inspect_current_question_v1",
@@ -52,6 +57,7 @@ def build_admin_ai_foundation_registry() -> AdminAICapabilityRegistry:
         output_schema=SearchQuestionsOutput,
         authorization_policy=CapabilityAuthorizationPolicy.ADMIN_ONLY,
         context_requirements=(CapabilityContextRequirement.NONE,),
+        satisfies_requirements=(AdminAIExecutionRequirement.PLATFORM_READ,),
         effect_scope=CapabilityEffectScope.NONE,
         safe_description="Search active question-bank entries with bounded typed filters.",
         execution_handler_id="search_questions_v1",
@@ -64,6 +70,7 @@ def build_admin_ai_foundation_registry() -> AdminAICapabilityRegistry:
         output_schema=AggregateQuestionStatisticsOutput,
         authorization_policy=CapabilityAuthorizationPolicy.ADMIN_ONLY,
         context_requirements=(CapabilityContextRequirement.NONE,),
+        satisfies_requirements=(AdminAIExecutionRequirement.PLATFORM_READ,),
         effect_scope=CapabilityEffectScope.NONE,
         safe_description="Aggregate bounded question-bank counts by one allowlisted dimension.",
         execution_handler_id="aggregate_question_statistics_v1",

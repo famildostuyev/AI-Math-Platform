@@ -146,6 +146,15 @@ class AdminAIReadCapabilityExecutor:
             ),),
         )
 
+    def hydrate_question_revision_host_context(
+        self, *, actor_role: RoleName, revision_id: uuid.UUID,
+    ) -> AdminAIResultEnvelope:
+        """Resolve the host page through the same bounded canonical inspect projection."""
+        return self.inspect_current_question(
+            actor_role=actor_role,
+            request=InspectCurrentQuestionInput(revision_id=revision_id),
+        )
+
     def search_questions(
         self, *, actor_role: RoleName, request: SearchQuestionsInput | object,
     ) -> AdminAIResultEnvelope:

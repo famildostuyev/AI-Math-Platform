@@ -547,7 +547,7 @@ export default function AdminQuestionEditor({
             }}
           />}
             </section>
-            {activeSection === 'question' && <AIAuthoringPanel authenticatedRequest={authenticatedRequest} revisionId={revision.revision_id} onAccepted={() => fetchRevision(revision.revision_id).then(() => undefined)} />}
+            {activeSection === 'question' && <AIAuthoringPanel key={revision.revision_id} authenticatedRequest={authenticatedRequest} revisionId={revision.revision_id} onAccepted={() => fetchRevision(revision.revision_id).then(() => undefined)} onOpenRevision={(revisionId) => fetchRevision(revisionId).then(() => undefined)} />}
           </div>
         </>}
       </div>

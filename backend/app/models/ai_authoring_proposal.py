@@ -115,9 +115,13 @@ class AIAuthoringProposal(BaseModel):
         nullable=False,
     )
     action_schema_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    actions: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    actions: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True,
+    )
     capability_bundle_schema_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    capability_bundle: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    capability_bundle: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True,
+    )
     capability_bundle_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     provider_name: Mapped[str] = mapped_column(String(100), nullable=False)
     model_name: Mapped[str] = mapped_column(String(200), nullable=False)

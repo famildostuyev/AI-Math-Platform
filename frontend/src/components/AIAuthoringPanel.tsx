@@ -1,6 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useRef, useState } from 'react'
 import { AlertTriangle, Bot, Check, LoaderCircle, Send, X } from 'lucide-react'
 import { ApiError } from '../api/client'
+import {
+  createAdminAIReplacementProposal,
+  promoteAdminAIQuestionDraft,
+  queryAdminAI,
+  type AdminAICapabilityResult,
+  type AdminAIInspectPayload,
+  type AdminAIGeneratedDraft,
+  type AdminAIOrchestrationResult,
+  type AdminAIQuestionDraftPromotionResponse,
+  type AdminAISearchPayload,
+  type AdminAIStatisticsPayload,
+} from '../api/adminAI'
+import type { StructuredContent } from '../api/questionExtraction'
 import {
   acceptProposal,
   closeConversation,
@@ -24,6 +37,367 @@ type AIAuthoringPanelProps = {
   authenticatedRequest: AuthenticatedRequest
   revisionId: string
   onAccepted: () => Promise<void>
+  onOpenRevision: (revisionId: string) => Promise<void>
+}
+
+type AdminAIHistoryItem = {
+  id: number
+  instruction: string
+  result: AdminAIOrchestrationResult
+  promotion: AdminAIQuestionDraftPromotionResponse | null
+}
+
+function canPromotePersistentQuestionDraft(result: AdminAIOrchestrationResult): boolean {
+  return result.generated_draft?.draft_kind === 'question'
+    && result.persistent_draft_id !== null
+    && result.persistent_draft_status === 'active'
+}
+
+const ADMIN_AI_HISTORY_TURN_LIMIT = 8
+const ADMIN_AI_HISTORY_TURN_CHAR_LIMIT = 4_000
+const ADMIN_AI_HISTORY_TOTAL_CHAR_LIMIT = 24_000
+
+function visibleGeneratedDraftContext(draft: AdminAIGeneratedDraft): string {
+  const segments = draft.content.segments
+    .map((segment) => segment.type === 'text' ? segment.text : segment.source_text)
+    .join(' ')
+  const options = draft.answer_options
+    .map((option) => `${option.label}: ${option.text}`)
+    .join('\n')
+  const correct = draft.correct_option_labels.length > 0
+    ? `Düzgün cavab: ${draft.correct_option_labels.join(', ')}`
+    : ''
+  const explanation = draft.explanation?.segments
+    .map((segment) => segment.type === 'text' ? segment.text : segment.source_text)
+    .join(' ') ?? ''
+  return [draft.title ?? '', segments, options, correct, explanation].filter(Boolean).join('\n')
+}
+
+function boundedConversationContext(history: AdminAIHistoryItem[]) {
+  const referencedDraft = [...history].reverse().find((item) => item.result.generated_draft)?.result.generated_draft ?? null
+  const turns = history.flatMap((item) => [
+    { role: 'admin' as const, content: item.instruction },
+    {
+      role: 'assistant' as const,
+      content: item.result.generated_draft
+        ? `${item.result.assistant_text}\n${visibleGeneratedDraftContext(item.result.generated_draft)}`
+        : item.result.assistant_text,
+    },
+  ]).map((turn) => ({ ...turn, content: turn.content.slice(0, ADMIN_AI_HISTORY_TURN_CHAR_LIMIT) }))
+    .slice(-ADMIN_AI_HISTORY_TURN_LIMIT)
+  while (turns.reduce((total, turn) => total + turn.content.length, 0) > ADMIN_AI_HISTORY_TOTAL_CHAR_LIMIT) {
+    turns.shift()
+  }
+  return turns.length > 0 ? { turns, referenced_draft: referencedDraft } : null
+}
+
+const statusLabels: Record<string, string> = {
+  draft: 'Qaralama',
+  approved: 'Təsdiqlənib',
+  archived: 'Arxivlənib',
+}
+
+const universalProposalStatusLabels: Record<string, string> = {
+  pending: 'Təklif təsdiq gözləyir.',
+  accepted: 'Admin tərəfindən təsdiqlənmiş dəyişiklik tətbiq edildi.',
+  rejected: 'Təklif ləğv edildi; canonical sual dəyişdirilmədi.',
+  obsolete: 'Təklif köhnəlib və tətbiq edilə bilməz.',
+}
+
+const difficultyLabels: Record<string, string> = {
+  easy: 'Asan',
+  medium: 'Orta',
+  hard: 'Çətin',
+}
+
+const dimensionLabels: Record<AdminAIStatisticsPayload['grouping_dimension'], string> = {
+  question_type: 'Sual növü',
+  primary_topic: 'Əsas mövzu',
+  difficulty: 'Çətinlik',
+  status: 'Status',
+  source: 'Mənbə',
+}
+
+function readOnlyErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return 'Sessiya etibarlı deyil. Yenidən daxil olun.'
+    if (error.status === 403) return 'Admin AI üçün icazəniz yoxdur.'
+    if (error.status === 422) return 'Sorğu icra edilə bilmədi. Təlimatı dəqiqləşdirin.'
+    if (error.status === 429) return 'Admin AI hazırda çox yüklənib. Bir az sonra yenidən yoxlayın.'
+    if (error.status === 502) return 'Admin AI etibarlı nəticə qaytara bilmədi.'
+    if (error.status === 503) return 'Admin AI hazırda əlçatan deyil.'
+    if (error.status === 504) return 'Admin AI sorğusu vaxt limitini keçdi.'
+  }
+  return 'Admin AI sorğusunu icra etmək mümkün olmadı. Şəbəkə bağlantısını yoxlayın.'
+}
+
+function isInspectPayload(payload: Record<string, unknown>): payload is AdminAIInspectPayload {
+  return typeof payload.revision_number === 'number'
+    && typeof payload.revision_status === 'string'
+    && Array.isArray(payload.blocks)
+    && Array.isArray(payload.answer_options)
+    && Array.isArray(payload.accepted_answers)
+}
+
+function isSearchPayload(payload: Record<string, unknown>): payload is AdminAISearchPayload {
+  return typeof payload.total === 'number'
+    && typeof payload.page === 'number'
+    && typeof payload.page_size === 'number'
+    && Array.isArray(payload.items)
+}
+
+function isStatisticsPayload(payload: Record<string, unknown>): payload is AdminAIStatisticsPayload {
+  return typeof payload.total === 'number'
+    && typeof payload.grouping_dimension === 'string'
+    && Array.isArray(payload.groups)
+    && typeof payload.groups_truncated === 'boolean'
+}
+
+function InspectResult({ payload }: { payload: Record<string, unknown> }) {
+  if (!isInspectPayload(payload)) return <p>Nəticə göstərilə bilmədi.</p>
+  const summary = payload.blocks.find((block) => block.block_type === 'text' && block.source_text)?.source_text
+  const answerCount = payload.answer_options.length + payload.accepted_answers.length
+  return <section className="admin-ai-result-section">
+    <h4>Sual haqqında</h4>
+    {summary && <p className="admin-ai-question-summary">{summary}</p>}
+    <dl className="admin-ai-metadata">
+      <div><dt>Status</dt><dd>{statusLabels[payload.revision_status] ?? payload.revision_status}</dd></div>
+      <div><dt>Çətinlik</dt><dd>{payload.difficulty ? (difficultyLabels[payload.difficulty] ?? payload.difficulty) : 'Göstərilməyib'}</dd></div>
+      <div><dt>Bloklar</dt><dd>{payload.blocks.length}</dd></div>
+      <div><dt>Cavablar</dt><dd>{answerCount > 0 ? `${answerCount} cavab` : 'Yoxdur'}</dd></div>
+      <div><dt>Həll</dt><dd>{payload.solution ? `${payload.solution.blocks.length} addım` : 'Yoxdur'}</dd></div>
+      <div><dt>Mənbə</dt><dd>{payload.source?.display_name ?? 'Göstərilməyib'}</dd></div>
+    </dl>
+  </section>
+}
+
+function SearchResult({ payload }: { payload: Record<string, unknown> }) {
+  if (!isSearchPayload(payload)) return <p>Nəticə göstərilə bilmədi.</p>
+  return <section className="admin-ai-result-section">
+    <h4>Tapılan suallar</h4>
+    <p>{payload.total} uyğun sual · bu səhifədə {payload.items.length}</p>
+    {payload.items.length > 0
+      ? <div className="admin-ai-search-results">{payload.items.map((item) => <article key={item.revision_id} data-revision-id={item.revision_id}>
+        <strong>{item.question_type_display_name}</strong>
+        <p>{item.text_preview || 'Mətn önizləməsi yoxdur.'}</p>
+        <small>{statusLabels[item.status] ?? item.status}{item.difficulty ? ` · ${difficultyLabels[item.difficulty] ?? item.difficulty}` : ''}{item.primary_topic_display_name ? ` · ${item.primary_topic_display_name}` : ''}</small>
+      </article>)}</div>
+      : <p>Uyğun sual tapılmadı.</p>}
+  </section>
+}
+
+function StatisticsResult({ payload }: { payload: Record<string, unknown> }) {
+  if (!isStatisticsPayload(payload)) return <p>Nəticə göstərilə bilmədi.</p>
+  const dimension = dimensionLabels[payload.grouping_dimension] ?? payload.grouping_dimension
+  return <section className="admin-ai-result-section">
+    <h4>Statistika · {dimension}</h4>
+    <p>Ümumi: {payload.total}</p>
+    <ul className="admin-ai-statistics">{payload.groups.map((group) => <li key={group.key}><span>{group.label}</span><strong>{group.count}</strong></li>)}</ul>
+    {payload.groups_truncated && <p className="admin-ai-result-note">Qrupların yalnız bir hissəsi göstərilir.</p>}
+  </section>
+}
+
+function CapabilityResultView({ result }: { result: AdminAICapabilityResult }) {
+  if (result.capability_name === 'admin_ai.inspect_current_question') return <InspectResult payload={result.payload} />
+  if (result.capability_name === 'admin_ai.search_questions') return <SearchResult payload={result.payload} />
+  if (result.capability_name === 'admin_ai.aggregate_question_statistics') return <StatisticsResult payload={result.payload} />
+  return <section className="admin-ai-result-section"><p>Bu nəticə növü hələ göstərilmir.</p></section>
+}
+
+function AssistantContentView({ content, fallbackText }: { content: StructuredContent | null; fallbackText: string }) {
+  return <div className="admin-ai-answer-text"><MathContent content={content} fallbackText={fallbackText} /></div>
+}
+
+function GeneratedDraftView({ draft, proposalPreview = false }: { draft: AdminAIGeneratedDraft; proposalPreview?: boolean }) {
+  const correct = new Set(draft.correct_option_labels)
+  return <section className="admin-ai-result-section admin-ai-generated-draft">
+    <h4>{draft.title ?? 'Hazırlanmış qaralama'}</h4>
+    <AssistantContentView content={draft.content} fallbackText="Qaralama göstərilə bilmədi." />
+    {draft.answer_options.length > 0 && <ol className="admin-ai-draft-options">
+      {draft.answer_options.map((option) => <li key={option.label}>
+        <strong>{option.label}</strong>{' — '}
+        <MathContent content={option.content} fallbackText={option.text} />
+        {correct.has(option.label) && <span className="admin-ai-correct-option"> · düzgün cavab</span>}
+      </li>)}
+    </ol>}
+    {draft.explanation && <div><h5>İzah</h5><MathContent content={draft.explanation} fallbackText="İzah göstərilə bilmədi." /></div>}
+    <p className="admin-ai-result-note">{proposalPreview
+      ? 'Bu dəyişiklik pending təklif kimi saxlanılıb və yalnız Admin təsdiqindən sonra tətbiq ediləcək.'
+      : 'Bu qaralama sistemdə saxlanılmayıb.'}</p>
+  </section>
+}
+
+function AdminAIResponse({ result }: { result: AdminAIOrchestrationResult }) {
+  if (result.response_kind === 'mutation_proposal') {
+    return <div className="admin-ai-capability-results">
+      <AssistantContentView content={result.assistant_content} fallbackText={result.assistant_text} />
+      {result.generated_draft && <GeneratedDraftView draft={result.generated_draft} proposalPreview />}
+      <p className="admin-ai-result-note">Dəyişiklik yalnız ayrıca təklif, önizləmə və Admin təsdiqindən sonra tətbiq oluna bilər.</p>
+    </div>
+  }
+  if (result.envelope.result_kind === 'unsupported') {
+    return <p>{result.envelope.unsupported_reason ?? 'Bu əməliyyat hazırda mövcud deyil.'}</p>
+  }
+  return <div className="admin-ai-capability-results">
+    <AssistantContentView content={result.assistant_content} fallbackText={result.assistant_text} />
+    {result.generated_draft && <GeneratedDraftView draft={result.generated_draft} />}
+    {result.envelope.capability_results.map((capability, index) => <CapabilityResultView
+      key={`${capability.capability_name}-${index}`}
+      result={capability}
+    />)}
+    {result.envelope.warnings.length > 0 && <ul className="ai-authoring-warnings">
+      {result.envelope.warnings.map((warning) => <li key={warning.code}><AlertTriangle size={14} /> {warning.message}</li>)}
+    </ul>}
+  </div>
+}
+
+export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onAccepted, onOpenRevision }: AIAuthoringPanelProps) {
+  const [instruction, setInstruction] = useState('')
+  const [history, setHistory] = useState<AdminAIHistoryItem[]>([])
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestInFlight = useRef(false)
+  const replacementRequestsInFlight = useRef(new Set<number>())
+  const promotionRequestsInFlight = useRef(new Set<number>())
+  const proposalDecisionInFlight = useRef(false)
+  const [pendingProposalId, setPendingProposalId] = useState<string | null>(null)
+  const [pendingReplacementItemId, setPendingReplacementItemId] = useState<number | null>(null)
+  const [pendingPromotionItemId, setPendingPromotionItemId] = useState<number | null>(null)
+
+  const submit = async () => {
+    const value = instruction.trim()
+    if (!value || value.length > 10_000 || pending || requestInFlight.current) return
+    requestInFlight.current = true
+    setPending(true)
+    setError(null)
+    try {
+      const result = await authenticatedRequest((token) => queryAdminAI(token, {
+        instruction: value,
+        current_revision_id: revisionId,
+        conversation_context: boundedConversationContext(history),
+      }))
+      setHistory((current) => [...current, { id: Date.now(), instruction: value, result, promotion: null }])
+      setInstruction('')
+    } catch (submitError: unknown) {
+      setError(readOnlyErrorMessage(submitError))
+    } finally {
+      requestInFlight.current = false
+      setPending(false)
+    }
+  }
+
+  const canSubmit = instruction.trim().length > 0 && instruction.length <= 10_000 && !pending
+
+  const prepareReplacementProposal = async (item: AdminAIHistoryItem) => {
+    const draft = item.result.generated_draft
+    if (!draft || !revisionId || item.result.proposal_id || replacementRequestsInFlight.current.has(item.id)) return
+    replacementRequestsInFlight.current.add(item.id)
+    setPendingReplacementItemId(item.id)
+    setError(null)
+    try {
+      const proposal = await authenticatedRequest((token) => createAdminAIReplacementProposal(token, {
+        current_revision_id: revisionId,
+        generated_draft: draft,
+      }))
+      setHistory((current) => current.map((historyItem) => historyItem.id === item.id
+        ? { ...historyItem, result: {
+          ...historyItem.result,
+          proposal_id: proposal.proposal_id,
+          proposal_status: proposal.proposal_status,
+        } }
+        : historyItem))
+    } catch (replacementError: unknown) {
+      setError(readOnlyErrorMessage(replacementError))
+    } finally {
+      replacementRequestsInFlight.current.delete(item.id)
+      setPendingReplacementItemId(null)
+    }
+  }
+
+  const promoteQuestionDraft = async (item: AdminAIHistoryItem) => {
+    if (
+      !canPromotePersistentQuestionDraft(item.result)
+      || promotionRequestsInFlight.current.has(item.id)
+    ) return
+    const draftId = item.result.persistent_draft_id
+    if (!draftId) return
+    promotionRequestsInFlight.current.add(item.id)
+    setPendingPromotionItemId(item.id)
+    setError(null)
+    try {
+      const promotion = await authenticatedRequest((token) =>
+        promoteAdminAIQuestionDraft(token, draftId),
+      )
+      setHistory((current) => current.map((historyItem) => historyItem.id === item.id
+        ? {
+          ...historyItem,
+          result: { ...historyItem.result, persistent_draft_status: promotion.draft_status },
+          promotion,
+        }
+        : historyItem))
+    } catch (promotionError: unknown) {
+      setError(readOnlyErrorMessage(promotionError))
+    } finally {
+      promotionRequestsInFlight.current.delete(item.id)
+      setPendingPromotionItemId(null)
+    }
+  }
+
+  const decideUniversalProposal = async (itemId: number, proposalId: string, decision: 'accept' | 'reject') => {
+    if (proposalDecisionInFlight.current) return
+    proposalDecisionInFlight.current = true
+    setPendingProposalId(proposalId)
+    setError(null)
+    try {
+      const outcome = await authenticatedRequest((token) => decision === 'accept'
+        ? acceptProposal(token, proposalId)
+        : rejectProposal(token, proposalId))
+      setHistory((current) => current.map((item) => item.id === itemId
+        ? { ...item, result: { ...item.result, proposal_status: outcome.status } }
+        : item))
+      if (decision === 'accept') await onAccepted()
+    } catch (decisionError: unknown) {
+      setError(safeErrorMessage(decisionError, decision))
+    } finally {
+      proposalDecisionInFlight.current = false
+      setPendingProposalId(null)
+    }
+  }
+
+  return <aside className="ai-authoring-panel" aria-labelledby="ai-authoring-title">
+    <header><div><Bot size={20} /><div><h2 id="ai-authoring-title">Admin AI</h2><span>Read-only köməkçi</span></div></div></header>
+    <div className="ai-authoring-messages" aria-live="polite">
+      {history.length === 0 && <p>Sual, axtarış və statistika haqqında təbii dildə soruşun.</p>}
+      {history.map((item) => <div className="admin-ai-exchange" key={item.id}>
+        <article><strong>Admin</strong><p>{item.instruction}</p></article>
+        <article className="admin-ai-response"><strong>Admin AI</strong><AdminAIResponse result={item.result} /></article>
+        {canPromotePersistentQuestionDraft(item.result) && <section className="ai-authoring-decisions">
+          <button type="button" onClick={() => void promoteQuestionDraft(item)} disabled={pendingPromotionItemId === item.id}>
+            {pendingPromotionItemId === item.id && <LoaderCircle className="admin-editor-spinner" size={16} />} Yeni sual kimi saxla
+          </button>
+        </section>}
+        {item.promotion && <section className="ai-authoring-decisions">
+          <button type="button" onClick={() => void onOpenRevision(item.promotion!.revision_id)}>Redaktorda aç</button>
+        </section>}
+        {item.result.generated_draft && revisionId && !item.result.proposal_id && <section className="ai-authoring-decisions">
+          <button type="button" onClick={() => void prepareReplacementProposal(item)} disabled={pendingReplacementItemId === item.id}>
+            {pendingReplacementItemId === item.id && <LoaderCircle className="admin-editor-spinner" size={16} />} Cari sualla əvəz et
+          </button>
+        </section>}
+        {item.result.proposal_id && <section className="ai-authoring-decisions" aria-label="Admin AI təklif qərarı">
+          <span>{universalProposalStatusLabels[item.result.proposal_status ?? 'pending']}</span>
+          <button type="button" onClick={() => void decideUniversalProposal(item.id, item.result.proposal_id!, 'accept')} disabled={item.result.proposal_status !== 'pending' || pendingProposalId !== null}><Check size={16} /> Təsdiqlə və tətbiq et</button>
+          <button type="button" className="secondary" onClick={() => void decideUniversalProposal(item.id, item.result.proposal_id!, 'reject')} disabled={item.result.proposal_status !== 'pending' || pendingProposalId !== null}><X size={16} /> Ləğv et</button>
+        </section>}
+      </div>)}
+    </div>
+    <form onSubmit={(event) => { event.preventDefault(); void submit() }}>
+      <label htmlFor="ai-authoring-instruction">Təlimat</label>
+      <textarea id="ai-authoring-instruction" maxLength={10_000} value={instruction} onChange={(event) => setInstruction(event.target.value)} placeholder="Məsələn: Bu sual haqqında məlumat ver" disabled={pending} />
+      <div><small>{instruction.length}/10 000</small><button type="submit" disabled={!canSubmit}>{pending ? <LoaderCircle className="admin-editor-spinner" size={16} /> : <Send size={16} />} Göndər</button></div>
+    </form>
+    {error && <div className="ai-authoring-error" role="alert">{error}</div>}
+  </aside>
 }
 
 const warningLabels: Record<PreviewWarningCode, string> = {
@@ -105,7 +479,7 @@ function PreviewValueView({ value }: { value: PreviewValue | null }) {
   return <span>Önizləmə mövcud deyil</span>
 }
 
-export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onAccepted }: AIAuthoringPanelProps) {
+function AIAuthoringMutationPanelSession({ authenticatedRequest, revisionId, onAccepted }: AIAuthoringPanelProps) {
   const [conversation, setConversation] = useState<ConversationRead | null>(null)
   const [messages, setMessages] = useState<MessageRead[]>([])
   const [instruction, setInstruction] = useState('')
@@ -114,17 +488,6 @@ export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onA
   const [hasStaleConflict, setHasStaleConflict] = useState(false)
   const [pending, setPending] = useState<'submit' | 'preview' | 'accept' | 'reject' | 'close' | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setConversation(null)
-    setMessages([])
-    setInstruction('')
-    setProposal(null)
-    setPreview(null)
-    setHasStaleConflict(false)
-    setPending(null)
-    setError(null)
-  }, [revisionId])
 
   const submit = async () => {
     const value = instruction.trim()
@@ -253,4 +616,8 @@ export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onA
       )}
     </aside>
   )
+}
+
+export function AIAuthoringMutationPanel(props: AIAuthoringPanelProps) {
+  return <AIAuthoringMutationPanelSession key={props.revisionId} {...props} />
 }

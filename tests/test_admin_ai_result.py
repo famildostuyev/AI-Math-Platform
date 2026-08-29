@@ -40,7 +40,7 @@ class AdminAIResultEnvelopeTest(unittest.TestCase):
         invalid = (
             {"schema_version": 1, "result_kind": "other"},
             {"schema_version": 1, "result_kind": "unsupported", "unsupported_reason": "No", "extra": 1},
-            {"schema_version": 1, "result_kind": "informational", "capability_results": []},
+            {"schema_version": 1, "result_kind": "mutation_proposal", "capability_results": []},
         )
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(ValidationError):

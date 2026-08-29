@@ -28,6 +28,17 @@ class CapabilityContextRequirement(str, Enum):
     NONE = "none"
 
 
+class AdminAIExecutionRequirement(str, Enum):
+    MODEL_REASONING = "model_reasoning"
+    CURRENT_QUESTION_CONTENT = "current_question_content"
+    PLATFORM_READ = "platform_read"
+    CONTENT_GENERATION = "content_generation"
+    VISUAL_GENERATION = "visual_generation"
+    EXTERNAL_RESEARCH = "external_research"
+    FILE_ACCESS = "file_access"
+    PLATFORM_MUTATION = "platform_mutation"
+
+
 @dataclass(frozen=True, slots=True)
 class AdminAICapabilityDefinition(Generic[InputModel, OutputModel]):
     name: str
@@ -38,6 +49,7 @@ class AdminAICapabilityDefinition(Generic[InputModel, OutputModel]):
     authorization_policy: CapabilityAuthorizationPolicy
     context_requirements: tuple[CapabilityContextRequirement, ...]
     effect_scope: CapabilityEffectScope
+    satisfies_requirements: tuple[AdminAIExecutionRequirement, ...] = ()
     safe_description: str = ""
     execution_handler_id: str | None = None
     result_limit: int | None = None
@@ -53,6 +65,8 @@ class AdminAICapabilityDefinition(Generic[InputModel, OutputModel]):
             raise ValueError("Capability result limit must be positive.")
         if self.classification == CapabilityClassification.READ_ONLY and self.canonical_executor_id is not None:
             raise ValueError("Read-only capabilities cannot declare a canonical executor.")
+        if len(self.satisfies_requirements) != len(set(self.satisfies_requirements)):
+            raise ValueError("Capability requirement metadata must be unique.")
 
 
 class AdminAICapabilityRegistryError(Exception):

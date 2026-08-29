@@ -61,8 +61,12 @@ class AdminAIResultEnvelope(StrictFrozenAdminAIModel):
             if self.capability_results or self.unsupported_reason is None:
                 raise ValueError("Unsupported results require only a safe reason.")
             return self
-        if self.unsupported_reason is not None or not self.capability_results:
-            raise ValueError("Supported results require capability results and no unsupported reason.")
+        if self.unsupported_reason is not None:
+            raise ValueError("Supported results cannot include an unsupported reason.")
+        if not self.capability_results:
+            if self.result_kind != AdminAIResultKind.INFORMATIONAL:
+                raise ValueError("Mutation proposals require capability results.")
+            return self
         classifications = {item.classification for item in self.capability_results}
         if self.result_kind == AdminAIResultKind.INFORMATIONAL:
             if classifications != {CapabilityClassification.READ_ONLY}:

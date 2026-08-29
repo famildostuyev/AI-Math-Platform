@@ -23,6 +23,7 @@ from app.services.admin_ai_orchestrator import (
     AdminAIOrchestrationExecutionError,
     AdminAIOrchestrator,
     AdminAIPlanValidationError,
+    AdminAIPlannerResponse,
     build_safe_capability_manifest,
 )
 from app.services.admin_ai_result import AdminAICapabilityResult, AdminAIResultEnvelope
@@ -130,6 +131,77 @@ class AdminAIOrchestratorTest(unittest.TestCase):
             read_executor=executor,
         )
         return orchestrator, planner, executor
+
+    def test_inconsistent_outcomes_have_branch_specific_safe_diagnostics(self) -> None:
+        valid_plan = plan(call("call_1", "admin_ai.search_questions", {}))
+        cases = (
+            ("plan_outcome_invalid", {
+                "outcome_kind": "plan", "requirements": ["platform_read"],
+                "answer_text": "sensitive provider content", "plan": valid_plan,
+                "mutation_code": None, "unsupported_code": None,
+            }),
+            ("direct_answer_outcome_invalid", {
+                "outcome_kind": "direct_answer", "requirements": ["model_reasoning"],
+                "answer_text": None, "plan": None,
+                "mutation_code": None, "unsupported_code": None,
+            }),
+            ("unsupported_outcome_invalid", {
+                "outcome_kind": "unsupported", "requirements": ["model_reasoning"],
+                "answer_text": None, "plan": None,
+                "mutation_code": None, "unsupported_code": None,
+            }),
+        )
+        for expected_type, fields in cases:
+            payload = {
+                "schema_version": 1, "context_requirement": "none",
+                "assistant_content": None, "generated_draft": None, **fields,
+            }
+            with self.subTest(expected_type=expected_type):
+                with self.assertRaises(ValidationError) as raised:
+                    AdminAIPlannerResponse.model_validate(payload)
+                error_types = {item["type"] for item in raised.exception.errors(include_input=False)}
+                self.assertEqual(error_types, {expected_type})
+                diagnostic = AdminAIOrchestrator._schema_diagnostic(raised.exception)
+                self.assertEqual(diagnostic.category, AdminAIValidationCategory.UNSUPPORTED_RESPONSE_INVALID)
+                self.assertNotIn("sensitive provider content", diagnostic.model_dump_json())
+
+    def test_inconsistent_mutation_proposal_fields_have_safe_specific_diagnostics(self) -> None:
+        valid_plan = plan(call("call_1", "admin_ai.search_questions", {}))
+        cases = (
+            ("mutation_proposal_answer_missing", {
+                "answer_text": None, "mutation_code": "admin_approval_required",
+                "plan": None, "unsupported_code": None,
+            }),
+            ("mutation_proposal_code_missing", {
+                "answer_text": "safe placeholder", "mutation_code": None,
+                "plan": None, "unsupported_code": None,
+            }),
+            ("mutation_proposal_plan_present", {
+                "answer_text": "safe placeholder", "mutation_code": "admin_approval_required",
+                "plan": valid_plan, "unsupported_code": None,
+            }),
+            ("mutation_proposal_unsupported_present", {
+                "answer_text": "safe placeholder", "mutation_code": "admin_approval_required",
+                "plan": None, "unsupported_code": "capability_unavailable",
+            }),
+        )
+        for expected_type, fields in cases:
+            payload = {
+                "schema_version": 1, "outcome_kind": "mutation_proposal",
+                "context_requirement": "none",
+                "requirements": ["content_generation", "platform_mutation"],
+                "assistant_content": None, "generated_draft": None, **fields,
+            }
+            with self.subTest(expected_type=expected_type):
+                with self.assertRaises(ValidationError) as raised:
+                    AdminAIPlannerResponse.model_validate(payload)
+                error_types = {item["type"] for item in raised.exception.errors(include_input=False)}
+                self.assertEqual(error_types, {expected_type})
+                diagnostic = AdminAIOrchestrator._schema_diagnostic(raised.exception)
+                self.assertEqual(diagnostic.category, AdminAIValidationCategory.UNSUPPORTED_RESPONSE_INVALID)
+                serialized = diagnostic.model_dump_json()
+                self.assertNotIn("safe placeholder", serialized)
+                self.assertNotIn("admin_approval_required", serialized)
 
     def test_valid_one_call_plan_and_fake_planner_interface(self) -> None:
         orchestrator, planner, executor = self.build(plan(call(

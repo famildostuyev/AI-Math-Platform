@@ -47,16 +47,32 @@ class AdminAILoggingConfigTest(unittest.TestCase):
                 extra={
                     "failure_category": "response_schema_invalid",
                     "validation_stage": "provider_response_parse", "retry_count": 0,
+                    "validation_error_types": ("missing", "literal_error"),
+                    "validation_error_locations": ("plan.calls[0].name", "outcome"),
                     "provider_raw_error": "must not appear",
+                },
+            )
+            logging.getLogger(ADMIN_AI_DIAGNOSTIC_LOGGERS[0]).warning(
+                "admin_ai_answer_fallback_selected",
+                extra={
+                    "outcome_kind": "mutation_proposal",
+                    "requirement_types": ("content_generation", "platform_mutation"),
+                    "proposal_persisted": True,
+                    "instruction": "must not appear",
                 },
             )
         finally:
             for handler, stream in streams.values():
                 handler.setStream(stream)
         lines = [json.loads(line) for line in output.getvalue().splitlines()]
-        self.assertEqual(len(lines), 2)
+        self.assertEqual(len(lines), 3)
         self.assertEqual(lines[0]["category"], "grounding_id_invalid")
         self.assertEqual(lines[1]["category"], "response_schema_invalid")
+        self.assertEqual(lines[1]["validation_error_types"], ["missing", "literal_error"])
+        self.assertEqual(lines[1]["validation_error_locations"], ["plan.calls[0].name", "outcome"])
+        self.assertEqual(lines[2]["event"], "admin_ai_answer_fallback_selected")
+        self.assertEqual(lines[2]["outcome_kind"], "mutation_proposal")
+        self.assertTrue(lines[2]["proposal_persisted"])
         serialized = json.dumps(lines).casefold()
         for forbidden in ("instruction", "raw_payload", "secret", "provider_raw_error", "must not appear"):
             self.assertNotIn(forbidden, serialized)

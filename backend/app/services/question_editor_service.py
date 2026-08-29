@@ -160,6 +160,7 @@ class QuestionEditorService:
         *,
         draft: QuestionDraftCreate,
         actor_id: uuid.UUID,
+        commit: bool = True,
     ) -> QuestionDraftRead:
         """Create one authored family, original form, and draft revision."""
 
@@ -226,8 +227,9 @@ class QuestionEditorService:
             if links:
                 self.db.add_all(links)
 
-            self.db.commit()
-            self.db.refresh(revision)
+            if commit:
+                self.db.commit()
+                self.db.refresh(revision)
 
             return self._draft_read(
                 family=family,
@@ -912,7 +914,7 @@ class QuestionEditorService:
         for action in actions:
             if isinstance(action, CreateAnswerOptionAction):
                 prepared = prepare_structured_text_write(action.payload.document, action.payload.format_version)
-                item = AnswerOption(revision_id=revision.id, label=action.label,
+                item = AnswerOption(id=action.option_id or uuid.uuid4(), revision_id=revision.id, label=action.label,
                     order_index=max((value.order_index for value in option_by_id.values()), default=0) + 1000,
                     source_text=prepared.source_text, document_data=prepared.document_data,
                     format_version=prepared.format_version, is_correct=False)

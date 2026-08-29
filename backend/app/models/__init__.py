@@ -1,6 +1,8 @@
 from app.models.ai_authoring_proposal import AIAuthoringProposal
 from app.models.ai_authoring_conversation import AIAuthoringConversation
 from app.models.ai_authoring_message import AIAuthoringMessage
+from app.models.admin_ai_generated_question_draft import AdminAIGeneratedQuestionDraft
+from app.models.admin_ai_generated_question_draft import AdminAIGeneratedQuestionDraft
 from app.models.answer_option import AnswerOption
 from app.models.accepted_answer import AcceptedAnswer
 from app.models.grade import Grade
@@ -50,6 +52,8 @@ __all__ = [
     "AIAuthoringProposal",
     "AIAuthoringConversation",
     "AIAuthoringMessage",
+    "AdminAIGeneratedQuestionDraft",
+    "AdminAIGeneratedQuestionDraft",
     "AnswerOption",
     "AcceptedAnswer",
     "ContentBlock",

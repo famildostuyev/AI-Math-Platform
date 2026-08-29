@@ -11,6 +11,7 @@ ADMIN_AI_DIAGNOSTIC_LOGGERS: Final = (
     "app.services.openai_admin_ai_planner",
 )
 _SAFE_EVENTS: Final = {
+    "admin_ai_answer_fallback_selected",
     "admin_ai_plan_validation_failed",
     "admin_ai_planner_failed",
 }
@@ -30,6 +31,11 @@ class SafeAdminAIDiagnosticFormatter(logging.Formatter):
             "capability_version": getattr(record, "capability_version", None),
             "call_index": getattr(record, "call_index", None),
             "retry_count": getattr(record, "retry_count", 0),
+            "outcome_kind": getattr(record, "outcome_kind", None),
+            "requirement_types": getattr(record, "requirement_types", None),
+            "proposal_persisted": getattr(record, "proposal_persisted", None),
+            "validation_error_types": getattr(record, "validation_error_types", None),
+            "validation_error_locations": getattr(record, "validation_error_locations", None),
         }
         return json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
 

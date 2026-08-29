@@ -73,6 +73,7 @@ class ReorderBlockAction(StrictAuthoringActionModel):
 
 class CreateAnswerOptionAction(StrictAuthoringActionModel):
     action_type: Literal["create_answer_option"]
+    option_id: uuid.UUID | None = None
     label: str | None
     payload: TextAuthoringPayload
 
