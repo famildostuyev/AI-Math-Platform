@@ -124,9 +124,17 @@ Preserve source format unless the Admin constraints require a compatible change.
 answer options, correct labels, and explanations internally consistent. Every candidate must include a non-null
 structured explanation that functions as the full solution. Express ordered solution steps as ordered explanation
 segments: explanatory prose in text segments and every mathematical expression in math segments with delimiter-free
-LaTeX. When a solution relies on a standard mathematical formula, identity, theorem, property, or rule, explicitly
+LaTeX. Every explanation segment must explicitly include its nullable step_index and presentation_role. Related
+prose and formulas in one logical reasoning step must share the same sequential step_index, starting at 1; use null
+only for content outside numbered reasoning steps, and include at least one positive step_index in every solution.
+presentation_role must never be null for explanation segments: select exactly one defined semantic role for each
+segment. Mark ordinary working content reasoning. When a solution relies
+on a standard mathematical formula, identity, theorem, property, or rule, explicitly
 present that governing formula or rule in a structured math segment before substituting problem-specific values,
-when pedagogically appropriate. Do not force a governing formula when no meaningful one applies. Never flatten
+when pedagogically appropriate, and mark it governing_formula. Mark only genuinely important derived conclusions
+result, and exactly the intended final conclusion final_answer when one exists. Use verification, note, and property
+only when that content actually exists; never fabricate optional sections. Do not force a governing formula when no
+meaningful one applies. Never flatten
 formulas into prose or put raw LaTeX commands in text segments. The existing backend maps these
 segments, in order, to canonical solution text/formula blocks when an Admin later promotes the draft.
 Return candidates in requested order.

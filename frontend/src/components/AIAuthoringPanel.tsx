@@ -32,6 +32,8 @@ import {
   type ProposalRead,
 } from '../api/aiAuthoring'
 import MathContent from './MathContent'
+import SolutionPresentation from './SolutionPresentation'
+import { structuredExplanationToPresentationItems } from './solutionPresentationModel'
 
 type AuthenticatedRequest = <T>(request: (accessToken: string) => Promise<T>) => Promise<T>
 
@@ -227,7 +229,7 @@ function GeneratedDraftView({ draft, proposalPreview = false, persistent = false
         {correct.has(option.label) && <span className="admin-ai-correct-option"> · düzgün cavab</span>}
       </li>)}
     </ol>}
-    {draft.explanation && <div><h5>İzah</h5><MathContent content={draft.explanation} fallbackText="İzah göstərilə bilmədi." /></div>}
+    {draft.explanation && <div><h5>İzah</h5><SolutionPresentation items={structuredExplanationToPresentationItems(draft.explanation)} ariaLabel="AI qaralamasının həlli" /></div>}
     <p className="admin-ai-result-note">{proposalPreview
       ? 'Bu dəyişiklik pending təklif kimi saxlanılıb və yalnız Admin təsdiqindən sonra tətbiq ediləcək.'
       : persistent

@@ -6,7 +6,7 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.enums import SolutionBlockType
+from app.core.enums import SolutionBlockType, SolutionPresentationRole
 from app.schemas.structured_text import StructuredTextDocument
 
 
@@ -42,11 +42,15 @@ class SolutionFormulaPayload(StrictSolutionSchema):
 class SolutionTextBlockCreate(SolutionCreate):
     block_type: Literal[SolutionBlockType.TEXT]
     payload: SolutionTextPayload
+    step_index: int | None = Field(default=None, ge=1)
+    presentation_role: SolutionPresentationRole = SolutionPresentationRole.REASONING
 
 
 class SolutionFormulaBlockCreate(SolutionCreate):
     block_type: Literal[SolutionBlockType.FORMULA]
     payload: SolutionFormulaPayload
+    step_index: int | None = Field(default=None, ge=1)
+    presentation_role: SolutionPresentationRole = SolutionPresentationRole.REASONING
 
 
 class SolutionTextBlockUpdate(SolutionCreate):
@@ -72,6 +76,8 @@ class SolutionTextBlockRead(StrictSolutionSchema):
     id: uuid.UUID
     block_type: Literal[SolutionBlockType.TEXT]
     sort_order: int = Field(gt=0)
+    step_index: int | None = Field(default=None, ge=1)
+    presentation_role: SolutionPresentationRole = SolutionPresentationRole.REASONING
     source_text: str
     document: StructuredTextDocument
     format_version: Literal[1]
@@ -81,6 +87,8 @@ class SolutionFormulaBlockRead(StrictSolutionSchema):
     id: uuid.UUID
     block_type: Literal[SolutionBlockType.FORMULA]
     sort_order: int = Field(gt=0)
+    step_index: int | None = Field(default=None, ge=1)
+    presentation_role: SolutionPresentationRole = SolutionPresentationRole.REASONING
     source_latex: str
     format_version: Literal[1]
 

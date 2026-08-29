@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.enums import QuestionRevisionStatus, SolutionBlockType
+from app.core.enums import QuestionRevisionStatus, SolutionBlockType, SolutionPresentationRole
 from app.models.question_family import QuestionFamily
 from app.models.question_form import QuestionForm
 from app.models.question_revision import QuestionRevision
@@ -140,6 +140,8 @@ class QuestionSolutionService:
                     solution_id=solution.id,
                     block_type=SolutionBlockType.TEXT if prepared else SolutionBlockType.FORMULA,
                     sort_order=max((item.sort_order for item in by_id.values()), default=0) + 1000,
+                    step_index=action.step_index,
+                    presentation_role=action.presentation_role,
                     source_text=None if prepared is None else prepared.source_text,
                     document_data=None if prepared is None else prepared.document_data,
                     source_latex=action.payload.source_latex if prepared is None else None,
@@ -220,6 +222,8 @@ class QuestionSolutionService:
             document_data=prepared.document_data,
             source_latex=None,
             format_version=prepared.format_version,
+            step_index=request.step_index,
+            presentation_role=request.presentation_role,
         )
 
     def create_formula_block(
@@ -233,6 +237,8 @@ class QuestionSolutionService:
             document_data=None,
             source_latex=request.payload.source_latex,
             format_version=request.payload.format_version,
+            step_index=request.step_index,
+            presentation_role=request.presentation_role,
         )
 
     def update_text_block(
@@ -316,7 +322,7 @@ class QuestionSolutionService:
         self, *, revision_id: uuid.UUID, expected: datetime,
         block_type: SolutionBlockType, source_text: str | None,
         document_data: dict[str, object] | None, source_latex: str | None,
-        format_version: int,
+        format_version: int, step_index: int | None, presentation_role,
     ):
         try:
             revision = self._editable_revision(revision_id, expected)
@@ -329,7 +335,8 @@ class QuestionSolutionService:
                 solution_id=solution.id, block_type=block_type,
                 sort_order=maximum + 1000, source_text=source_text,
                 document_data=document_data, source_latex=source_latex,
-                format_version=format_version,
+                format_version=format_version, step_index=step_index,
+                presentation_role=presentation_role,
             )
             self.db.add(block)
             self.db.flush()
@@ -431,9 +438,14 @@ class QuestionSolutionService:
     @staticmethod
     def _block_read(block: SolutionBlock):
         block_type = SolutionBlockType(block.block_type)
+        step_index = getattr(block, "step_index", None)
+        presentation_role = (
+            getattr(block, "presentation_role", None) or SolutionPresentationRole.REASONING
+        )
         if block_type == SolutionBlockType.TEXT:
             return SolutionTextBlockRead(
                 id=block.id, block_type=block_type, sort_order=block.sort_order,
+                step_index=step_index, presentation_role=presentation_role,
                 source_text=block.source_text,
                 document=normalize_text_content(
                     source_text=block.source_text,
@@ -444,6 +456,7 @@ class QuestionSolutionService:
             )
         return SolutionFormulaBlockRead(
             id=block.id, block_type=block_type, sort_order=block.sort_order,
+            step_index=step_index, presentation_role=presentation_role,
             source_latex=block.source_latex, format_version=block.format_version,
         )
 

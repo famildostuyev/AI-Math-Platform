@@ -5,6 +5,7 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.enums import SolutionPresentationRole
 from app.schemas.structured_text import StructuredTextDocument
 
 
@@ -153,6 +154,8 @@ class DeleteSolutionAction(StrictAuthoringActionModel):
 class CreateSolutionTextBlockAction(StrictAuthoringActionModel):
     action_type: Literal["create_solution_text_block"]
     payload: TextAuthoringPayload
+    step_index: int | None = Field(default=None, ge=1)
+    presentation_role: SolutionPresentationRole = SolutionPresentationRole.REASONING
 
 
 class UpdateSolutionTextBlockAction(StrictAuthoringActionModel):
@@ -164,6 +167,8 @@ class UpdateSolutionTextBlockAction(StrictAuthoringActionModel):
 class CreateSolutionFormulaBlockAction(StrictAuthoringActionModel):
     action_type: Literal["create_solution_formula_block"]
     payload: FormulaAuthoringPayload
+    step_index: int | None = Field(default=None, ge=1)
+    presentation_role: SolutionPresentationRole = SolutionPresentationRole.REASONING
 
 
 class UpdateSolutionFormulaBlockAction(StrictAuthoringActionModel):

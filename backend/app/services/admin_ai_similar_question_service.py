@@ -30,6 +30,20 @@ class AdminAISimilarQuestionCandidate(BaseModel):
             raise ValueError("Similar-question candidates must be question drafts.")
         if self.generated_draft.explanation is None:
             raise ValueError("Similar-question candidates must include a structured solution.")
+        segments = self.generated_draft.explanation.segments
+        if any(
+            "step_index" not in segment.model_fields_set
+            or "presentation_role" not in segment.model_fields_set
+            or segment.presentation_role is None
+            for segment in segments
+        ):
+            raise ValueError(
+                "New similar-question solution segments must explicitly include semantic metadata."
+            )
+        if not any(segment.step_index is not None for segment in segments):
+            raise ValueError(
+                "New similar-question solutions must include at least one numbered reasoning step."
+            )
         return self
 
 

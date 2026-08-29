@@ -34,6 +34,26 @@ def structured_math():
 
 
 class AdminAIStrictMathContentTest(unittest.TestCase):
+    def test_solution_metadata_accepts_shared_steps_and_rejects_invalid_values(self) -> None:
+        content = AdminAIAssistantContent.model_validate({
+            "format_version": 1,
+            "segments": [
+                {"type": "text", "text": "Rule", "step_index": 1, "presentation_role": "reasoning"},
+                {"type": "math", "latex": "a=b", "source_text": "rule", "display_mode": True, "step_index": 1, "presentation_role": "governing_formula"},
+                {"type": "math", "latex": "x=1", "source_text": "answer", "display_mode": True, "step_index": 2, "presentation_role": "final_answer"},
+            ],
+        })
+        self.assertEqual([segment.step_index for segment in content.segments], [1, 1, 2])
+        with self.assertRaises(ValidationError):
+            AdminAIAssistantTextSegment(
+                type="text", text="Invalid", presentation_role="slope_formula"
+            )
+        with self.assertRaises(ValidationError):
+            AdminAIAssistantContent.model_validate({
+                "format_version": 1,
+                "segments": [{"type": "text", "text": "Later", "step_index": 2}],
+            })
+
     def test_inline_fraction_is_ordered_text_math_text(self) -> None:
         content = AdminAIAssistantContent.model_validate(structured_math())
         self.assertEqual([segment.type for segment in content.segments], ["text", "math", "text"])

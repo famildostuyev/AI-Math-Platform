@@ -490,6 +490,21 @@
   background: #fbfefe;
 }
 
+.admin-solution-presentation-preview {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid #dfe6f2;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.admin-solution-presentation-preview > h3 {
+  margin: 0;
+  color: #303349;
+  font-size: 15px;
+}
+
 .admin-editor-block__details {
   display: grid;
   gap: 8px;

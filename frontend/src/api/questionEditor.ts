@@ -257,6 +257,8 @@ export type SolutionTextBlockRead = {
   id: UUID
   block_type: 'text'
   sort_order: number
+  step_index: number | null
+  presentation_role: SolutionPresentationRole
   source_text: string
   document: StructuredTextDocument
   format_version: 1
@@ -266,21 +268,28 @@ export type SolutionFormulaBlockRead = {
   id: UUID
   block_type: 'formula'
   sort_order: number
+  step_index: number | null
+  presentation_role: SolutionPresentationRole
   source_latex: string
   format_version: 1
 }
 
 export type SolutionBlockRead = SolutionTextBlockRead | SolutionFormulaBlockRead
+export type SolutionPresentationRole = 'reasoning' | 'governing_formula' | 'result' | 'final_answer' | 'verification' | 'note' | 'property'
 export type SolutionRead = { id: UUID; blocks: SolutionBlockRead[] }
 export type SolutionMutationRequest = { expected_revision_updated_at: IsoDateTime }
 export type SolutionTextBlockCreate = SolutionMutationRequest & {
   block_type: 'text'
   payload: TextBlockWritePayload
+  step_index?: number | null
+  presentation_role?: SolutionPresentationRole
 }
 export type SolutionTextBlockUpdate = SolutionMutationRequest & { payload: TextBlockWritePayload }
 export type SolutionFormulaBlockCreate = SolutionMutationRequest & {
   block_type: 'formula'
   payload: FormulaBlockWritePayload
+  step_index?: number | null
+  presentation_role?: SolutionPresentationRole
 }
 export type SolutionFormulaBlockUpdate = SolutionMutationRequest & { payload: FormulaBlockWritePayload }
 export type SolutionBlockOrderRequest = SolutionMutationRequest & { block_ids: UUID[] }

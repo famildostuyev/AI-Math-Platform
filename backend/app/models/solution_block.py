@@ -6,7 +6,7 @@ from sqlalchemy import CheckConstraint, Enum as SQLEnum, ForeignKey, Index, Inte
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import SolutionBlockType
+from app.core.enums import SolutionBlockType, SolutionPresentationRole
 from app.database.base_model import BaseModel
 
 
@@ -15,6 +15,7 @@ class SolutionBlock(BaseModel):
     __table_args__ = (
         CheckConstraint("sort_order > 0", name="ck_solution_blocks_sort_order_positive"),
         CheckConstraint("format_version > 0", name="ck_solution_blocks_format_version_positive"),
+        CheckConstraint("step_index IS NULL OR step_index > 0", name="ck_solution_blocks_step_index_positive"),
         CheckConstraint(
             "document_data IS NULL OR jsonb_typeof(document_data) = 'object'",
             name="ck_solution_blocks_document_data_object_or_null",
@@ -47,6 +48,19 @@ class SolutionBlock(BaseModel):
         nullable=False,
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    step_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    presentation_role: Mapped[SolutionPresentationRole] = mapped_column(
+        SQLEnum(
+            SolutionPresentationRole,
+            name="solution_presentation_role",
+            native_enum=False,
+            create_constraint=True,
+            values_callable=lambda enum_class: [member.value for member in enum_class],
+        ),
+        default=SolutionPresentationRole.REASONING,
+        server_default=text("'reasoning'"),
+        nullable=False,
+    )
     source_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     document_data: Mapped[dict[str, object] | None] = mapped_column(
         JSONB(none_as_null=True), nullable=True

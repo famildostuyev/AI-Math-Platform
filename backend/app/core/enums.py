@@ -157,6 +157,16 @@ class SolutionBlockType(str, Enum):
     FORMULA = "formula"
 
 
+class SolutionPresentationRole(str, Enum):
+    REASONING = "reasoning"
+    GOVERNING_FORMULA = "governing_formula"
+    RESULT = "result"
+    FINAL_ANSWER = "final_answer"
+    VERIFICATION = "verification"
+    NOTE = "note"
+    PROPERTY = "property"
+
+
 class SourcePreAnalysisRunStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"

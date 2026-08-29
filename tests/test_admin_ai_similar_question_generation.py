@@ -68,10 +68,10 @@ def question_draft(index: int) -> AdminAIGeneratedDraft:
         ]},
         "answer_options": [], "correct_option_labels": [],
         "explanation": {"format_version": 1, "segments": [
-            {"type": "text", "text": f"1) Variant {index} üçün əmsalı müəyyən edək."},
-            {"type": "math", "latex": f"m=n+{index}", "source_text": f"m equals n plus {index}", "display_mode": True},
-            {"type": "text", "text": "2) Alınmış əmsalı yerinə yazaq və cavabı yoxlayaq."},
-            {"type": "math", "latex": f"y=(n+{index})x+{index}", "source_text": "final linear equation", "display_mode": True},
+            {"type": "text", "text": f"1) Variant {index} üçün əmsalı müəyyən edək.", "step_index": 1, "presentation_role": "reasoning"},
+            {"type": "math", "latex": f"m=n+{index}", "source_text": f"m equals n plus {index}", "display_mode": True, "step_index": 1, "presentation_role": "governing_formula"},
+            {"type": "text", "text": "2) Alınmış əmsalı yerinə yazaq və cavabı yoxlayaq.", "step_index": 2, "presentation_role": "reasoning"},
+            {"type": "math", "latex": f"y=(n+{index})x+{index}", "source_text": "final linear equation", "display_mode": True, "step_index": 2, "presentation_role": "final_answer"},
         ]},
         "is_canonical": False,
     })
@@ -172,6 +172,11 @@ class SimilarQuestionGenerationAPITest(unittest.TestCase):
         self.assertEqual(response.json()["items"][0]["persistent_draft_id"], str(records[0].id))
         self.assertEqual(response.json()["items"][0]["persistent_draft_status"], "active")
         self.assertFalse(response.json()["items"][0]["generated_draft"]["is_canonical"])
+        explanation = response.json()["items"][0]["generated_draft"]["explanation"]["segments"]
+        self.assertEqual(
+            [(segment["step_index"], segment["presentation_role"]) for segment in explanation],
+            [(1, "reasoning"), (1, "governing_formula"), (2, "reasoning"), (2, "final_answer")],
+        )
         generation_call = self.generator.generate_similar_questions.call_args.kwargs
         self.assertEqual(generation_call["requested_count"], 1)
         self.assertEqual(generation_call["admin_constraints"], CONSTRAINTS)
@@ -234,6 +239,10 @@ class SimilarQuestionGenerationAPITest(unittest.TestCase):
         formulas = [action.payload.source_latex for action in solution_actions
                     if isinstance(action, CreateSolutionFormulaBlockAction)]
         self.assertEqual(formulas, ["m=n+1", "y=(n+1)x+1"])
+        self.assertEqual(
+            [(action.step_index, action.presentation_role.value) for action in solution_actions[1:]],
+            [(1, "reasoning"), (1, "governing_formula"), (2, "reasoning"), (2, "final_answer")],
+        )
         text_documents = [action.payload.document.model_dump(mode="json") for action in solution_actions
                           if isinstance(action, CreateSolutionTextBlockAction)]
         self.assertNotIn("\\", str(text_documents))
@@ -268,6 +277,22 @@ class SimilarQuestionGenerationAPITest(unittest.TestCase):
         with self.assertRaises(ValueError):
             AdminAIGeneratedDraft.model_validate(raw)
 
+    def test_new_provider_candidate_rejects_missing_or_null_semantic_metadata(self) -> None:
+        for semantic_override in (
+            {},
+            {"step_index": None, "presentation_role": None},
+        ):
+            with self.subTest(semantic_override=semantic_override):
+                draft_data = question_draft(1).model_dump(mode="json")
+                draft_data["explanation"]["segments"] = [
+                    {"type": "text", "text": "Working", **semantic_override},
+                ]
+                with self.assertRaises(ValueError):
+                    AdminAISimilarQuestionCandidate(
+                        generated_draft=AdminAIGeneratedDraft.model_validate(draft_data),
+                        applied_admin_constraints=CONSTRAINTS,
+                    )
+
     def test_provider_instructions_require_governing_rule_before_substitution(self) -> None:
         instructions = OPENAI_ADMIN_AI_SIMILAR_QUESTION_INSTRUCTIONS
         self.assertIn(
@@ -277,6 +302,12 @@ class SimilarQuestionGenerationAPITest(unittest.TestCase):
         self.assertIn("before substituting problem-specific values", instructions)
         self.assertIn("when pedagogically appropriate", instructions)
         self.assertIn("Do not force a governing formula", instructions)
+        self.assertIn("step_index", instructions)
+        self.assertIn("presentation_role", instructions)
+        self.assertIn("share the same sequential step_index", instructions)
+        self.assertIn("final_answer", instructions)
+        self.assertIn("presentation_role must never be null", instructions)
+        self.assertIn("at least one positive step_index", instructions)
 
     def test_structured_solution_orders_governing_formula_before_substitution(self) -> None:
         candidate_data = question_draft(1).model_dump(mode="json")
@@ -284,22 +315,30 @@ class SimilarQuestionGenerationAPITest(unittest.TestCase):
             {
                 "type": "text",
                 "text": "İki nöqtə üçün əvvəlcə uyğun ümumi düsturu yazaq.",
+                "step_index": 1,
+                "presentation_role": "reasoning",
             },
             {
                 "type": "math",
                 "latex": r"k=\frac{y_2-y_1}{x_2-x_1}",
                 "source_text": "the general slope formula",
                 "display_mode": True,
+                "step_index": 1,
+                "presentation_role": "governing_formula",
             },
             {
                 "type": "text",
                 "text": "İndi məsələdə verilən qiymətləri düsturda yerinə yazaq.",
+                "step_index": 1,
+                "presentation_role": "reasoning",
             },
             {
                 "type": "math",
                 "latex": r"\frac{10-n}{2n+1}=n+2",
                 "source_text": "problem values substituted into the formula",
                 "display_mode": True,
+                "step_index": 1,
+                "presentation_role": "result",
             },
         ]
         candidate = AdminAISimilarQuestionCandidate(

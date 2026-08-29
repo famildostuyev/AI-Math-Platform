@@ -40,6 +40,14 @@ class SolutionModelMetadataTest(unittest.TestCase):
             if isinstance(item, CheckConstraint)
         }
         self.assertEqual(checks["ck_solution_blocks_sort_order_positive"], "sort_order > 0")
+        self.assertEqual(
+            checks["ck_solution_blocks_step_index_positive"],
+            "step_index IS NULL OR step_index > 0",
+        )
+        self.assertEqual(table.c.presentation_role.type.enums, [
+            "reasoning", "governing_formula", "result", "final_answer",
+            "verification", "note", "property",
+        ])
         active = next(index for index in table.indexes if index.name == "uq_solution_blocks_active_solution_order")
         self.assertTrue(active.unique)
         self.assertEqual(str(active.dialect_options["postgresql"]["where"]), "deleted_at IS NULL")

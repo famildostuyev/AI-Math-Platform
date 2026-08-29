@@ -14,6 +14,8 @@ import {
   type StructuredTextDocument,
 } from '../api/questionEditor'
 import MathContent from './MathContent'
+import SolutionPresentation from './SolutionPresentation'
+import { solutionBlocksToPresentationItems } from './solutionPresentationModel'
 import VisualMathInput from './VisualMathInput'
 
 type RunMutation = (
@@ -92,6 +94,11 @@ export default function SolutionEditorSection({ revision, disabled, runMutation 
         }), () => { setEditingId(null); setEditingValue('') })
       }}><Trash2 size={15} /> Həlli sil</button>
     </div>
+
+    {solution.blocks.length > 0 && <div className="admin-solution-presentation-preview">
+      <h3>Həllin təqdimatı</h3>
+      <SolutionPresentation items={solutionBlocksToPresentationItems(solution.blocks)} />
+    </div>}
 
     <div className="admin-editor-authoring">
       <form onSubmit={(event) => {

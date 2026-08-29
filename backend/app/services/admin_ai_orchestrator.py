@@ -10,7 +10,7 @@ from typing import Literal, Protocol, TypeAlias, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from pydantic_core import PydanticCustomError
 
-from app.core.enums import RoleName
+from app.core.enums import RoleName, SolutionPresentationRole
 from app.services.admin_ai_capability_registry import (
     AdminAIExecutionRequirement,
     AdminAICapabilityRegistry,
@@ -101,6 +101,10 @@ class AdminAIContextRequirement(str, Enum):
 class AdminAIAssistantTextSegment(StrictOrchestratorModel):
     type: Literal["text"]
     text: str = Field(min_length=1, max_length=10_000)
+    step_index: int | None = Field(default=None, ge=1, exclude_if=lambda value: value is None)
+    presentation_role: SolutionPresentationRole | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
 
     @model_validator(mode="after")
     def text_contains_no_provider_markup(self) -> "AdminAIAssistantTextSegment":
@@ -115,6 +119,10 @@ class AdminAIAssistantMathSegment(StrictOrchestratorModel):
     latex: str = Field(min_length=1, max_length=10_000)
     source_text: str = Field(min_length=1, max_length=10_000)
     display_mode: bool
+    step_index: int | None = Field(default=None, ge=1, exclude_if=lambda value: value is None)
+    presentation_role: SolutionPresentationRole | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
 
     @model_validator(mode="after")
     def math_is_safe_serialized_latex(self) -> "AdminAIAssistantMathSegment":
@@ -133,6 +141,13 @@ AdminAIAssistantSegment: TypeAlias = AdminAIAssistantTextSegment | AdminAIAssist
 class AdminAIAssistantContent(StrictOrchestratorModel):
     format_version: Literal[1]
     segments: tuple[AdminAIAssistantSegment, ...] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def explicit_steps_are_sequential_and_ordered(self) -> "AdminAIAssistantContent":
+        indices = [segment.step_index for segment in self.segments if segment.step_index is not None]
+        if indices and (indices != sorted(indices) or set(indices) != set(range(1, max(indices) + 1))):
+            raise ValueError("Explicit solution step indices must be ordered and sequential from 1.")
+        return self
 
 
 class AdminAIConversationTurn(StrictOrchestratorModel):

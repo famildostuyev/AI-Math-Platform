@@ -5,7 +5,11 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.enums import AdminAIGeneratedQuestionDraftStatus, RoleName
+from app.core.enums import (
+    AdminAIGeneratedQuestionDraftStatus,
+    RoleName,
+    SolutionPresentationRole,
+)
 from app.models.admin_ai_generated_question_draft import AdminAIGeneratedQuestionDraft
 from app.models.question_revision import QuestionRevision
 from app.models.question_type import QuestionType
@@ -266,6 +270,10 @@ class AdminAIGeneratedQuestionDraftService:
                 action = (
                     CreateSolutionTextBlockAction(
                         action_type="create_solution_text_block", payload=payload,
+                        step_index=segment.step_index,
+                        presentation_role=(
+                            segment.presentation_role or SolutionPresentationRole.REASONING
+                        ),
                     )
                     if solution else
                     CreateTextBlockAction(action_type="create_text_block", payload=payload)
@@ -277,6 +285,10 @@ class AdminAIGeneratedQuestionDraftService:
                 action = (
                     CreateSolutionFormulaBlockAction(
                         action_type="create_solution_formula_block", payload=payload,
+                        step_index=segment.step_index,
+                        presentation_role=(
+                            segment.presentation_role or SolutionPresentationRole.REASONING
+                        ),
                     )
                     if solution else
                     CreateFormulaBlockAction(action_type="create_formula_block", payload=payload)

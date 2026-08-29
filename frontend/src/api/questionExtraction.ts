@@ -1,12 +1,16 @@
 import { requestJson } from './client'
-import type { IsoDateTime, UUID } from './questionEditor'
+import type { IsoDateTime, SolutionPresentationRole, UUID } from './questionEditor'
 
 export type QuestionExtractionRunStatus = 'pending' | 'running' | 'succeeded' | 'failed'
 export type QuestionExtractionRunRead = { id: UUID; source_document_id: UUID; run_number: number; status: QuestionExtractionRunStatus; requested_by_user_id: UUID | null; started_at: IsoDateTime | null; completed_at: IsoDateTime | null; failure_message: string | null }
 export type QuestionCandidateRead = { id: UUID; sequence_number: number; extracted_text: string; confidence: string | null; source_document_page_id: UUID | null; page_number: number | null }
 export type QuestionExtractionAnalysisPageRead = { source_document_page_id: UUID; page_number: number }
-export type TextSegment = { type: 'text'; text: string }
-export type MathSegment = { type: 'math'; latex: string; source_text: string; display_mode: boolean }
+export type SolutionPresentationMetadata = {
+  step_index?: number | null
+  presentation_role?: SolutionPresentationRole | null
+}
+export type TextSegment = SolutionPresentationMetadata & { type: 'text'; text: string }
+export type MathSegment = SolutionPresentationMetadata & { type: 'math'; latex: string; source_text: string; display_mode: boolean }
 export type ContentSegment = TextSegment | MathSegment
 export type StructuredContent = { format_version: 1; segments: ContentSegment[] }
 export type QuestionExtractionAnalysisOptionRead = { label: string | null; text: string; content?: StructuredContent | null }

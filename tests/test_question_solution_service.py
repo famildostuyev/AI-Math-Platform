@@ -182,6 +182,30 @@ class QuestionSolutionServiceTest(unittest.TestCase):
         )
         self.assertEqual(updated.source_latex, "y=2")
 
+    def test_create_and_read_round_trips_presentation_metadata_with_legacy_defaults(self) -> None:
+        rev, item_solution = revision(), solution(uuid.uuid4())
+        db = MagicMock()
+        db.scalar.side_effect = [rev, item_solution, 0]
+        db.add.side_effect = lambda item: setattr(item, "id", item.id or uuid.uuid4())
+        created = QuestionSolutionService(db).create_formula_block(
+            revision_id=rev.id,
+            request=SolutionFormulaBlockCreate(
+                block_type="formula", payload={"source_latex": r"k=\frac{y_2-y_1}{x_2-x_1}"},
+                step_index=1, presentation_role="governing_formula",
+                expected_revision_updated_at=NOW,
+            ),
+        )
+        self.assertEqual((created.step_index, created.presentation_role.value), (1, "governing_formula"))
+        added = db.add.call_args.args[0]
+        self.assertEqual((added.step_index, added.presentation_role.value), (1, "governing_formula"))
+
+        legacy = block(item_solution.id)
+        legacy.step_index = None
+        legacy.presentation_role = None
+        projected = QuestionSolutionService._block_read(legacy)
+        self.assertIsNone(projected.step_index)
+        self.assertEqual(projected.presentation_role.value, "reasoning")
+
     def test_wrong_type_update_is_atomic(self) -> None:
         db, rev = MagicMock(), revision()
         item_solution = solution(rev.id)
