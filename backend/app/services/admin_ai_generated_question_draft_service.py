@@ -71,6 +71,47 @@ class AdminAIGeneratedQuestionDraftService:
     ) -> AdminAIGeneratedQuestionDraft:
         self._require_admin(actor_role)
         typed_draft = AdminAIGeneratedDraft.model_validate(draft)
+        self._require_owner_and_source(owner_user_id, source_revision_id)
+        record = self._new_record(
+            typed_draft, owner_user_id=owner_user_id, source_revision_id=source_revision_id,
+        )
+        try:
+            self.db.add(record)
+            self.db.commit()
+            self.db.refresh(record)
+            return record
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def create_many_from_generated_drafts(
+        self, *, drafts: tuple[AdminAIGeneratedDraft, ...], owner_user_id: uuid.UUID,
+        actor_role: RoleName, source_revision_id: uuid.UUID,
+    ) -> tuple[AdminAIGeneratedQuestionDraft, ...]:
+        """Atomically persist one validated, ordered batch of non-canonical drafts."""
+
+        self._require_admin(actor_role)
+        typed_drafts = tuple(AdminAIGeneratedDraft.model_validate(draft) for draft in drafts)
+        if not typed_drafts:
+            raise AdminAIGeneratedQuestionDraftError("At least one generated draft is required.")
+        if any(draft.draft_kind != "question" for draft in typed_drafts):
+            raise AdminAIGeneratedQuestionDraftError("Only generated question drafts may be persisted in a batch.")
+        self._require_owner_and_source(owner_user_id, source_revision_id)
+        records = tuple(self._new_record(
+            draft, owner_user_id=owner_user_id, source_revision_id=source_revision_id,
+        ) for draft in typed_drafts)
+        try:
+            self.db.add_all(records)
+            self.db.flush()
+            self.db.commit()
+            return records
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def _require_owner_and_source(
+        self, owner_user_id: uuid.UUID, source_revision_id: uuid.UUID | None,
+    ) -> None:
         owner = self.db.scalar(select(User).where(
             User.id == owner_user_id, User.is_active.is_(True), User.deleted_at.is_(None),
         ))
@@ -83,7 +124,14 @@ class AdminAIGeneratedQuestionDraftService:
             ))
             if source is None:
                 raise AdminAIGeneratedQuestionDraftSourceNotFoundError("Active source revision was not found.")
-        record = AdminAIGeneratedQuestionDraft(
+
+    @staticmethod
+    def _new_record(
+        typed_draft: AdminAIGeneratedDraft, *, owner_user_id: uuid.UUID,
+        source_revision_id: uuid.UUID | None,
+    ) -> AdminAIGeneratedQuestionDraft:
+        return AdminAIGeneratedQuestionDraft(
+            id=uuid.uuid4(),
             owner_user_id=owner_user_id,
             source_revision_id=source_revision_id,
             status=AdminAIGeneratedQuestionDraftStatus.ACTIVE,
@@ -96,14 +144,6 @@ class AdminAIGeneratedQuestionDraftService:
             explanation=(typed_draft.explanation.model_dump(mode="json") if typed_draft.explanation else None),
             is_canonical=False,
         )
-        try:
-            self.db.add(record)
-            self.db.commit()
-            self.db.refresh(record)
-            return record
-        except Exception:
-            self.db.rollback()
-            raise
 
     def get_draft(
         self, *, draft_id: uuid.UUID, actor_user_id: uuid.UUID,

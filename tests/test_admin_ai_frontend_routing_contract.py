@@ -102,7 +102,7 @@ class AdminAIFrontendRoutingContractTest(unittest.TestCase):
         self.assertIn("result.generated_draft?.draft_kind === 'question'", eligibility)
         self.assertIn("result.persistent_draft_id !== null", eligibility)
         self.assertIn("result.persistent_draft_status === 'active'", eligibility)
-        self.assertEqual(default_panel.count("Yeni sual kimi saxla"), 1)
+        self.assertEqual(default_panel.count("Yeni sual kimi saxla"), 2)
         self.assertIn("canPromotePersistentQuestionDraft(item.result) &&", default_panel)
 
     def test_promotion_click_is_guarded_and_updates_only_after_success(self) -> None:
@@ -111,8 +111,8 @@ class AdminAIFrontendRoutingContractTest(unittest.TestCase):
             "const warningLabels", 1,
         )[0]
 
-        self.assertIn("promotionRequestsInFlight.current.has(item.id)", default_panel)
-        self.assertIn("promotionRequestsInFlight.current.add(item.id)", default_panel)
+        self.assertIn("promotionRequestsInFlight.current.has(promotionKey)", default_panel)
+        self.assertIn("promotionRequestsInFlight.current.add(promotionKey)", default_panel)
         self.assertIn("promoteAdminAIQuestionDraft(token, draftId)", default_panel)
         self.assertEqual(default_panel.count("promoteAdminAIQuestionDraft(token, draftId)"), 1)
         self.assertIn("persistent_draft_status: promotion.draft_status", default_panel)
@@ -121,9 +121,58 @@ class AdminAIFrontendRoutingContractTest(unittest.TestCase):
             default_panel.index("promoteAdminAIQuestionDraft(token, draftId)"),
             default_panel.index("persistent_draft_status: promotion.draft_status"),
         )
-        self.assertIn("promotionRequestsInFlight.current.delete(item.id)", default_panel)
-        self.assertIn("disabled={pendingPromotionItemId === item.id}", default_panel)
+        self.assertIn("promotionRequestsInFlight.current.delete(promotionKey)", default_panel)
+        self.assertIn("disabled={pendingPromotionKey === `history:${item.id}`}", default_panel)
         self.assertIn("onOpenRevision(item.promotion!.revision_id)", default_panel)
+
+    def test_similar_question_api_contract_and_payload(self) -> None:
+        api = (ROOT / "frontend/src/api/adminAI.ts").read_text(encoding="utf-8")
+        panel = (ROOT / "frontend/src/components/AIAuthoringPanel.tsx").read_text(encoding="utf-8")
+        default_panel = panel.split("export default function AIAuthoringPanel", 1)[1].split(
+            "const warningLabels", 1,
+        )[0]
+
+        self.assertIn("/api/v1/admin-ai/similar-question-drafts", api)
+        self.assertIn("export type AdminAISimilarQuestionGenerationRequest", api)
+        self.assertIn("export type AdminAISimilarQuestionGenerationResponse", api)
+        self.assertIn("method: 'POST'", api)
+        self.assertIn("body: JSON.stringify(request)", api)
+        self.assertIn("source_revision_id: revisionId", default_panel)
+        self.assertIn("requested_count: parsedSimilarCount", default_panel)
+        self.assertIn("admin_constraints: constraints", default_panel)
+        self.assertEqual(default_panel.count("generateAdminAISimilarQuestionDrafts(token"), 1)
+
+    def test_similar_question_controls_validate_technical_range_and_guard_duplicates(self) -> None:
+        panel = (ROOT / "frontend/src/components/AIAuthoringPanel.tsx").read_text(encoding="utf-8")
+        default_panel = panel.split("export default function AIAuthoringPanel", 1)[1].split(
+            "const warningLabels", 1,
+        )[0]
+
+        self.assertIn('type="number" min="1" max="20" step="1"', default_panel)
+        self.assertIn("parsedSimilarCount >= 1", default_panel)
+        self.assertIn("parsedSimilarCount <= 20", default_panel)
+        self.assertIn("similarConstraints.trim().length > 0", default_panel)
+        self.assertIn("similarGenerationInFlight.current", default_panel)
+        self.assertIn("similarGenerationInFlight.current = true", default_panel)
+        self.assertIn("similarGenerationInFlight.current = false", default_panel)
+        self.assertIn("Bənzər suallar yarat", default_panel)
+        self.assertIn("bucaq əmsalı da n-dən asılı olsun", default_panel)
+
+    def test_similar_results_keep_order_and_independent_promotion_state(self) -> None:
+        panel = (ROOT / "frontend/src/components/AIAuthoringPanel.tsx").read_text(encoding="utf-8")
+        default_panel = panel.split("export default function AIAuthoringPanel", 1)[1].split(
+            "const warningLabels", 1,
+        )[0]
+
+        self.assertIn("response.items.map((item) => ({ ...item, promotion: null }))", default_panel)
+        self.assertIn("similarDrafts.map((item)", default_panel)
+        self.assertIn("key={item.persistent_draft_id}", default_panel)
+        self.assertIn("item.persistent_draft_status === 'active'", default_panel)
+        self.assertIn("draft.persistent_draft_id === draftId", default_panel)
+        self.assertIn(": draft,", default_panel)
+        self.assertIn("persistent_draft_status: promotion.draft_status", default_panel)
+        self.assertIn("onOpenRevision(item.promotion!.revision_id)", default_panel)
+        self.assertIn("`similar:${draftId}`", default_panel)
 
     def test_promotion_keeps_replacement_flow_unchanged(self) -> None:
         panel = (ROOT / "frontend/src/components/AIAuthoringPanel.tsx").read_text(encoding="utf-8")

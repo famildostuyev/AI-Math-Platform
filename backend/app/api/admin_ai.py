@@ -15,6 +15,9 @@ from app.schemas.admin_ai import (
     AdminAIQuestionDraftPromotionResponse,
     AdminAIReplacementProposalRequest,
     AdminAIReplacementProposalResponse,
+    AdminAISimilarQuestionDraftRead,
+    AdminAISimilarQuestionGenerationRequest,
+    AdminAISimilarQuestionGenerationResponse,
 )
 from app.services.admin_ai_foundation_registry import build_admin_ai_foundation_registry
 from app.services.admin_ai_orchestrator import (
@@ -43,6 +46,11 @@ from app.services.admin_ai_planner_grounding import (
     AdminAIPlannerCatalogGroundingError,
     AdminAIPlannerCatalogService,
     AdminAIPlannerCurrentRevisionService,
+)
+from app.services.admin_ai_similar_question_service import (
+    AdminAISimilarQuestionError,
+    AdminAISimilarQuestionGenerator,
+    AdminAISimilarQuestionService,
 )
 from app.services.openai_admin_ai_planner import (
     OpenAIAdminAIPlanner,
@@ -91,6 +99,16 @@ def get_admin_ai_replacement_proposal_service(
         db, provider_name="admin_ai", model_name="existing_generated_draft",
         prompt_version="admin-ai-draft-replacement-v1", provider_schema_version=1,
     )
+
+
+def get_admin_ai_similar_question_generator() -> AdminAISimilarQuestionGenerator:
+    try:
+        return OpenAIAdminAIPlanner()
+    except OpenAIAdminAIPlannerInvalidRequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin AI is not configured.",
+        ) from exc
 
 
 def get_admin_ai_orchestrator(db: Annotated[Session, Depends(get_db)]) -> AdminAIOrchestrator:
@@ -175,6 +193,78 @@ def query_admin_ai(
             "persistent_draft_status": persistent.status.value,
         })
     return result
+
+
+@router.post(
+    "/similar-question-drafts",
+    response_model=AdminAISimilarQuestionGenerationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def generate_similar_question_drafts(
+    request: AdminAISimilarQuestionGenerationRequest,
+    current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))],
+    current_revision_service: Annotated[
+        AdminAIPlannerCurrentRevisionService, Depends(get_admin_ai_current_revision_service)
+    ],
+    read_executor: Annotated[AdminAIReadCapabilityExecutor, Depends(get_admin_ai_read_executor)],
+    catalog_service: Annotated[AdminAIPlannerCatalogService, Depends(get_admin_ai_catalog_service)],
+    generator: Annotated[
+        AdminAISimilarQuestionGenerator, Depends(get_admin_ai_similar_question_generator)
+    ],
+    draft_service: Annotated[
+        AdminAIGeneratedQuestionDraftService,
+        Depends(get_admin_ai_generated_question_draft_service),
+    ],
+) -> AdminAISimilarQuestionGenerationResponse:
+    try:
+        current = current_revision_service.resolve(revision_id=request.source_revision_id)
+        catalog = catalog_service.build()
+        question_type = next(
+            entry for entry in catalog.question_types if entry.id == current.question_type_id
+        )
+        envelope = read_executor.hydrate_question_revision_host_context(
+            actor_role=RoleName.ADMIN, revision_id=request.source_revision_id,
+        )
+        source_context = AdminAIHostContext(
+            context_type="question_revision",
+            revision_id=current.revision_id,
+            question_type_id=current.question_type_id,
+            question_type_name=question_type.name,
+            inspect_result=envelope.capability_results[0],
+        )
+        records = AdminAISimilarQuestionService(
+            draft_service=draft_service, generator=generator,
+        ).generate(
+            source_context=source_context,
+            source_revision_id=request.source_revision_id,
+            requested_count=request.requested_count,
+            admin_constraints=request.admin_constraints,
+            actor_user_id=current_user.id,
+            actor_role=RoleName.ADMIN,
+        )
+    except (AdminAIPlannerCatalogGroundingError, AdminAIReadCapabilityError, StopIteration) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Source question grounding is unavailable.",
+        ) from exc
+    except OpenAIAdminAIPlannerTimeoutError as exc:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Similar-question generation timed out.") from exc
+    except OpenAIAdminAIPlannerRateLimitError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Admin AI is temporarily busy.") from exc
+    except (OpenAIAdminAIPlannerNetworkError, OpenAIAdminAIPlannerAPIError, OpenAIAdminAIPlannerUnknownProviderError) as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Admin AI provider is unavailable.") from exc
+    except (OpenAIAdminAIPlannerInvalidResponseError, AdminAISimilarQuestionError) as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Admin AI returned invalid similar-question drafts.") from exc
+    except AdminAIGeneratedQuestionDraftError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Similar-question drafts could not be persisted.") from exc
+    return AdminAISimilarQuestionGenerationResponse(
+        requested_count=request.requested_count,
+        items=tuple(AdminAISimilarQuestionDraftRead(
+            generated_draft=AdminAIGeneratedQuestionDraftService.reconstruct_generated_draft(record),
+            persistent_draft_id=record.id,
+            persistent_draft_status=record.status.value,
+        ) for record in records),
+    )
 
 
 @router.post("/replacement-proposals", response_model=AdminAIReplacementProposalResponse)

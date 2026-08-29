@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import httpx
 from openai import APIConnectionError, APIError, APITimeoutError, RateLimitError
@@ -153,6 +154,24 @@ def envelope(*actions) -> _OpenAIAuthoringEnvelope:
 
 
 class OpenAIAuthoringAssistantProviderTest(unittest.TestCase):
+    def test_shared_authoring_timeout_default_is_loaded_and_passed_to_provider(self) -> None:
+        runtime_settings = SimpleNamespace(
+            AI_AUTHORING_MODEL="gpt-5-mini",
+            AI_AUTHORING_TIMEOUT_SECONDS=180.0,
+            AI_AUTHORING_MAX_RETRIES=0,
+            OPENAI_API_KEY=None,
+        )
+        client = FakeClient(envelope(
+            _OpenAICreateTextAction(
+                action_type="create_text_block", payload=text_payload("New")
+            )
+        ))
+        with patch("app.core.config.settings", runtime_settings):
+            provider = OpenAIAuthoringAssistantProvider(client=client)
+        provider.propose_actions(instruction="Update this", context=context())
+        self.assertEqual(provider._timeout_seconds, 180.0)
+        self.assertEqual(client.responses.calls[0]["timeout"], 180.0)
+
     def test_deterministic_solution_intent_phrases(self) -> None:
         for instruction in (
             "Bu məsələni həll et.", "Bu sualı həll et", "Həllini yaz",

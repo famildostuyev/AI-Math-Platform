@@ -36,7 +36,9 @@ class Settings(BaseSettings):
         strict=True,
     )
     AI_AUTHORING_MODEL: str = "gpt-5-mini"
-    AI_AUTHORING_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0, le=300)
+    # Structured multi-question generation exceeded 60 seconds in provider-backed
+    # browser acceptance; 180 seconds is the verified successful authoring default.
+    AI_AUTHORING_TIMEOUT_SECONDS: float = Field(default=180.0, gt=0, le=300)
     AI_AUTHORING_MAX_RETRIES: int = Field(default=0, ge=0, le=5, strict=True)
 
     # API

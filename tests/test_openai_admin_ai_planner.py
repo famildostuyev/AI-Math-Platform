@@ -6,7 +6,7 @@ import unittest
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 from openai import APIConnectionError, APITimeoutError
@@ -17,6 +17,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
 from app.core.enums import RoleName
+from app.core.config import Settings
 from app.services.admin_ai_foundation_registry import build_admin_ai_foundation_registry
 from app.services.admin_ai_orchestrator import (
     ADMIN_AI_MAX_PLAN_CALLS,
@@ -31,6 +32,7 @@ from app.services.admin_ai_orchestrator import (
     AdminAIAnswerSynthesisRequest,
     AdminAIAnswerFallbackRequest,
     AdminAIAnswerFallbackResponse,
+    AdminAIHostContext,
     build_safe_capability_manifest,
 )
 from app.services.admin_ai_result import AdminAICapabilityResult, AdminAIResultEnvelope
@@ -43,6 +45,7 @@ from app.services.openai_admin_ai_planner import (
     OpenAIAdminAIAnswerFallbackResponse,
     OpenAIAdminAIPlannerResponse,
     OpenAIAdminAIPlanner,
+    OpenAIAdminAIPlannerInvalidRequestError,
     OpenAIAdminAIPlannerInvalidResponseError,
     OpenAIAdminAIPlannerNetworkError,
     OpenAIAdminAIPlannerTimeoutError,
@@ -122,6 +125,48 @@ def informational(name: str, payload: dict[str, object]) -> AdminAIResultEnvelop
 
 
 class OpenAIAdminAIPlannerTest(unittest.TestCase):
+    def test_common_authoring_timeout_default_is_bounded_and_loaded_by_planner(self) -> None:
+        configured = Settings(_env_file=None)
+        self.assertEqual(configured.AI_AUTHORING_TIMEOUT_SECONDS, 180.0)
+
+        runtime_settings = SimpleNamespace(
+            AI_AUTHORING_MODEL="gpt-5-mini",
+            AI_AUTHORING_TIMEOUT_SECONDS=configured.AI_AUTHORING_TIMEOUT_SECONDS,
+            AI_AUTHORING_MAX_RETRIES=0,
+            OPENAI_API_KEY=None,
+        )
+        client = FakeClient(unsupported())
+        with patch("app.core.config.settings", runtime_settings):
+            planner = OpenAIAdminAIPlanner(client=client)
+
+        self.assertEqual(planner._timeout_seconds, 180.0)
+        planner.plan(
+            request=AdminAIPlanningRequest(instruction="Test"),
+            capability_manifest=manifest(),
+        )
+        self.assertEqual(client.responses.calls[0]["timeout"], 180.0)
+
+    def test_explicit_timeout_overrides_settings_and_invalid_values_are_rejected(self) -> None:
+        planner = OpenAIAdminAIPlanner(
+            client=FakeClient(), model="gpt-5-mini", timeout_seconds=45.0,
+            max_retries=0,
+        )
+        self.assertEqual(planner._timeout_seconds, 45.0)
+        for invalid in (0, -1):
+            with self.subTest(invalid=invalid), self.assertRaises(
+                OpenAIAdminAIPlannerInvalidRequestError
+            ):
+                OpenAIAdminAIPlanner(
+                    client=FakeClient(), model="gpt-5-mini",
+                    timeout_seconds=invalid, max_retries=0,
+                )
+
+    def test_common_authoring_timeout_keeps_existing_validation_ceiling(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(_env_file=None, AI_AUTHORING_TIMEOUT_SECONDS=0)
+        with self.assertRaises(ValidationError):
+            Settings(_env_file=None, AI_AUTHORING_TIMEOUT_SECONDS=301)
+
     def test_answer_first_fallback_uses_strict_typed_response(self) -> None:
         expected = AdminAIAnswerFallbackResponse.model_validate({
             "schema_version": 1, "outcome_kind": "direct_answer",
@@ -439,6 +484,35 @@ class OpenAIAdminAIPlannerTest(unittest.TestCase):
                     )
                 self.assertEqual(len(client.responses.calls), 1)
                 self.assertEqual(planner.last_trace.retry_count, 0)
+
+    def test_similar_question_call_passes_configured_timeout_and_maps_provider_timeout(self) -> None:
+        request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+        client = FakeClient()
+        client.responses.error = APITimeoutError(request=request)
+        planner = OpenAIAdminAIPlanner(
+            client=client, model="gpt-5-mini", timeout_seconds=180.0,
+            max_retries=0,
+        )
+        inspect_result = informational(
+            "admin_ai.inspect_current_question", {"revision_id": str(REVISION_ID)},
+        ).capability_results[0]
+        source_context = AdminAIHostContext(
+            context_type="question_revision",
+            revision_id=REVISION_ID,
+            question_type_id=uuid.uuid4(),
+            question_type_name="open_response",
+            inspect_result=inspect_result,
+        )
+
+        with self.assertRaises(OpenAIAdminAIPlannerTimeoutError):
+            planner.generate_similar_questions(
+                source_context=source_context,
+                requested_count=3,
+                admin_constraints="Keep the parameter dependency.",
+            )
+
+        self.assertEqual(len(client.responses.calls), 1)
+        self.assertEqual(client.responses.calls[0]["timeout"], 180.0)
 
     def test_unknown_mutation_and_malformed_inputs_reject_before_capability_execution(self) -> None:
         outputs = (

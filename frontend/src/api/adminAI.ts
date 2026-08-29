@@ -145,6 +145,23 @@ export type AdminAIQuestionDraftPromotionResponse = {
   revision_id: UUID
 }
 
+export type AdminAISimilarQuestionGenerationRequest = {
+  source_revision_id: UUID
+  requested_count: number
+  admin_constraints: string
+}
+
+export type AdminAISimilarQuestionDraftRead = {
+  generated_draft: AdminAIGeneratedDraft
+  persistent_draft_id: UUID
+  persistent_draft_status: 'active'
+}
+
+export type AdminAISimilarQuestionGenerationResponse = {
+  requested_count: number
+  items: AdminAISimilarQuestionDraftRead[]
+}
+
 function authHeaders(accessToken: string): HeadersInit {
   return {
     Authorization: `Bearer ${accessToken}`,
@@ -181,5 +198,16 @@ export function promoteAdminAIQuestionDraft(
   return requestJson(`/api/v1/admin-ai/question-drafts/${encodeURIComponent(draftId)}/promote`, {
     method: 'POST',
     headers: authHeaders(accessToken),
+  })
+}
+
+export function generateAdminAISimilarQuestionDrafts(
+  accessToken: string,
+  request: AdminAISimilarQuestionGenerationRequest,
+): Promise<AdminAISimilarQuestionGenerationResponse> {
+  return requestJson('/api/v1/admin-ai/similar-question-drafts', {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(request),
   })
 }

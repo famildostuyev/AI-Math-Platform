@@ -3,6 +3,7 @@ import { AlertTriangle, Bot, Check, LoaderCircle, Send, X } from 'lucide-react'
 import { ApiError } from '../api/client'
 import {
   createAdminAIReplacementProposal,
+  generateAdminAISimilarQuestionDrafts,
   promoteAdminAIQuestionDraft,
   queryAdminAI,
   type AdminAICapabilityResult,
@@ -10,6 +11,7 @@ import {
   type AdminAIGeneratedDraft,
   type AdminAIOrchestrationResult,
   type AdminAIQuestionDraftPromotionResponse,
+  type AdminAISimilarQuestionDraftRead,
   type AdminAISearchPayload,
   type AdminAIStatisticsPayload,
 } from '../api/adminAI'
@@ -44,6 +46,11 @@ type AdminAIHistoryItem = {
   id: number
   instruction: string
   result: AdminAIOrchestrationResult
+  promotion: AdminAIQuestionDraftPromotionResponse | null
+}
+
+type SimilarQuestionDraftItem = Omit<AdminAISimilarQuestionDraftRead, 'persistent_draft_status'> & {
+  persistent_draft_status: 'active' | 'promoted'
   promotion: AdminAIQuestionDraftPromotionResponse | null
 }
 
@@ -208,7 +215,7 @@ function AssistantContentView({ content, fallbackText }: { content: StructuredCo
   return <div className="admin-ai-answer-text"><MathContent content={content} fallbackText={fallbackText} /></div>
 }
 
-function GeneratedDraftView({ draft, proposalPreview = false }: { draft: AdminAIGeneratedDraft; proposalPreview?: boolean }) {
+function GeneratedDraftView({ draft, proposalPreview = false, persistent = false }: { draft: AdminAIGeneratedDraft; proposalPreview?: boolean; persistent?: boolean }) {
   const correct = new Set(draft.correct_option_labels)
   return <section className="admin-ai-result-section admin-ai-generated-draft">
     <h4>{draft.title ?? 'Hazırlanmış qaralama'}</h4>
@@ -223,7 +230,9 @@ function GeneratedDraftView({ draft, proposalPreview = false }: { draft: AdminAI
     {draft.explanation && <div><h5>İzah</h5><MathContent content={draft.explanation} fallbackText="İzah göstərilə bilmədi." /></div>}
     <p className="admin-ai-result-note">{proposalPreview
       ? 'Bu dəyişiklik pending təklif kimi saxlanılıb və yalnız Admin təsdiqindən sonra tətbiq ediləcək.'
-      : 'Bu qaralama sistemdə saxlanılmayıb.'}</p>
+      : persistent
+        ? 'Bu qeyri-kanonik qaralama saxlanılıb; canonical sual yalnız Admin təsdiqi ilə yaradıla bilər.'
+        : 'Bu qaralama sistemdə saxlanılmayıb.'}</p>
   </section>
 }
 
@@ -240,7 +249,7 @@ function AdminAIResponse({ result }: { result: AdminAIOrchestrationResult }) {
   }
   return <div className="admin-ai-capability-results">
     <AssistantContentView content={result.assistant_content} fallbackText={result.assistant_text} />
-    {result.generated_draft && <GeneratedDraftView draft={result.generated_draft} />}
+    {result.generated_draft && <GeneratedDraftView draft={result.generated_draft} persistent={result.persistent_draft_id !== null} />}
     {result.envelope.capability_results.map((capability, index) => <CapabilityResultView
       key={`${capability.capability_name}-${index}`}
       result={capability}
@@ -254,15 +263,20 @@ function AdminAIResponse({ result }: { result: AdminAIOrchestrationResult }) {
 export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onAccepted, onOpenRevision }: AIAuthoringPanelProps) {
   const [instruction, setInstruction] = useState('')
   const [history, setHistory] = useState<AdminAIHistoryItem[]>([])
+  const [similarCount, setSimilarCount] = useState('3')
+  const [similarConstraints, setSimilarConstraints] = useState('')
+  const [similarDrafts, setSimilarDrafts] = useState<SimilarQuestionDraftItem[]>([])
+  const [similarGenerationPending, setSimilarGenerationPending] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const requestInFlight = useRef(false)
   const replacementRequestsInFlight = useRef(new Set<number>())
-  const promotionRequestsInFlight = useRef(new Set<number>())
+  const promotionRequestsInFlight = useRef(new Set<string>())
+  const similarGenerationInFlight = useRef(false)
   const proposalDecisionInFlight = useRef(false)
   const [pendingProposalId, setPendingProposalId] = useState<string | null>(null)
   const [pendingReplacementItemId, setPendingReplacementItemId] = useState<number | null>(null)
-  const [pendingPromotionItemId, setPendingPromotionItemId] = useState<number | null>(null)
+  const [pendingPromotionKey, setPendingPromotionKey] = useState<string | null>(null)
 
   const submit = async () => {
     const value = instruction.trim()
@@ -314,32 +328,85 @@ export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onA
     }
   }
 
-  const promoteQuestionDraft = async (item: AdminAIHistoryItem) => {
-    if (
-      !canPromotePersistentQuestionDraft(item.result)
-      || promotionRequestsInFlight.current.has(item.id)
-    ) return
-    const draftId = item.result.persistent_draft_id
-    if (!draftId) return
-    promotionRequestsInFlight.current.add(item.id)
-    setPendingPromotionItemId(item.id)
+  const promotePersistentDraft = async (
+    promotionKey: string,
+    draftId: string,
+    onSuccess: (promotion: AdminAIQuestionDraftPromotionResponse) => void,
+  ) => {
+    if (promotionRequestsInFlight.current.has(promotionKey)) return
+    promotionRequestsInFlight.current.add(promotionKey)
+    setPendingPromotionKey(promotionKey)
     setError(null)
     try {
       const promotion = await authenticatedRequest((token) =>
         promoteAdminAIQuestionDraft(token, draftId),
       )
-      setHistory((current) => current.map((historyItem) => historyItem.id === item.id
+      onSuccess(promotion)
+    } catch (promotionError: unknown) {
+      setError(readOnlyErrorMessage(promotionError))
+    } finally {
+      promotionRequestsInFlight.current.delete(promotionKey)
+      setPendingPromotionKey(null)
+    }
+  }
+
+  const promoteQuestionDraft = async (item: AdminAIHistoryItem) => {
+    if (!canPromotePersistentQuestionDraft(item.result) || !item.result.persistent_draft_id) return
+    await promotePersistentDraft(
+      `history:${item.id}`,
+      item.result.persistent_draft_id,
+      (promotion) => setHistory((current) => current.map((historyItem) => historyItem.id === item.id
         ? {
           ...historyItem,
           result: { ...historyItem.result, persistent_draft_status: promotion.draft_status },
           promotion,
         }
-        : historyItem))
-    } catch (promotionError: unknown) {
-      setError(readOnlyErrorMessage(promotionError))
+        : historyItem)),
+    )
+  }
+
+  const promoteSimilarQuestionDraft = async (draftId: string) => {
+    const item = similarDrafts.find((draft) => draft.persistent_draft_id === draftId)
+    if (!item || item.persistent_draft_status !== 'active') return
+    await promotePersistentDraft(
+      `similar:${draftId}`,
+      draftId,
+      (promotion) => setSimilarDrafts((current) => current.map((draft) =>
+        draft.persistent_draft_id === draftId
+          ? { ...draft, persistent_draft_status: promotion.draft_status, promotion }
+          : draft,
+      )),
+    )
+  }
+
+  const parsedSimilarCount = Number(similarCount)
+  const similarCountIsValid = Number.isInteger(parsedSimilarCount)
+    && parsedSimilarCount >= 1
+    && parsedSimilarCount <= 20
+  const canGenerateSimilar = similarCountIsValid
+    && similarConstraints.trim().length > 0
+    && !similarGenerationPending
+
+  const generateSimilarQuestions = async () => {
+    const constraints = similarConstraints.trim()
+    if (!canGenerateSimilar || similarGenerationInFlight.current) return
+    similarGenerationInFlight.current = true
+    setSimilarGenerationPending(true)
+    setError(null)
+    try {
+      const response = await authenticatedRequest((token) =>
+        generateAdminAISimilarQuestionDrafts(token, {
+          source_revision_id: revisionId,
+          requested_count: parsedSimilarCount,
+          admin_constraints: constraints,
+        }),
+      )
+      setSimilarDrafts(response.items.map((item) => ({ ...item, promotion: null })))
+    } catch (generationError: unknown) {
+      setError(readOnlyErrorMessage(generationError))
     } finally {
-      promotionRequestsInFlight.current.delete(item.id)
-      setPendingPromotionItemId(null)
+      similarGenerationInFlight.current = false
+      setSimilarGenerationPending(false)
     }
   }
 
@@ -372,8 +439,8 @@ export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onA
         <article><strong>Admin</strong><p>{item.instruction}</p></article>
         <article className="admin-ai-response"><strong>Admin AI</strong><AdminAIResponse result={item.result} /></article>
         {canPromotePersistentQuestionDraft(item.result) && <section className="ai-authoring-decisions">
-          <button type="button" onClick={() => void promoteQuestionDraft(item)} disabled={pendingPromotionItemId === item.id}>
-            {pendingPromotionItemId === item.id && <LoaderCircle className="admin-editor-spinner" size={16} />} Yeni sual kimi saxla
+          <button type="button" onClick={() => void promoteQuestionDraft(item)} disabled={pendingPromotionKey === `history:${item.id}`}>
+            {pendingPromotionKey === `history:${item.id}` && <LoaderCircle className="admin-editor-spinner" size={16} />} Yeni sual kimi saxla
           </button>
         </section>}
         {item.promotion && <section className="ai-authoring-decisions">
@@ -391,6 +458,29 @@ export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onA
         </section>}
       </div>)}
     </div>
+    <section className="admin-ai-result-section" aria-labelledby="similar-question-title">
+      <h3 id="similar-question-title">Bənzər suallar</h3>
+      <label htmlFor="admin-ai-similar-count">Sual sayı</label>
+      <input id="admin-ai-similar-count" type="number" min="1" max="20" step="1" value={similarCount} onChange={(event) => setSimilarCount(event.target.value)} disabled={similarGenerationPending} />
+      <small>Bir sorğu üçün texniki aralıq: 1–20.</small>
+      <label htmlFor="admin-ai-similar-constraints">Şərtlər</label>
+      <textarea id="admin-ai-similar-constraints" maxLength={10_000} value={similarConstraints} onChange={(event) => setSimilarConstraints(event.target.value)} placeholder="Məsələn: bucaq əmsalı da n-dən asılı olsun" disabled={similarGenerationPending} />
+      {!similarCountIsValid && <p className="admin-ai-result-note">Sual sayı 1–20 aralığında tam ədəd olmalıdır.</p>}
+      <button type="button" onClick={() => void generateSimilarQuestions()} disabled={!canGenerateSimilar}>
+        {similarGenerationPending && <LoaderCircle className="admin-editor-spinner" size={16} />} Bənzər suallar yarat
+      </button>
+      {similarDrafts.map((item) => <article className="admin-ai-exchange" key={item.persistent_draft_id}>
+        <GeneratedDraftView draft={item.generated_draft} persistent />
+        {item.persistent_draft_status === 'active' && <section className="ai-authoring-decisions">
+          <button type="button" onClick={() => void promoteSimilarQuestionDraft(item.persistent_draft_id)} disabled={pendingPromotionKey === `similar:${item.persistent_draft_id}`}>
+            {pendingPromotionKey === `similar:${item.persistent_draft_id}` && <LoaderCircle className="admin-editor-spinner" size={16} />} Yeni sual kimi saxla
+          </button>
+        </section>}
+        {item.promotion && <section className="ai-authoring-decisions">
+          <button type="button" onClick={() => void onOpenRevision(item.promotion!.revision_id)}>Redaktorda aç</button>
+        </section>}
+      </article>)}
+    </section>
     <form onSubmit={(event) => { event.preventDefault(); void submit() }}>
       <label htmlFor="ai-authoring-instruction">Təlimat</label>
       <textarea id="ai-authoring-instruction" maxLength={10_000} value={instruction} onChange={(event) => setInstruction(event.target.value)} placeholder="Məsələn: Bu sual haqqında məlumat ver" disabled={pending} />
