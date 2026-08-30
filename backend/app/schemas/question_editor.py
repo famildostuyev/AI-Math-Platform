@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import uuid
 from datetime import datetime
 from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from typing_extensions import TypeAliasType
 
 from app.core.enums import (
     AnswerPolicy,
@@ -23,19 +23,6 @@ from app.schemas.structured_text import StructuredTextDocument
 class StrictEditorSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-
-JsonValue = TypeAliasType(
-    "JsonValue",
-    Union[
-        str,
-        int,
-        float,
-        bool,
-        None,
-        list["JsonValue"],
-        dict[str, "JsonValue"],
-    ],
-)
 
 _GEOMETRY_MAX_JSON_BYTES = 1_048_576
 _GEOMETRY_MAX_JSON_DEPTH = 32
@@ -167,6 +154,101 @@ class GeometryBlockPayloadRead(StrictEditorSchema):
     format_version: Literal[1]
 
 
+class GeometryViewportV1(StrictEditorSchema):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    min_x: float
+    min_y: float
+    width: float = Field(gt=0)
+    height: float = Field(gt=0)
+
+
+class GeometryPointV1(StrictEditorSchema):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+    x: float
+    y: float
+    label: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class GeometrySegmentV1(StrictEditorSchema):
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+    start_point_id: str = Field(min_length=1, max_length=64)
+    end_point_id: str = Field(min_length=1, max_length=64)
+
+
+class GeometryPolygonV1(StrictEditorSchema):
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+    point_ids: list[str] = Field(min_length=3)
+
+    @field_validator("point_ids")
+    @classmethod
+    def validate_distinct_vertices(cls, values: list[str]) -> list[str]:
+        if len(values) != len(set(values)):
+            raise ValueError("Geometry polygon vertices must be distinct.")
+        return values
+
+
+class GeometryTextV1(StrictEditorSchema):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+    x: float
+    y: float
+    content: str = Field(min_length=1, max_length=500)
+
+    @field_validator("content")
+    @classmethod
+    def validate_plain_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Geometry text content must not be blank.")
+        if re.search(r"<\s*/?\s*[A-Za-z][^>]*>", value) or re.search(
+            r"javascript\s*:", value, flags=re.IGNORECASE,
+        ):
+            raise ValueError("Geometry text content must be plain text.")
+        return value
+
+
+class GeometrySourceDataV1(StrictEditorSchema):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    schema_version: Literal[1]
+    viewport: GeometryViewportV1
+    description: str = Field(min_length=1, max_length=500)
+    points: list[GeometryPointV1] = Field(default_factory=list, max_length=500)
+    segments: list[GeometrySegmentV1] = Field(default_factory=list, max_length=1000)
+    polygons: list[GeometryPolygonV1] = Field(default_factory=list, max_length=200)
+    texts: list[GeometryTextV1] = Field(default_factory=list, max_length=500)
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Geometry description must not be blank.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_object_graph(self) -> "GeometrySourceDataV1":
+        all_ids = [point.id for point in self.points]
+        all_ids.extend(segment.id for segment in self.segments)
+        all_ids.extend(polygon.id for polygon in self.polygons)
+        all_ids.extend(text.id for text in self.texts)
+        if len(all_ids) != len(set(all_ids)):
+            raise ValueError("Geometry object IDs must be unique.")
+
+        point_ids = {point.id for point in self.points}
+        for segment in self.segments:
+            if segment.start_point_id not in point_ids or segment.end_point_id not in point_ids:
+                raise ValueError("Geometry segment references an unknown point.")
+            if segment.start_point_id == segment.end_point_id:
+                raise ValueError("Geometry segment endpoints must be distinct.")
+        for polygon in self.polygons:
+            if not set(polygon.point_ids).issubset(point_ids):
+                raise ValueError("Geometry polygon references an unknown point.")
+        return self
+
+
 class TextBlockRead(StrictEditorSchema):
     id: uuid.UUID
     block_type: Literal[ContentBlockType.TEXT]
@@ -225,7 +307,7 @@ class ImageBlockWritePayload(StrictEditorSchema):
 
 
 class GeometryBlockWritePayload(StrictEditorSchema):
-    source_data: dict[str, JsonValue]
+    source_data: GeometrySourceDataV1
     format_version: Literal[1] = 1
 
     @field_validator("source_data", mode="before")
@@ -337,7 +419,7 @@ class ImageBlockUpdate(StrictEditorSchema):
 
 
 class GeometryBlockUpdate(StrictEditorSchema):
-    source_data: dict[str, JsonValue]
+    source_data: GeometrySourceDataV1
     format_version: Literal[1] = 1
     expected_revision_updated_at: datetime
 

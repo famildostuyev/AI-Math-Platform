@@ -23,22 +23,28 @@ import {
 } from '../api/catalog'
 import {
   createFormulaBlock,
+  createGeometryBlock,
   createQuestionDraft,
   createTextBlock,
   deleteBlock,
   getQuestionRevisionForEditor,
   reorderBlocks,
   updateFormulaBlock,
+  updateGeometryBlock,
   updateTextBlock,
   type ContentBlockRead,
+  type GeometrySourceDataV1,
   type QuestionRevisionEditorRead,
   type StructuredTextDocument,
 } from '../api/questionEditor'
 import AIAuthoringPanel from './AIAuthoringPanel'
 import AnswerEditorSection from './AnswerEditorSection'
 import MathContent from './MathContent'
+import GeometryEditor from './GeometryEditor'
 import SolutionEditorSection from './SolutionEditorSection'
+import VisualContentRenderer from './VisualContentRenderer'
 import VisualMathInput from './VisualMathInput'
+import { emptyGeometryV1, normalizeGeometrySourceDataV1 } from './geometryV1'
 
 type AuthenticatedRequest = <T>(
   request: (accessToken: string) => Promise<T>,
@@ -51,7 +57,7 @@ type AdminQuestionEditorProps = {
 }
 
 type MutationName = 'text-create' | 'text-update' | 'formula-create'
-  | 'formula-update' | 'delete' | 'reorder' | 'answer' | 'solution'
+  | 'formula-update' | 'geometry-create' | 'geometry-update' | 'delete' | 'reorder' | 'answer' | 'solution'
 
 function editorErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -96,7 +102,9 @@ type BlockCardProps = {
   disabled: boolean
   editingBlockId: string | null
   editingValue: string
+  editingGeometry: GeometrySourceDataV1 | null
   onEditingValueChange: (value: string) => void
+  onEditingGeometryChange: (value: GeometrySourceDataV1) => void
   onStartEdit: (block: ContentBlockRead) => void
   onCancelEdit: () => void
   onSaveEdit: (block: ContentBlockRead) => void
@@ -111,7 +119,9 @@ function BlockCard({
   disabled,
   editingBlockId,
   editingValue,
+  editingGeometry,
   onEditingValueChange,
+  onEditingGeometryChange,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -119,6 +129,7 @@ function BlockCard({
   onMove,
 }: BlockCardProps) {
   const isEditable = block.block_type === 'text' || block.block_type === 'formula'
+    || (block.block_type === 'geometry' && normalizeGeometrySourceDataV1(block.payload.source_data) !== null)
   const isEditing = editingBlockId === block.id
 
   return (
@@ -144,7 +155,9 @@ function BlockCard({
             onChange={(event) => onEditingValueChange(event.target.value)}
             disabled={disabled}
             aria-label="Mətn bloku"
-          /> : <VisualMathInput value={editingValue} onChange={onEditingValueChange} disabled={disabled} ariaLabel="Formula blokunu redaktə et" />}
+          /> : block.block_type === 'formula'
+            ? <VisualMathInput value={editingValue} onChange={onEditingValueChange} disabled={disabled} ariaLabel="Formula blokunu redaktə et" />
+            : editingGeometry && <GeometryEditor value={editingGeometry} onChange={onEditingGeometryChange} disabled={disabled} />}
           <div>
             <button type="button" onClick={() => onSaveEdit(block)} disabled={disabled}>
               Yadda saxla
@@ -178,10 +191,7 @@ function BlockCard({
             </>
           )}
           {block.block_type === 'geometry' && (
-            <>
-              <p className="admin-editor-block__note">Yalnız oxuma rejimi · vizual renderer mövcud deyil</p>
-              <pre>{JSON.stringify(block.payload.source_data, null, 2)}</pre>
-            </>
+            <VisualContentRenderer block={block} />
           )}
         </>
       )}
@@ -224,8 +234,10 @@ export default function AdminQuestionEditor({
   const [mutationPending, setMutationPending] = useState<MutationName | null>(null)
   const [newText, setNewText] = useState('')
   const [newFormula, setNewFormula] = useState('')
+  const [newGeometry, setNewGeometry] = useState<GeometrySourceDataV1>(emptyGeometryV1)
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
+  const [editingGeometry, setEditingGeometry] = useState<GeometrySourceDataV1 | null>(null)
   const [activeSection, setActiveSection] = useState<'question' | 'solution'>('question')
   const runAuthenticatedRequest = useEffectEvent(authenticatedRequest)
   const initialRevisionLoadId = useRef<string | null>(null)
@@ -407,6 +419,11 @@ export default function AdminQuestionEditor({
   const startEditing = (block: ContentBlockRead) => {
     if (block.block_type === 'text') setEditingValue(block.payload.source_text)
     else if (block.block_type === 'formula') setEditingValue(block.payload.source_latex)
+    else if (block.block_type === 'geometry') {
+      const geometry = normalizeGeometrySourceDataV1(block.payload.source_data)
+      if (geometry === null) return
+      setEditingGeometry(structuredClone(geometry))
+    }
     else return
     setEditingBlockId(block.id)
   }
@@ -426,6 +443,13 @@ export default function AdminQuestionEditor({
           format_version: 1,
           expected_revision_updated_at: current.updated_at,
         }), () => { setEditingBlockId(null); setEditingValue('') })
+    } else if (block.block_type === 'geometry' && editingGeometry !== null) {
+      void runMutation('geometry-update', (token, current) =>
+        updateGeometryBlock(token, current.revision_id, block.id, {
+          source_data: editingGeometry,
+          format_version: 1,
+          expected_revision_updated_at: current.updated_at,
+        }), () => { setEditingBlockId(null); setEditingGeometry(null) })
     }
   }
 
@@ -435,7 +459,7 @@ export default function AdminQuestionEditor({
       deleteBlock(token, current.revision_id, block.id, {
         expected_revision_updated_at: current.updated_at,
       }), () => {
-        if (editingBlockId === block.id) { setEditingBlockId(null); setEditingValue('') }
+        if (editingBlockId === block.id) { setEditingBlockId(null); setEditingValue(''); setEditingGeometry(null) }
       })
   }
 
@@ -525,12 +549,17 @@ export default function AdminQuestionEditor({
               <label><span><SquareFunction size={17} /> Formula əlavə et</span><VisualMathInput value={newFormula} onChange={setNewFormula} disabled={mutationDisabled} ariaLabel="Yeni formula" /></label>
               <button type="submit" disabled={mutationDisabled || !newFormula.trim()}><Plus size={16} /> Formula əlavə et</button>
             </form>
+            <form onSubmit={(event) => { event.preventDefault(); void runMutation('geometry-create', (token, current) => createGeometryBlock(token, current.revision_id, { block_type: 'geometry', payload: { source_data: newGeometry, format_version: 1 }, expected_revision_updated_at: current.updated_at }), () => setNewGeometry(emptyGeometryV1())) }}>
+              <h3><Braces size={17} /> Həndəsə əlavə et</h3>
+              <GeometryEditor value={newGeometry} onChange={setNewGeometry} disabled={mutationDisabled} />
+              <button type="submit" disabled={mutationDisabled || !newGeometry.description.trim()}><Plus size={16} /> Həndəsə blokunu əlavə et</button>
+            </form>
           </section>
 
           <section className="admin-editor-blocks" aria-labelledby="revision-blocks-title">
             <div className="admin-editor-section-heading"><div><span>Kontent strukturu</span><h2 id="revision-blocks-title">Bloklar</h2></div><b>{revision.blocks.length}</b></div>
             {revision.blocks.length === 0 ? <div className="admin-editor-empty"><FileText size={34} /><strong>Bu reviziyada hələ kontent bloku yoxdur</strong><p>Yuxarıdakı sahələrdən ilk Mətn və ya Formula blokunu əlavə edin.</p></div> :
-              <div className="admin-editor-block-list">{revision.blocks.map((block, index) => <BlockCard key={block.id} block={block} index={index} blockCount={revision.blocks.length} disabled={mutationDisabled} editingBlockId={editingBlockId} editingValue={editingValue} onEditingValueChange={setEditingValue} onStartEdit={startEditing} onCancelEdit={() => { setEditingBlockId(null); setEditingValue('') }} onSaveEdit={saveEditing} onDelete={removeBlock} onMove={moveBlock} />)}</div>}
+              <div className="admin-editor-block-list">{revision.blocks.map((block, index) => <BlockCard key={block.id} block={block} index={index} blockCount={revision.blocks.length} disabled={mutationDisabled} editingBlockId={editingBlockId} editingValue={editingValue} editingGeometry={editingGeometry} onEditingValueChange={setEditingValue} onEditingGeometryChange={setEditingGeometry} onStartEdit={startEditing} onCancelEdit={() => { setEditingBlockId(null); setEditingValue(''); setEditingGeometry(null) }} onSaveEdit={saveEditing} onDelete={removeBlock} onMove={moveBlock} />)}</div>}
           </section>
           <AnswerEditorSection
             revision={revision}

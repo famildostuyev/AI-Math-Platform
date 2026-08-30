@@ -646,7 +646,7 @@ class QuestionEditorService:
 
             content = GeometryBlockContent(
                 content_block_id=block.id,
-                source_data=request.payload.source_data,
+                source_data=request.payload.source_data.model_dump(mode="json"),
                 format_version=request.payload.format_version,
             )
             self.db.add(content)
@@ -1297,7 +1297,7 @@ class QuestionEditorService:
                     "Geometry block content is missing."
                 )
 
-            content.source_data = request.source_data
+            content.source_data = request.source_data.model_dump(mode="json")
             content.format_version = request.format_version
             revision.updated_at = _utc_now()
 

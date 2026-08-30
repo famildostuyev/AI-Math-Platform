@@ -39,6 +39,22 @@ from app.schemas.question_editor import (
 NOW = datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)
 
 
+def geometry_v1() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "viewport": {"min_x": 0, "min_y": 0, "width": 100, "height": 100},
+        "description": "Triangle ABC",
+        "points": [
+            {"id": "a", "x": 10, "y": 80, "label": "A"},
+            {"id": "b", "x": 90, "y": 80, "label": "B"},
+            {"id": "c", "x": 50, "y": 10, "label": "C"},
+        ],
+        "segments": [{"id": "ab", "start_point_id": "a", "end_point_id": "b"}],
+        "polygons": [{"id": "abc", "point_ids": ["a", "b", "c"]}],
+        "texts": [],
+    }
+
+
 def empty_document() -> dict[str, object]:
     return {"type": "document", "content": []}
 
@@ -234,53 +250,35 @@ class QuestionEditorSchemaTest(unittest.TestCase):
         self.assertIsInstance(value, GeometryBlockRead)
 
     def test_valid_geometry_create_and_create_union(self) -> None:
-        values = (
-            {},
-            {"objects": []},
-            {
-                "name": "figure",
-                "visible": True,
-                "count": 3,
-                "ratio": 1.25,
-                "optional": None,
-                "items": [{"coordinates": [0, 1.5, -2]}],
-            },
-            {
-                "svg": "<svg>...</svg>",
-                "script": "<script>alert(1)</script>",
-                "html": "<b>x</b>",
-            },
-        )
-        for source_data in values:
-            with self.subTest(source_data=source_data):
-                value = TypeAdapter(ContentBlockCreate).validate_python({
-                    "block_type": "geometry",
-                    "payload": {"source_data": source_data},
-                    "expected_revision_updated_at": NOW,
-                })
-                self.assertIsInstance(value, GeometryBlockCreate)
-                self.assertEqual(value.payload.source_data, source_data)
-                self.assertEqual(value.payload.format_version, 1)
-                self.assertEqual(value.expected_revision_updated_at, NOW)
+        source_data = geometry_v1()
+        value = TypeAdapter(ContentBlockCreate).validate_python({
+            "block_type": "geometry",
+            "payload": {"source_data": source_data},
+            "expected_revision_updated_at": NOW,
+        })
+        self.assertIsInstance(value, GeometryBlockCreate)
+        self.assertEqual(value.payload.source_data.model_dump(mode="json"), source_data)
+        self.assertEqual(value.payload.format_version, 1)
+        self.assertEqual(value.expected_revision_updated_at, NOW)
 
     def test_valid_geometry_update_and_update_union(self) -> None:
-        source_data = {"objects": [{"type": "future-object", "data": {}}]}
+        source_data = geometry_v1()
         value = TypeAdapter(ContentBlockUpdate).validate_python({
             "source_data": source_data,
             "expected_revision_updated_at": NOW,
         })
         self.assertIsInstance(value, GeometryBlockUpdate)
-        self.assertEqual(value.source_data, source_data)
+        self.assertEqual(value.source_data.model_dump(mode="json"), source_data)
         self.assertEqual(value.format_version, 1)
 
     def test_geometry_create_and_update_accept_only_version_one(self) -> None:
         create = GeometryBlockCreate.model_validate({
             "block_type": "geometry",
-            "payload": {"source_data": {}, "format_version": 1},
+            "payload": {"source_data": geometry_v1(), "format_version": 1},
             "expected_revision_updated_at": NOW,
         })
         update = GeometryBlockUpdate.model_validate({
-            "source_data": {},
+            "source_data": geometry_v1(),
             "format_version": 1,
             "expected_revision_updated_at": NOW,
         })
@@ -292,13 +290,13 @@ class QuestionEditorSchemaTest(unittest.TestCase):
                     GeometryBlockCreate.model_validate({
                         "block_type": "geometry",
                         "payload": {
-                            "source_data": {}, "format_version": version,
+                            "source_data": geometry_v1(), "format_version": version,
                         },
                         "expected_revision_updated_at": NOW,
                     })
                 with self.assertRaises(ValidationError):
                     GeometryBlockUpdate.model_validate({
-                        "source_data": {},
+                    "source_data": geometry_v1(),
                         "format_version": version,
                         "expected_revision_updated_at": NOW,
                     })
@@ -328,42 +326,33 @@ class QuestionEditorSchemaTest(unittest.TestCase):
                     "expected_revision_updated_at": NOW,
                 })
 
-    def test_geometry_nesting_depth_32_is_accepted_and_33_rejected(self) -> None:
+    def test_geometry_unknown_nested_contract_is_rejected(self) -> None:
         def nested(depth: int) -> dict[str, object]:
             value: object = "leaf"
             for _ in range(depth):
                 value = {"nested": value}
             return value
 
-        accepted = GeometryBlockUpdate.model_validate({
-            "source_data": nested(32),
-            "expected_revision_updated_at": NOW,
-        })
-        self.assertEqual(accepted.source_data, nested(32))
-        with self.assertRaises(ValidationError):
-            GeometryBlockUpdate.model_validate({
-                "source_data": nested(33),
-                "expected_revision_updated_at": NOW,
-            })
+        for depth in (32, 33):
+            with self.subTest(depth=depth), self.assertRaises(ValidationError):
+                GeometryBlockUpdate.model_validate({
+                    "source_data": nested(depth),
+                    "expected_revision_updated_at": NOW,
+                })
 
     def test_geometry_canonical_json_size_limit_is_enforced(self) -> None:
-        # Canonical {"x":"..."} overhead is eight UTF-8 bytes.
-        exact_limit = {"x": "a" * (1_048_576 - 8)}
-        accepted = GeometryBlockUpdate.model_validate({
-            "source_data": exact_limit,
-            "expected_revision_updated_at": NOW,
-        })
-        self.assertEqual(len(accepted.source_data["x"]), 1_048_576 - 8)
+        oversized = geometry_v1()
+        oversized["description"] = "a" * 1_048_576
         with self.assertRaises(ValidationError):
             GeometryBlockUpdate.model_validate({
-                "source_data": {"x": "a" * (1_048_576 - 7)},
+                "source_data": oversized,
                 "expected_revision_updated_at": NOW,
             })
 
     def test_geometry_rejects_naive_timestamp_and_internal_fields(self) -> None:
         create = {
             "block_type": "geometry",
-            "payload": {"source_data": {}},
+            "payload": {"source_data": geometry_v1()},
             "expected_revision_updated_at": NOW,
         }
         create_extras = (
@@ -388,7 +377,7 @@ class QuestionEditorSchemaTest(unittest.TestCase):
             })
 
         update = {
-            "source_data": {},
+            "source_data": geometry_v1(),
             "expected_revision_updated_at": NOW,
         }
         for extra in (

@@ -73,6 +73,26 @@ from app.services.structured_text_service import (
 NOW = datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)
 
 
+def geometry_v1() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "viewport": {"min_x": 0, "min_y": 0, "width": 100, "height": 100},
+        "description": "Triangle ABC",
+        "points": [
+            {"id": "a", "x": 10, "y": 80, "label": "A"},
+            {"id": "b", "x": 90, "y": 80, "label": "B"},
+            {"id": "c", "x": 50, "y": 10, "label": "C"},
+        ],
+        "segments": [
+            {"id": "ab", "start_point_id": "a", "end_point_id": "b"},
+            {"id": "bc", "start_point_id": "b", "end_point_id": "c"},
+            {"id": "ca", "start_point_id": "c", "end_point_id": "a"},
+        ],
+        "polygons": [{"id": "abc", "point_ids": ["a", "b", "c"]}],
+        "texts": [],
+    }
+
+
 def scalar_result(values: list[object]) -> MagicMock:
     result = MagicMock()
     result.all.return_value = values
@@ -87,7 +107,7 @@ class QuestionEditorServiceTest(unittest.TestCase):
         return GeometryBlockCreate.model_validate({
             "block_type": "geometry",
             "payload": {
-                "source_data": {} if source_data is None else source_data,
+                "source_data": geometry_v1() if source_data is None else source_data,
                 "format_version": 1,
             },
             "expected_revision_updated_at": NOW,
@@ -119,7 +139,7 @@ class QuestionEditorServiceTest(unittest.TestCase):
         source_data: dict[str, object] | None = None,
     ) -> GeometryBlockUpdate:
         return GeometryBlockUpdate.model_validate({
-            "source_data": {} if source_data is None else source_data,
+            "source_data": geometry_v1() if source_data is None else source_data,
             "format_version": 1,
             "expected_revision_updated_at": NOW,
         })
@@ -2199,15 +2219,8 @@ class QuestionEditorServiceTest(unittest.TestCase):
         db.rollback.assert_called_once_with()
         db.commit.assert_called_once_with()
 
-    def test_create_geometry_persists_opaque_payload_and_typed_response(self) -> None:
-        source_data = {
-            "objects": [{"type": "future-shape", "points": [0, 1.5, -2]}],
-            "metadata": {
-                "visible": True,
-                "optional": None,
-                "markup": "<svg><script>inert</script></svg>",
-            },
-        }
+    def test_create_geometry_persists_typed_payload_and_typed_response(self) -> None:
+        source_data = geometry_v1()
         db, revision = self._geometry_create_db()
         updated_at = NOW + timedelta(seconds=1)
         with patch(
@@ -2239,15 +2252,15 @@ class QuestionEditorServiceTest(unittest.TestCase):
         db.commit.assert_called_once_with()
         db.rollback.assert_not_called()
 
-    def test_create_geometry_preserves_empty_object(self) -> None:
+    def test_create_geometry_preserves_typed_payload(self) -> None:
         db, revision = self._geometry_create_db()
         response = QuestionEditorService(db).create_geometry_block(
             revision_id=revision.id,
-            request=self._geometry_block_request({}),
+            request=self._geometry_block_request(),
         )
         content = db.add.call_args_list[1].args[0]
-        self.assertEqual(content.source_data, {})
-        self.assertEqual(response.payload.source_data, {})
+        self.assertEqual(content.source_data, geometry_v1())
+        self.assertEqual(response.payload.source_data, geometry_v1())
 
     def test_create_geometry_uses_active_maximum_sort_order(self) -> None:
         for maximum, expected in ((None, 1000), (1000, 2000), (5000, 6000)):
@@ -2359,15 +2372,9 @@ class QuestionEditorServiceTest(unittest.TestCase):
         db.rollback.assert_called_once_with()
         db.commit.assert_called_once_with()
 
-    def test_update_geometry_replaces_opaque_payload_in_place(self) -> None:
-        source_data = {
-            "objects": [{"type": "future-shape", "points": [0, 1.5, -2]}],
-            "metadata": {
-                "visible": True,
-                "optional": None,
-                "markup": "<svg><script>inert</script></svg>",
-            },
-        }
+    def test_update_geometry_replaces_typed_payload_in_place(self) -> None:
+        source_data = geometry_v1()
+        source_data["description"] = "Updated triangle"
         db, revision, block, content = self._geometry_update_db()
         original = (
             block.id,
@@ -2414,15 +2421,15 @@ class QuestionEditorServiceTest(unittest.TestCase):
         db.rollback.assert_not_called()
         self.assertEqual(db.scalar.call_count, 2)
 
-    def test_update_geometry_preserves_empty_object(self) -> None:
+    def test_update_geometry_preserves_typed_payload(self) -> None:
         db, revision, block, content = self._geometry_update_db()
         response = QuestionEditorService(db).update_geometry_block(
             revision_id=revision.id,
             block_id=block.id,
-            request=self._geometry_block_update_request({}),
+            request=self._geometry_block_update_request(),
         )
-        self.assertEqual(content.source_data, {})
-        self.assertEqual(response.payload.source_data, {})
+        self.assertEqual(content.source_data, geometry_v1())
+        self.assertEqual(response.payload.source_data, geometry_v1())
 
     def test_update_geometry_queries_revision_and_block_with_locks(self) -> None:
         db, revision, block, _content = self._geometry_update_db()
@@ -2513,7 +2520,7 @@ class QuestionEditorServiceTest(unittest.TestCase):
                     QuestionEditorService(db).update_geometry_block(
                         revision_id=revision.id,
                         block_id=block.id,
-                        request=self._geometry_block_update_request({}),
+                        request=self._geometry_block_update_request(),
                     )
                 self.assertEqual(
                     (content.source_data, content.format_version), original,

@@ -1,0 +1,20 @@
+.visual-content { margin: 0; }
+.visual-content svg { display: block; width: 100%; max-height: 28rem; min-height: 14rem; background: #fff; border: 1px solid #d7dee8; border-radius: .75rem; }
+.visual-content figcaption { margin-top: .5rem; color: #4b5563; font-size: .9rem; }
+.geometry-polygons polygon { fill: #f3f4f6; stroke: #374151; stroke-width: .8; vector-effect: non-scaling-stroke; }
+.geometry-segments line { stroke: #1f2937; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.geometry-points circle { fill: #111827; }
+.geometry-points text { fill: #111827; font: 6px sans-serif; }
+.geometry-annotations text { fill: #111827; font: 6px sans-serif; }
+.visual-content-unsupported { padding: 1rem; border: 1px dashed #9ca3af; border-radius: .65rem; color: #4b5563; }
+.geometry-editor { display: grid; gap: 1rem; }
+.geometry-editor__description { display: grid; gap: .4rem; }
+.geometry-editor__toolbar, .geometry-editor__polygon-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.geometry-editor__toolbar button.active { outline: 2px solid #2563eb; outline-offset: 2px; }
+.geometry-editor__hint, .geometry-editor__message { margin: 0; color: #4b5563; }
+.geometry-authoring-board { position: relative; overflow: hidden; width: 100%; height: min(62vw, 32rem); min-height: 20rem; border: 1px solid #cbd5e1; border-radius: .75rem; background: #fff; touch-action: none; }
+.geometry-authoring-board svg text { cursor: default; user-select: none; }
+.geometry-authoring-board .JXGtext { margin: 0; padding: 0; background: transparent; font-family: Arial, Helvetica, sans-serif; }
+.geometry-authoring-board :focus { outline: 1px dotted #1d4ed8; }
+.geometry-editor__label, .geometry-editor__annotation { display: grid; gap: .4rem; max-width: 24rem; }
+@media print { .visual-content svg { border: 0; break-inside: avoid; } }

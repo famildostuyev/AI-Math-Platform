@@ -104,6 +104,48 @@ export type JsonValue =
 
 export type JsonObject = { [key: string]: JsonValue }
 
+export type GeometryViewportV1 = {
+  min_x: number
+  min_y: number
+  width: number
+  height: number
+}
+
+export type GeometryPointV1 = {
+  id: string
+  x: number
+  y: number
+  label: string | null
+}
+
+export type GeometrySegmentV1 = {
+  id: string
+  start_point_id: string
+  end_point_id: string
+}
+
+export type GeometryPolygonV1 = {
+  id: string
+  point_ids: string[]
+}
+
+export type GeometryTextV1 = {
+  id: string
+  x: number
+  y: number
+  content: string
+}
+
+export type GeometrySourceDataV1 = {
+  schema_version: 1
+  viewport: GeometryViewportV1
+  description: string
+  points: GeometryPointV1[]
+  segments: GeometrySegmentV1[]
+  polygons: GeometryPolygonV1[]
+  texts: GeometryTextV1[]
+}
+
 export type QuestionDraftCreate = {
   question_type_id: UUID
   primary_topic_id?: UUID | null
@@ -194,7 +236,7 @@ export type GeometryBlockPayloadRead = {
 }
 
 export type GeometryBlockWritePayload = {
-  source_data: JsonObject
+  source_data: GeometrySourceDataV1
   format_version?: 1
 }
 
@@ -205,7 +247,7 @@ export type GeometryBlockCreate = {
 }
 
 export type GeometryBlockUpdate = {
-  source_data: JsonObject
+  source_data: GeometrySourceDataV1
   format_version?: 1
   expected_revision_updated_at: IsoDateTime
 }
