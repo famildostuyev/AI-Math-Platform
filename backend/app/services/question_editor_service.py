@@ -33,6 +33,7 @@ from app.models.text_block_content import TextBlockContent
 from app.models.solution import Solution
 from app.models.topic import Topic
 from app.schemas.question_editor import (
+    VisualPlacementUpdate,
     BlockOrderRequest,
     FormulaBlockCreate,
     FormulaBlockPayloadRead,
@@ -48,6 +49,8 @@ from app.schemas.question_editor import (
     ImageBlockUpdate,
     QuestionDraftCreate,
     QuestionDraftRead,
+    QuestionMetadataRead,
+    QuestionMetadataUpdate,
     QuestionRevisionEditorRead,
     TextBlockCreate,
     TextBlockPayloadRead,
@@ -131,6 +134,10 @@ class EditorBlockTypeMismatchError(QuestionEditorServiceError):
 
 class RevisionConflictError(QuestionEditorServiceError):
     """Raised when an optimistic concurrency timestamp is stale."""
+
+
+class SharedQuestionTypeConflictError(QuestionEditorServiceError):
+    """A form-wide type change would also change another persisted revision."""
 
 
 class ContentBlockOrderConflictError(QuestionEditorServiceError):
@@ -238,6 +245,58 @@ class QuestionEditorService:
                 related_topic_ids=draft.related_topic_ids,
                 purpose_ids=draft.purpose_ids,
             )
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def update_metadata(
+        self, *, revision_id: uuid.UUID, request: QuestionMetadataUpdate,
+    ) -> QuestionMetadataRead:
+        """Update existing owners atomically, without touching content or history."""
+        try:
+            revision = self.db.scalar(
+                select(QuestionRevision)
+                .join(QuestionForm, QuestionForm.id == QuestionRevision.question_form_id)
+                .join(QuestionFamily, QuestionFamily.id == QuestionForm.question_family_id)
+                .where(
+                    QuestionRevision.id == revision_id,
+                    QuestionRevision.deleted_at.is_(None),
+                    QuestionForm.is_active.is_(True),
+                    QuestionForm.deleted_at.is_(None),
+                    QuestionFamily.is_active.is_(True),
+                    QuestionFamily.deleted_at.is_(None),
+                ).with_for_update()
+            )
+            if revision is None:
+                raise RevisionNotFoundError("Question revision was not found.")
+            self.ensure_revision_editable(revision)
+            self.ensure_revision_timestamp_matches(revision, request.expected_revision_updated_at)
+            form = revision.question_form
+            if "question_type_id" in request.model_fields_set:
+                self._require_question_type(request.question_type_id)
+                if request.question_type_id != form.question_type_id:
+                    # Type is shared by every revision of this form, including archived ones.
+                    # Do not rewrite their meaning or bypass their concurrency tokens.
+                    sibling = self.db.scalar(select(QuestionRevision.id).where(
+                        QuestionRevision.question_form_id == form.id,
+                        QuestionRevision.id != revision.id,
+                    ).limit(1))
+                    if sibling is not None:
+                        raise SharedQuestionTypeConflictError("Question type is shared by other revisions.")
+                    form.question_type_id = request.question_type_id
+                    self.db.expire(form, ["question_type"])
+            if "difficulty" in request.model_fields_set:
+                revision.difficulty = request.difficulty
+            revision.updated_at = _utc_now()
+            self.db.flush()
+            # Serialize flushed canonical state while still inside the transaction.
+            result = QuestionMetadataRead(
+                revision_id=revision.id, question_type_id=form.question_type_id,
+                difficulty=revision.difficulty, updated_at=revision.updated_at,
+                answer_policy=AnswerPolicyService.for_question_type_name(form.question_type.name),
+            )
+            self.db.commit()
+            return result
         except Exception:
             self.db.rollback()
             raise
@@ -571,6 +630,7 @@ class QuestionEditorService:
             self.db.commit()
 
             return ImageBlockRead(
+                visual_placement=getattr(block, 'visual_placement', None),
                 id=block.id,
                 block_type=ContentBlockType.IMAGE,
                 sort_order=block.sort_order,
@@ -640,6 +700,7 @@ class QuestionEditorService:
                 question_revision_id=revision.id,
                 block_type=ContentBlockType.GEOMETRY,
                 sort_order=sort_order,
+                visual_placement=request.visual_placement.model_dump(mode="json") if request.visual_placement else None,
             )
             self.db.add(block)
             self.db.flush()
@@ -655,6 +716,7 @@ class QuestionEditorService:
             self.db.commit()
 
             return GeometryBlockRead(
+                visual_placement=getattr(block, 'visual_placement', None),
                 id=block.id,
                 block_type=ContentBlockType.GEOMETRY,
                 sort_order=block.sort_order,
@@ -1220,6 +1282,7 @@ class QuestionEditorService:
             self.db.commit()
 
             return ImageBlockRead(
+                visual_placement=getattr(block, 'visual_placement', None),
                 id=block.id,
                 block_type=ContentBlockType.IMAGE,
                 sort_order=block.sort_order,
@@ -1299,11 +1362,14 @@ class QuestionEditorService:
 
             content.source_data = request.source_data.model_dump(mode="json")
             content.format_version = request.format_version
+            if request.visual_placement is not None:
+                block.visual_placement = request.visual_placement.model_dump(mode="json")
             revision.updated_at = _utc_now()
 
             self.db.commit()
 
             return GeometryBlockRead(
+                visual_placement=getattr(block, 'visual_placement', None),
                 id=block.id,
                 block_type=ContentBlockType.GEOMETRY,
                 sort_order=block.sort_order,
@@ -1312,6 +1378,41 @@ class QuestionEditorService:
                     format_version=content.format_version,
                 ),
             )
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def update_visual_placement(self, *, revision_id: uuid.UUID, block_id: uuid.UUID,
+                                request: VisualPlacementUpdate):
+        """Update document layout only, under the same revision lock as content CRUD."""
+        try:
+            revision = self.db.scalar(
+                select(QuestionRevision)
+                .join(QuestionForm, QuestionForm.id == QuestionRevision.question_form_id)
+                .join(QuestionFamily, QuestionFamily.id == QuestionForm.question_family_id)
+                .where(
+                    QuestionRevision.id == revision_id, QuestionRevision.deleted_at.is_(None),
+                    QuestionForm.is_active.is_(True), QuestionForm.deleted_at.is_(None),
+                    QuestionFamily.is_active.is_(True), QuestionFamily.deleted_at.is_(None),
+                ).with_for_update()
+            )
+            if revision is None:
+                raise RevisionNotFoundError("Question revision was not found.")
+            self.ensure_revision_editable(revision)
+            self.ensure_revision_timestamp_matches(revision, request.expected_revision_updated_at)
+            block = self.db.scalar(select(ContentBlock).where(
+                ContentBlock.id == block_id, ContentBlock.question_revision_id == revision.id,
+                ContentBlock.deleted_at.is_(None),
+            ).with_for_update())
+            if block is None:
+                raise EditorBlockNotFoundError("Content block was not found in the revision.")
+            if block.block_type not in (ContentBlockType.GEOMETRY, ContentBlockType.IMAGE):
+                raise EditorBlockTypeMismatchError("Content block is not a supported visual block.")
+            block.visual_placement = request.visual_placement.model_dump(mode="json")
+            result = self._serialize_block(block)
+            revision.updated_at = _utc_now()
+            self.db.commit()
+            return result
         except Exception:
             self.db.rollback()
             raise
@@ -1592,6 +1693,7 @@ class QuestionEditorService:
                     "Image block content is missing."
                 )
             return ImageBlockRead(
+                visual_placement=getattr(block, 'visual_placement', None),
                 id=block.id,
                 block_type=block_type,
                 sort_order=block.sort_order,
@@ -1607,6 +1709,7 @@ class QuestionEditorService:
                     "Geometry block content is missing."
                 )
             return GeometryBlockRead(
+                visual_placement=getattr(block, 'visual_placement', None),
                 id=block.id,
                 block_type=block_type,
                 sort_order=block.sort_order,

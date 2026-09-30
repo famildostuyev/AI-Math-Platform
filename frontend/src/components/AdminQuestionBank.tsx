@@ -1,3 +1,4 @@
+import { difficultyLabels, statusLabels } from './questionPropertyLabels'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   AlertCircle,
@@ -39,19 +40,6 @@ type AdminQuestionBankProps = {
   onQueryChange: (query: QuestionBankListQuery) => void
   onOpenQuestion: (revisionId: string) => void
   onCreateQuestion: () => void
-}
-
-const statusLabels: Record<QuestionRevisionStatus, string> = {
-  draft: 'Qaralama',
-  proposed: 'Təklif edilib',
-  approved: 'Təsdiqlənib',
-  rejected: 'Rədd edilib',
-}
-
-const difficultyLabels: Record<QuestionDifficulty, string> = {
-  easy: 'Asan',
-  medium: 'Orta',
-  hard: 'Çətin',
 }
 
 function formatUpdatedAt(value: string): { date: string; time: string } {

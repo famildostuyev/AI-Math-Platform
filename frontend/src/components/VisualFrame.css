@@ -1,0 +1,31 @@
+.universal-question-canvas { position: relative; }
+.universal-question-node--geometry { display: contents; }
+.visual-frame { box-sizing: border-box; outline: 1px solid transparent; margin-bottom: 1rem; }
+.visual-frame:hover, .visual-frame.is-selected, .visual-frame.is-interacting { outline-color: #9383b7; }
+.visual-frame.is-selected { z-index: 2; }
+.visual-frame__move { position: absolute; top: 2px; right: 2px; visibility: hidden; cursor: move; touch-action: none; z-index: 4; }
+.visual-frame:hover > .visual-frame__move, .visual-frame.is-selected > .visual-frame__move { visibility: visible; }
+.visual-frame__handle { position: absolute; padding: 0 !important; min-width: 0 !important; width: 8px; height: 8px; border: 1px solid #9383b7; background: white; border-radius: 1px; touch-action: none; z-index: 5; }
+.visual-frame__handle--nw { left: -4px; top: -4px; cursor: nwse-resize; }
+.visual-frame__handle--n { left: calc(50% - 4px); top: -4px; cursor: ns-resize; }
+.visual-frame__handle--ne { right: -4px; top: -4px; cursor: nesw-resize; }
+.visual-frame__handle--e { right: -4px; top: calc(50% - 4px); cursor: ew-resize; }
+.visual-frame__handle--se { right: -4px; bottom: -4px; cursor: nwse-resize; }
+.visual-frame__handle--s { left: calc(50% - 4px); bottom: -4px; cursor: ns-resize; }
+.visual-frame__handle--sw { left: -4px; bottom: -4px; cursor: nesw-resize; }
+.visual-frame__handle--w { left: -4px; top: calc(50% - 4px); cursor: ew-resize; }
+.visual-frame .geometry-authoring-board { border: 0; border-radius: 0; min-height: 0; max-width: none; }
+.geometry-editor--framed { display: contents; }
+.geometry-editor__frame-controls, .visual-frame__actions { position: absolute; top: calc(100% + 8px); left: 0; background: white; padding: 8px; z-index: 3; box-shadow: 0 2px 8px #0002; }
+.geometry-editor__frame-controls { display: grid; gap: 8px; width: 100%; box-sizing: border-box; }
+.visual-frame__actions { display: flex; gap: 8px; }
+.geometry-editor--framed + .visual-frame__actions { top: auto; bottom: calc(100% + 8px); }
+.visual-content--framed svg { min-height: 0; max-height: none; border: 0; border-radius: 0; }
+.visual-content--framed figcaption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media print {
+  .visual-frame, .visual-frame:hover, .visual-frame.is-selected { outline: none; }
+  [data-frame-chrome], .geometry-editor__frame-controls, .visual-frame__actions { display: none !important; }
+}
+@media print {
+  [data-geometry-transient] { display: none !important; }
+}

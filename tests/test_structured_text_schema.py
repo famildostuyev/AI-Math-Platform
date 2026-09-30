@@ -77,6 +77,25 @@ class StructuredTextSchemaTest(unittest.TestCase):
             paragraph(text("L", [{"type": "font_size", "value": "large"}]))
         )
 
+    def test_named_fonts_numeric_sizes_and_colors_round_trip(self) -> None:
+        for family in ("times-new-roman", "arial", "calibri", "cambria", "georgia", "verdana"):
+            value = document(paragraph(text("X", [
+                {"type": "font_family", "value": family},
+                {"type": "font_size", "value": 12},
+                {"type": "foreground_color", "value": "#ff0000"},
+                {"type": "background_color", "value": "#ffff00"},
+            ])))
+            self.assertEqual(document(*value.model_dump(mode="json")["content"]), value)
+        for size in (8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72):
+            document(paragraph(text("X", [{"type": "font_size", "value": size}])))
+
+    def test_unsafe_typography_values_are_rejected(self) -> None:
+        for size in (7, 73, True, 12.5, "12pt", "16px"):
+            self.assert_invalid({"type": "document", "content": [paragraph(text("X", [{"type": "font_size", "value": size}]))]})
+        for color in ("url(x)", "var(--x)", "expression(x)", "red", "#fff", "#12345g", "#1234567"):
+            for kind in ("foreground_color", "background_color"):
+                self.assert_invalid({"type": "document", "content": [paragraph(text("X", [{"type": kind, "value": color}]))]})
+
     def test_alignment_is_valid_and_absent_by_default(self) -> None:
         value = document(paragraph(text("C"), attrs={"alignment": "center"}))
         self.assertEqual(value.content[0].attrs.alignment, "center")

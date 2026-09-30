@@ -62,7 +62,8 @@ class GeometryTextAnnotationFrontendContractTest(unittest.TestCase):
 
     def test_canonical_svg_uses_safe_react_text(self) -> None:
         self.assertIn('<g className="geometry-annotations">', self.renderer)
-        self.assertIn("<text key={text.id} x={text.x} y={text.y}>{text.content}</text>", self.renderer)
+        self.assertIn("<text key={text.id} x={text.x} y={text.y}", self.renderer)
+        self.assertIn(">{text.content}</text>", self.renderer)
         combined = self.renderer + self.board + self.editor
         self.assertNotIn("dangerouslySetInnerHTML", combined)
         self.assertNotIn("eval(", combined)

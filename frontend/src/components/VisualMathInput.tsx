@@ -1,11 +1,12 @@
-import { useEffect, useRef } from 'react'
-import { MathfieldElement } from 'mathlive'
+import { useRef } from 'react'
+import MathLiveField, { type MathLiveFieldHandle } from './MathLiveField'
 
 type VisualMathInputProps = {
   value: string
   onChange: (value: string) => void
   disabled?: boolean
   ariaLabel?: string
+  targetId?: string
 }
 
 const SYMBOLS = [
@@ -29,52 +30,16 @@ const SYMBOLS = [
   { label: 'Paralel', display: '∥', value: '\\parallel' },
 ] as const
 
-export default function VisualMathInput({ value, onChange, disabled = false, ariaLabel = 'Vizual formula redaktoru' }: VisualMathInputProps) {
-  const hostRef = useRef<HTMLDivElement>(null)
-  const fieldRef = useRef<MathfieldElement | null>(null)
-  const onChangeRef = useRef(onChange)
-  onChangeRef.current = onChange
-
-  useEffect(() => {
-    const host = hostRef.current
-    if (!host) return
-    const field = new MathfieldElement()
-    field.className = 'visual-math-input__field'
-    field.setAttribute('aria-label', ariaLabel)
-    field.setAttribute('virtual-keyboard-mode', 'onfocus')
-    field.smartFence = true
-    field.value = value
-    field.disabled = disabled
-    const handleInput = () => onChangeRef.current(field.value)
-    field.addEventListener('input', handleInput)
-    host.append(field)
-    fieldRef.current = field
-    return () => {
-      field.removeEventListener('input', handleInput)
-      field.remove()
-      fieldRef.current = null
-    }
-  }, [ariaLabel])
-
-  useEffect(() => {
-    const field = fieldRef.current
-    if (field && field.value !== value) field.setValue(value, { silenceNotifications: true })
-  }, [value])
-
-  useEffect(() => {
-    if (fieldRef.current) fieldRef.current.disabled = disabled
-  }, [disabled])
+export default function VisualMathInput({ value, onChange, disabled = false, ariaLabel = 'Vizual formula redaktoru', targetId }: VisualMathInputProps) {
+  const fieldRef = useRef<MathLiveFieldHandle>(null)
 
   const insert = (serializedValue: string) => {
-    const field = fieldRef.current
-    if (!field || disabled) return
-    field.focus()
-    field.insert(serializedValue, { selectionMode: 'placeholder' })
-    onChange(field.value)
+    if (disabled) return
+    fieldRef.current?.insert(serializedValue)
   }
 
   return <div className="visual-math-input">
-    <div ref={hostRef} />
+    <MathLiveField ref={fieldRef} value={value} onChange={onChange} disabled={disabled} ariaLabel={ariaLabel} targetId={targetId} />
     <div className="visual-math-input__palette" role="toolbar" aria-label="Riyazi simvollar">
       {SYMBOLS.map((symbol) => <button key={symbol.label} type="button" title={symbol.label} aria-label={symbol.label} disabled={disabled} onClick={() => insert(symbol.value)}>{symbol.display}</button>)}
     </div>

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { AlertTriangle, Bot, Check, LoaderCircle, Send, X } from 'lucide-react'
+import { AlertTriangle, Bot, Check, LoaderCircle, Send, X, Paperclip, Maximize2, Minimize2 } from 'lucide-react'
+import AICommandInput from './AICommandInput'
 import { ApiError } from '../api/client'
 import {
   createAdminAIReplacementProposal,
@@ -42,6 +43,10 @@ type AIAuthoringPanelProps = {
   revisionId: string
   onAccepted: () => Promise<void>
   onOpenRevision: (revisionId: string) => Promise<void>
+  embedded?: boolean
+  expanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
+  contextLabel?: string
 }
 
 type AdminAIHistoryItem = {
@@ -262,9 +267,10 @@ function AdminAIResponse({ result }: { result: AdminAIOrchestrationResult }) {
   </div>
 }
 
-export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onAccepted, onOpenRevision }: AIAuthoringPanelProps) {
+export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onAccepted, onOpenRevision, embedded = false, expanded = true, onExpandedChange, contextLabel = 'Sual' }: AIAuthoringPanelProps) {
   const [instruction, setInstruction] = useState('')
   const [history, setHistory] = useState<AdminAIHistoryItem[]>([])
+  const [similarToolOpen, setSimilarToolOpen] = useState(false)
   const [similarCount, setSimilarCount] = useState('3')
   const [similarConstraints, setSimilarConstraints] = useState('')
   const [similarDrafts, setSimilarDrafts] = useState<SimilarQuestionDraftItem[]>([])
@@ -284,6 +290,7 @@ export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onA
     const value = instruction.trim()
     if (!value || value.length > 10_000 || pending || requestInFlight.current) return
     requestInFlight.current = true
+    onExpandedChange?.(true)
     setPending(true)
     setError(null)
     try {
@@ -386,11 +393,10 @@ export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onA
     && parsedSimilarCount >= 1
     && parsedSimilarCount <= 20
   const canGenerateSimilar = similarCountIsValid
-    && similarConstraints.trim().length > 0
     && !similarGenerationPending
 
   const generateSimilarQuestions = async () => {
-    const constraints = similarConstraints.trim()
+    const constraints = similarConstraints.trim() || 'Cari suala b?nz?r suallar yarad?n.'
     if (!canGenerateSimilar || similarGenerationInFlight.current) return
     similarGenerationInFlight.current = true
     setSimilarGenerationPending(true)
@@ -433,10 +439,54 @@ export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onA
     }
   }
 
-  return <aside className="ai-authoring-panel" aria-labelledby="ai-authoring-title">
-    <header><div><Bot size={20} /><div><h2 id="ai-authoring-title">Admin AI</h2><span>Read-only köməkçi</span></div></div></header>
-    <div className="ai-authoring-messages" aria-live="polite">
-      {history.length === 0 && <p>Sual, axtarış və statistika haqqında təbii dildə soruşun.</p>}
+  return <aside
+    className={`ai-authoring-panel${embedded ? ' ai-authoring-panel--embedded' : ''}${expanded ? ' is-expanded' : ' is-compact'}`}
+    aria-label={embedded ? 'AI əmri' : undefined}
+    aria-labelledby={embedded ? undefined : 'ai-authoring-title'}
+  >
+    {!embedded && <header><div><Bot size={20} /><div><h2 id="ai-authoring-title">Admin AI</h2><span>Read-only köməkçi</span></div></div></header>}
+    <form className="universal-ai-command" onSubmit={(event) => { event.preventDefault(); void submit() }}>
+      <label htmlFor="ai-authoring-instruction"><Bot size={17} /> AI köməkçisi</label>
+      {expanded && <span className="universal-ai-context" title="Əmr cari sual reviziyası ilə göndərilir">Seçilib: {contextLabel}</span>}
+      <AICommandInput value={instruction} onChange={setInstruction} disabled={pending} expanded={expanded} />
+      <div className="universal-ai-command-actions">
+        <button type="button" disabled aria-label="Qoşma (Sonra)" title="Qoşma dəstəyi hələ mövcud deyil"><Paperclip size={16} /></button>
+        <button type="submit" disabled={!canSubmit}>{pending ? <LoaderCircle className="admin-editor-spinner" size={16} /> : <Send size={16} />} Göndər</button>
+      </div>
+      {onExpandedChange && <button className="universal-ai-toggle" type="button" aria-label={expanded ? 'AI sahəsini yığ' : 'AI sahəsini genişləndir'} aria-expanded={expanded} onClick={() => onExpandedChange(!expanded)}>{expanded ? <><Minimize2 size={16} /> Kiçilt</> : <Maximize2 size={16} />}</button>}
+    </form>
+    {expanded && <div className="universal-ai-quick-actions">{['H?llini izah et', 'B?nz?r suallar yarat', '??tinlik s?viyy?sini qiym?tl?ndir', 'Statistik m?lumatlar? g?st?r'].map((label, index) => <button type="button" key={label} disabled={pending} aria-expanded={index === 1 ? similarToolOpen : undefined} aria-controls={index === 1 ? 'universal-ai-similar-tool' : undefined} onClick={() => {
+      setSimilarToolOpen(index === 1 ? !similarToolOpen : false)
+      if (index !== 1) setInstruction(index === 3 ? 'Statistika m?lumatlar?n? g?st?r' : label)
+    }}>{['Həllini izah et', 'Bənzər suallar tərtib et', 'Çətinlik səviyyəsini qiymətləndir', 'Statistik məlumatları göstər'][index]}</button>)}</div>}
+    {expanded && similarToolOpen && <section id="universal-ai-similar-tool" className="admin-ai-result-section universal-ai-similar" aria-labelledby="similar-question-title">
+      <h3 id="similar-question-title">Bənzər suallar</h3>
+      <p>Cari suala bənzər yeni suallar tərtib edin.</p>
+      <label htmlFor="admin-ai-similar-count">Sual sayı</label>
+      <input id="admin-ai-similar-count" type="number" min="1" max="20" step="1" value={similarCount} onChange={(event) => setSimilarCount(event.target.value)} disabled={similarGenerationPending} />
+      <small>Bir sorğu üçün texniki aralıq: 1–20.</small>
+      <label htmlFor="admin-ai-similar-constraints">Əlavə şərt (istəyə bağlı)</label>
+      <textarea id="admin-ai-similar-constraints" maxLength={10_000} value={similarConstraints} onChange={(event) => setSimilarConstraints(event.target.value)} placeholder="Məsələn: bucaq əmsalı da n-dən asılı olsun, n natural ədəd olsun..." disabled={similarGenerationPending} />
+      {!similarCountIsValid && <p className="admin-ai-result-note">Sual sayı 1–20 aralığında tam ədəd olmalıdır.</p>}
+      <button type="button" onClick={() => void generateSimilarQuestions()} disabled={!canGenerateSimilar}>
+        {similarGenerationPending ? <LoaderCircle className="admin-editor-spinner" size={16} /> : <Bot size={16} />} Tərtib et
+      </button>
+    </section>}
+    {expanded && similarDrafts.length > 0 && <section className="universal-ai-similar-results" aria-label="Bənzər sual nəticələri">
+      {similarDrafts.map((item) => <article className="admin-ai-exchange" key={item.persistent_draft_id}>
+        <GeneratedDraftView draft={item.generated_draft} persistent />
+        {item.persistent_draft_status === 'active' && <section className="ai-authoring-decisions">
+          <button type="button" onClick={() => void promoteSimilarQuestionDraft(item.persistent_draft_id)} disabled={pendingPromotionKey === `similar:${item.persistent_draft_id}`}>
+            {pendingPromotionKey === `similar:${item.persistent_draft_id}` && <LoaderCircle className="admin-editor-spinner" size={16} />} Yeni sual kimi saxla
+          </button>
+        </section>}
+        {item.promotion && <section className="ai-authoring-decisions">
+          <button type="button" onClick={() => void onOpenRevision(item.promotion!.revision_id)}>Redaktorda aç</button>
+        </section>}
+      </article>)}
+    </section>}
+    {expanded && (history.length > 0 || pending) && <div className="ai-authoring-messages universal-ai-response" aria-live="polite">
+      <h3>AI cavabı <small>{pending ? 'Hazırlanır…' : 'Hazırdır'}</small></h3>
       {history.map((item) => <div className="admin-ai-exchange" key={item.id}>
         <article><strong>Admin</strong><p>{item.instruction}</p></article>
         <article className="admin-ai-response"><strong>Admin AI</strong><AdminAIResponse result={item.result} /></article>
@@ -459,35 +509,7 @@ export default function AIAuthoringPanel({ authenticatedRequest, revisionId, onA
           <button type="button" className="secondary" onClick={() => void decideUniversalProposal(item.id, item.result.proposal_id!, 'reject')} disabled={item.result.proposal_status !== 'pending' || pendingProposalId !== null}><X size={16} /> Ləğv et</button>
         </section>}
       </div>)}
-    </div>
-    <section className="admin-ai-result-section" aria-labelledby="similar-question-title">
-      <h3 id="similar-question-title">Bənzər suallar</h3>
-      <label htmlFor="admin-ai-similar-count">Sual sayı</label>
-      <input id="admin-ai-similar-count" type="number" min="1" max="20" step="1" value={similarCount} onChange={(event) => setSimilarCount(event.target.value)} disabled={similarGenerationPending} />
-      <small>Bir sorğu üçün texniki aralıq: 1–20.</small>
-      <label htmlFor="admin-ai-similar-constraints">Şərtlər</label>
-      <textarea id="admin-ai-similar-constraints" maxLength={10_000} value={similarConstraints} onChange={(event) => setSimilarConstraints(event.target.value)} placeholder="Məsələn: bucaq əmsalı da n-dən asılı olsun" disabled={similarGenerationPending} />
-      {!similarCountIsValid && <p className="admin-ai-result-note">Sual sayı 1–20 aralığında tam ədəd olmalıdır.</p>}
-      <button type="button" onClick={() => void generateSimilarQuestions()} disabled={!canGenerateSimilar}>
-        {similarGenerationPending && <LoaderCircle className="admin-editor-spinner" size={16} />} Bənzər suallar yarat
-      </button>
-      {similarDrafts.map((item) => <article className="admin-ai-exchange" key={item.persistent_draft_id}>
-        <GeneratedDraftView draft={item.generated_draft} persistent />
-        {item.persistent_draft_status === 'active' && <section className="ai-authoring-decisions">
-          <button type="button" onClick={() => void promoteSimilarQuestionDraft(item.persistent_draft_id)} disabled={pendingPromotionKey === `similar:${item.persistent_draft_id}`}>
-            {pendingPromotionKey === `similar:${item.persistent_draft_id}` && <LoaderCircle className="admin-editor-spinner" size={16} />} Yeni sual kimi saxla
-          </button>
-        </section>}
-        {item.promotion && <section className="ai-authoring-decisions">
-          <button type="button" onClick={() => void onOpenRevision(item.promotion!.revision_id)}>Redaktorda aç</button>
-        </section>}
-      </article>)}
-    </section>
-    <form onSubmit={(event) => { event.preventDefault(); void submit() }}>
-      <label htmlFor="ai-authoring-instruction">Təlimat</label>
-      <textarea id="ai-authoring-instruction" maxLength={10_000} value={instruction} onChange={(event) => setInstruction(event.target.value)} placeholder="Məsələn: Bu sual haqqında məlumat ver" disabled={pending} />
-      <div><small>{instruction.length}/10 000</small><button type="submit" disabled={!canSubmit}>{pending ? <LoaderCircle className="admin-editor-spinner" size={16} /> : <Send size={16} />} Göndər</button></div>
-    </form>
+    </div>}
     {error && <div className="ai-authoring-error" role="alert">{error}</div>}
   </aside>
 }

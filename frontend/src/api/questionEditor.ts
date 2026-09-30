@@ -27,13 +27,15 @@ export type UnderlineMark = {
 
 export type FontFamilyMark = {
   type: 'font_family'
-  value: 'default' | 'serif' | 'sans' | 'math-compatible'
+  value: 'default' | 'serif' | 'sans' | 'math-compatible' | 'times-new-roman' | 'arial' | 'calibri' | 'cambria' | 'georgia' | 'verdana'
 }
 
 export type FontSizeMark = {
   type: 'font_size'
-  value: 'small' | 'normal' | 'large' | 'x-large'
+  value: 'small' | 'normal' | 'large' | 'x-large' | number
 }
+
+export type TextColorMark = { type: 'foreground_color' | 'background_color'; value: string }
 
 export type TextMark =
   | BoldMark
@@ -41,6 +43,7 @@ export type TextMark =
   | UnderlineMark
   | FontFamilyMark
   | FontSizeMark
+  | TextColorMark
 
 export type TextNode = {
   type: 'text'
@@ -104,6 +107,17 @@ export type JsonValue =
 
 export type JsonObject = { [key: string]: JsonValue }
 
+export type { PersistedVisualPlacement } from '../components/visualPlacement'
+import type { PersistedVisualPlacement } from '../components/visualPlacement'
+
+export function updateVisualPlacement(accessToken: string, revisionId: UUID, blockId: UUID,
+  visual_placement: PersistedVisualPlacement, expected_revision_updated_at: IsoDateTime): Promise<GeometryBlockRead | ImageBlockRead> {
+  return requestJson(`/api/v1/question-editor/revisions/${encodeURIComponent(revisionId)}/blocks/${encodeURIComponent(blockId)}/visual-placement`, {
+    method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ visual_placement, expected_revision_updated_at }),
+  })
+}
+
 export type GeometryViewportV1 = {
   min_x: number
   min_y: number
@@ -127,7 +141,16 @@ export type GeometrySegmentV1 = {
 export type GeometryPolygonV1 = {
   id: string
   point_ids: string[]
+  template?: GeometryPolygonTemplate
 }
+
+// Creation identity only; free point editing does not imply maintained constraints.
+export type GeometryPolygonTemplate = { kind: 'triangle' | 'right_triangle' | 'rectangle' | 'square' | 'parallelogram' | 'rhombus' | 'trapezoid' } | { kind: 'regular_polygon'; n: number }
+
+export type GeometryLineV1 = GeometrySegmentV1 & { kind: 'line' | 'directed_line' | 'vector' }
+export type GeometryPolylineV1 = { id: string; point_ids: string[] }
+export type GeometryCircleV1 = { id: string; center_point_id: string; radius: number; kind: 'circle' | 'disk' }
+export type GeometryArcV1 = Omit<GeometryCircleV1, 'kind'> & { kind: 'arc' | 'sector'; start_angle: number; sweep_angle: number }
 
 export type GeometryTextV1 = {
   id: string
@@ -136,7 +159,13 @@ export type GeometryTextV1 = {
   content: string
 }
 
+export type GeometryLinearSourceV1 = { kind: 'line' | 'directed_line' | 'segment' | 'vector'; id: string }
+export type GeometryMidpointConstructionV1 = { id: string; kind: 'midpoint'; source_point_ids: [string, string]; output_point_id: string }
+export type GeometryLinearConstructionV1 = { id: string; kind: 'parallel' | 'perpendicular'; source: GeometryLinearSourceV1; through_point_id: string; output_line_id: string; support_point_id: string }
+export type GeometryIntersectionConstructionV1 = { id: string; kind: 'intersection'; source_a: GeometryLinearSourceV1; source_b: GeometryLinearSourceV1; output_point_id: string }
+export type GeometryConstructionV1 = GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1
 export type GeometrySourceDataV1 = {
+  constructions?: GeometryConstructionV1[]
   schema_version: 1
   viewport: GeometryViewportV1
   description: string
@@ -144,6 +173,10 @@ export type GeometrySourceDataV1 = {
   segments: GeometrySegmentV1[]
   polygons: GeometryPolygonV1[]
   texts: GeometryTextV1[]
+  lines?: GeometryLineV1[]
+  polylines?: GeometryPolylineV1[]
+  circles?: GeometryCircleV1[]
+  arcs?: GeometryArcV1[]
 }
 
 export type QuestionDraftCreate = {
@@ -168,6 +201,22 @@ export type QuestionDraftRead = {
   purpose_ids: UUID[]
   difficulty: QuestionDifficulty | null
   updated_at: IsoDateTime
+}
+
+export type QuestionMetadataUpdate = {
+  question_type_id?: UUID
+  difficulty?: QuestionDifficulty | null
+  expected_revision_updated_at: IsoDateTime
+}
+
+export type QuestionMetadataRead = Pick<QuestionDraftRead, 'revision_id' | 'question_type_id' | 'difficulty' | 'updated_at'> & {
+  answer_policy: AnswerPolicy
+}
+
+export function updateQuestionMetadata(accessToken: string, revisionId: UUID, request: QuestionMetadataUpdate): Promise<QuestionMetadataRead> {
+  return requestJson<QuestionMetadataRead>(`/api/v1/question-editor/revisions/${encodeURIComponent(revisionId)}/metadata`, {
+    method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  })
 }
 
 export type TextBlockPayloadRead = {
@@ -241,12 +290,14 @@ export type GeometryBlockWritePayload = {
 }
 
 export type GeometryBlockCreate = {
+  visual_placement?: PersistedVisualPlacement
   block_type: 'geometry'
   payload: GeometryBlockWritePayload
   expected_revision_updated_at: IsoDateTime
 }
 
 export type GeometryBlockUpdate = {
+  visual_placement?: PersistedVisualPlacement
   source_data: GeometrySourceDataV1
   format_version?: 1
   expected_revision_updated_at: IsoDateTime
@@ -276,6 +327,7 @@ export type FormulaBlockRead = {
 }
 
 export type ImageBlockRead = {
+  visual_placement?: PersistedVisualPlacement | null
   id: UUID
   block_type: 'image'
   sort_order: number
@@ -283,6 +335,7 @@ export type ImageBlockRead = {
 }
 
 export type GeometryBlockRead = {
+  visual_placement?: PersistedVisualPlacement | null
   id: UUID
   block_type: 'geometry'
   sort_order: number
@@ -716,4 +769,3 @@ export function reorderSolutionBlocks(accessToken: string, revisionId: UUID, req
     method: 'PUT', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(request),
   })
 }
-

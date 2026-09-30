@@ -12,6 +12,7 @@ from app.core.enums import RoleName
 from app.database.session import get_db
 from app.models.user import User
 from app.schemas.question_editor import (
+    VisualPlacementUpdate,
     BlockOrderRequest,
     FormulaBlockCreate,
     FormulaBlockRead,
@@ -24,6 +25,8 @@ from app.schemas.question_editor import (
     ImageBlockUpdate,
     QuestionDraftCreate,
     QuestionDraftRead,
+    QuestionMetadataRead,
+    QuestionMetadataUpdate,
     QuestionRevisionEditorRead,
     TextBlockCreate,
     TextBlockRead,
@@ -74,6 +77,7 @@ from app.services.question_editor_service import (
     RevisionNotFoundError,
     RevisionConflictError,
     RevisionNotEditableError,
+    SharedQuestionTypeConflictError,
     TopicNotFoundError,
 )
 from app.services.structured_text_service import (
@@ -219,6 +223,32 @@ def get_question_revision(
         ) from exc
 
 
+@router.patch(
+    "/revisions/{revision_id}/metadata",
+    response_model=QuestionMetadataRead,
+    summary="Update current question type and revision difficulty",
+)
+def update_question_metadata(
+    revision_id: uuid.UUID,
+    request: QuestionMetadataUpdate,
+    _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))],
+    db: Annotated[Session, Depends(get_db)],
+) -> QuestionMetadataRead:
+    """Omitted fields stay unchanged. Type changes require an unshared draft form."""
+    try:
+        return QuestionEditorService(db).update_metadata(revision_id=revision_id, request=request)
+    except RevisionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Question revision was not found.") from exc
+    except RevisionNotEditableError as exc:
+        raise HTTPException(status_code=409, detail="Question revision is not editable.") from exc
+    except RevisionConflictError as exc:
+        raise HTTPException(status_code=409, detail="Question revision was modified by another request.") from exc
+    except SharedQuestionTypeConflictError as exc:
+        raise HTTPException(status_code=409, detail="Question type is shared by other revisions.") from exc
+    except QuestionTypeNotFoundError as exc:
+        raise HTTPException(status_code=422, detail="Question type is unavailable.") from exc
+
+
 @router.post(
     "/revisions/{revision_id}/blocks/text",
     response_model=TextBlockRead,
@@ -354,6 +384,24 @@ def create_geometry_block(
             status_code=status.HTTP_409_CONFLICT,
             detail="Content block order conflict.",
         ) from exc
+
+
+@router.patch("/revisions/{revision_id}/blocks/{block_id}/visual-placement",
+              response_model=GeometryBlockRead | ImageBlockRead)
+def update_visual_placement(
+    revision_id: uuid.UUID, block_id: uuid.UUID, request: VisualPlacementUpdate,
+    _current_user: Annotated[User, Depends(require_roles(RoleName.ADMIN))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    try:
+        return QuestionEditorService(db).update_visual_placement(
+            revision_id=revision_id, block_id=block_id, request=request,
+        )
+    except (RevisionNotFoundError, EditorBlockNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (RevisionNotEditableError, RevisionConflictError,
+            EditorBlockTypeMismatchError, EditorBlockContentMissingError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.patch(

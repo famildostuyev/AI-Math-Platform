@@ -29,7 +29,7 @@ class GeometryJSXGraphFrontendContractTest(unittest.TestCase):
     def test_geometry_v1_remains_controlled_persisted_state(self) -> None:
         self.assertIn("geometry: GeometrySourceDataV1", self.board)
         self.assertIn("onChange: (geometry: GeometrySourceDataV1)", self.board)
-        self.assertIn("source_data: newGeometry", self.question_editor)
+        self.assertIn("source_data: geometry", self.question_editor)
         self.assertIn("source_data: editingGeometry", self.question_editor)
         for runtime_value in ("board.id", "element.id", "event:"):
             self.assertNotIn(runtime_value, self.model)
@@ -48,7 +48,7 @@ class GeometryJSXGraphFrontendContractTest(unittest.TestCase):
 
     def test_segment_tool_uses_two_clicked_points(self) -> None:
         self.assertIn("tool === 'segment'", self.editor)
-        self.assertIn("addGeometrySegment(value, current[0], nextSelection.id)", self.editor)
+        self.assertIn("addGeometrySegment(value, pendingPointIds[0], nextSelection.id)", self.editor)
         self.assertIn("start_point_id: startPointId", self.model)
         self.assertIn("end_point_id: endPointId", self.model)
 
@@ -81,7 +81,7 @@ class GeometryJSXGraphFrontendContractTest(unittest.TestCase):
     def test_description_legacy_security_and_canonical_renderer_are_preserved(self) -> None:
         self.assertIn("Əlçatan təsvir", self.editor)
         self.assertIn("required", self.editor)
-        self.assertIn("normalizeGeometrySourceDataV1(block.payload.source_data)", (ROOT / "frontend/src/components/VisualContentRenderer.tsx").read_text(encoding="utf-8"))
+        self.assertIn("normalizeGeometrySourceDataV1(sourceData)", (ROOT / "frontend/src/components/VisualContentRenderer.tsx").read_text(encoding="utf-8"))
         self.assertIn("<svg", self.renderer)
         combined = self.board + self.editor + self.model
         self.assertNotIn("dangerouslySetInnerHTML", combined)

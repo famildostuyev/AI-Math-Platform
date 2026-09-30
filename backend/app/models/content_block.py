@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import CheckConstraint, Enum as SQLEnum, ForeignKey, Index, Integer, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import ContentBlockType
@@ -13,7 +13,13 @@ from app.database.base_model import BaseModel
 class ContentBlock(BaseModel):
     __tablename__ = "content_blocks"
 
+    visual_placement: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+
     __table_args__ = (
+        CheckConstraint(
+            "visual_placement IS NULL OR jsonb_typeof(visual_placement) = 'object'",
+            name="ck_content_blocks_visual_placement_object",
+        ),
         CheckConstraint(
             "sort_order >= 0",
             name="ck_content_blocks_sort_order_non_negative",

@@ -76,6 +76,19 @@ class StructuredTextServiceTest(unittest.TestCase):
         ])
         self.assertEqual(result.source_text, "Important")
 
+    def test_named_typography_and_colors_survive_persistence_reload(self) -> None:
+        marks = [
+            {"type": "font_family", "value": "times-new-roman"},
+            {"type": "font_size", "value": 12},
+            {"type": "foreground_color", "value": "#ff0000"},
+            {"type": "background_color", "value": "#ffff00"},
+        ]
+        prepared = prepare_structured_text_write(paragraph_document(text("Styled", marks)))
+        self.assertEqual(prepared.source_text, "Styled")
+        self.assertEqual(prepared.document_data["content"][0]["content"][0]["marks"], marks)
+        reloaded = normalize_text_content(source_text=prepared.source_text, document_data=prepared.document_data, format_version=1)
+        self.assertEqual(reloaded.model_dump(mode="json"), prepared.document_data)
+
     def test_lists_serialize_and_project_deterministically(self) -> None:
         result = prepare_structured_text_write({
             "type": "document",

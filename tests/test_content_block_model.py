@@ -24,7 +24,7 @@ class ContentBlockModelMetadataTest(unittest.TestCase):
             set(table.columns.keys()),
             {
                 "id", "question_revision_id", "block_type", "sort_order",
-                "created_at", "updated_at", "deleted_at",
+                "created_at", "updated_at", "deleted_at", "visual_placement",
             },
         )
 

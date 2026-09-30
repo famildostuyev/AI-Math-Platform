@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -11,7 +12,12 @@ class AdminAIFrontendRoutingContractTest(unittest.TestCase):
     def test_question_editor_mounts_universal_panel_as_default(self) -> None:
         editor = (ROOT / "frontend/src/components/AdminQuestionEditor.tsx").read_text(encoding="utf-8")
         self.assertIn("import AIAuthoringPanel from './AIAuthoringPanel'", editor)
-        self.assertIn("<AIAuthoringPanel key={revision.revision_id}", editor)
+        panel = re.search(r"<AIAuthoringPanel\b[\s\S]*?/>", editor)
+        self.assertIsNotNone(panel, "AdminQuestionEditor must mount AIAuthoringPanel")
+        panel_jsx = panel.group(0)
+        self.assertRegex(panel_jsx, r"\skey\s*=\s*\{\s*revision\.revision_id\s*\}")
+        self.assertRegex(panel_jsx, r"\srevisionId\s*=\s*\{\s*revision\.revision_id\s*\}")
+        self.assertRegex(panel_jsx, r"\sembedded(?:\s*=\s*\{\s*true\s*\})?(?=\s|/>)")
         self.assertNotIn("<AIAuthoringMutationPanel", editor)
 
     def test_universal_panel_uses_admin_ai_query_not_legacy_proposal_submit(self) -> None:
@@ -151,11 +157,12 @@ class AdminAIFrontendRoutingContractTest(unittest.TestCase):
         self.assertIn('type="number" min="1" max="20" step="1"', default_panel)
         self.assertIn("parsedSimilarCount >= 1", default_panel)
         self.assertIn("parsedSimilarCount <= 20", default_panel)
-        self.assertIn("similarConstraints.trim().length > 0", default_panel)
+        self.assertNotIn("similarConstraints.trim().length > 0", default_panel)
+        self.assertIn("similarConstraints.trim() ||", default_panel)
         self.assertIn("similarGenerationInFlight.current", default_panel)
         self.assertIn("similarGenerationInFlight.current = true", default_panel)
         self.assertIn("similarGenerationInFlight.current = false", default_panel)
-        self.assertIn("Bənzər suallar yarat", default_panel)
+        self.assertIn("Bənzər suallar tərtib et", default_panel)
         self.assertIn("bucaq əmsalı da n-dən asılı olsun", default_panel)
 
     def test_similar_results_keep_order_and_independent_promotion_state(self) -> None:

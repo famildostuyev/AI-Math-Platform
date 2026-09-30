@@ -1120,7 +1120,7 @@ class QuestionEditorApiTest(unittest.TestCase):
         self.assertEqual(call.kwargs["request"].payload.alt_text, "  Graph  ")
         self.assertEqual(call.kwargs["request"].expected_revision_updated_at, NOW)
         self.assertEqual(
-            set(response.json()), {"id", "block_type", "sort_order", "payload"},
+            set(response.json()), {"id", "block_type", "sort_order", "payload", "visual_placement"},
         )
         self.assertEqual(
             set(response.json()["payload"]), {"media_asset_id", "alt_text"},
@@ -1375,7 +1375,7 @@ class QuestionEditorApiTest(unittest.TestCase):
             call.kwargs["request"].expected_revision_updated_at, NOW,
         )
         self.assertEqual(
-            set(response.json()), {"id", "block_type", "sort_order", "payload"},
+            set(response.json()), {"id", "block_type", "sort_order", "payload", "visual_placement"},
         )
         self.assertEqual(
             set(response.json()["payload"]), {"source_data", "format_version"},
@@ -1521,7 +1521,7 @@ class QuestionEditorApiTest(unittest.TestCase):
             call.kwargs["request"].expected_revision_updated_at, NOW,
         )
         self.assertEqual(
-            set(response.json()), {"id", "block_type", "sort_order", "payload"},
+            set(response.json()), {"id", "block_type", "sort_order", "payload", "visual_placement"},
         )
         self.assertEqual(
             set(response.json()["payload"]), {"source_data", "format_version"},
@@ -1662,6 +1662,7 @@ class QuestionEditorApiTest(unittest.TestCase):
             for method in getattr(route, "methods", set())
         }
         self.assertEqual(route_methods, {
+            ("PATCH", "/question-editor/revisions/{revision_id}/metadata"),
             ("POST", "/question-editor/drafts"),
             ("GET", "/question-editor/revisions/{revision_id}"),
             ("POST", "/question-editor/revisions/{revision_id}/blocks/text"),
@@ -1684,6 +1685,10 @@ class QuestionEditorApiTest(unittest.TestCase):
             (
                 "PATCH",
                 "/question-editor/revisions/{revision_id}/blocks/{block_id}/geometry",
+            ),
+            (
+                "PATCH",
+                "/question-editor/revisions/{revision_id}/blocks/{block_id}/visual-placement",
             ),
             (
                 "PATCH",

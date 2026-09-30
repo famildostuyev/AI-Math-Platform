@@ -1,5 +1,9 @@
 import type { GeometrySourceDataV1, GeometryTextV1, JsonObject } from '../api/questionEditor'
 import { GEOMETRY_BOARD_VIEWPORT } from './geometryAuthoringModel'
+import { validPolygonTemplate } from './geometryTemplateContract'
+import { validCircleRadius, isCircleTool } from './geometryCircleModel'
+import { validArcAngles, isArcTool } from './geometryArcModel'
+import { evaluateConstructions } from './geometryConstructionModel'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -24,7 +28,8 @@ function isPlainText(value: string): boolean {
 export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySourceDataV1 | null {
   const baseKeys = ['schema_version', 'viewport', 'description', 'points', 'segments', 'polygons']
   const hasTexts = Object.hasOwn(value, 'texts')
-  if (!hasExactKeys(value, hasTexts ? [...baseKeys, 'texts'] : baseKeys)) return null
+  const additiveKeys = ['texts', 'lines', 'polylines', 'circles', 'arcs', 'constructions'].filter(key => Object.hasOwn(value, key))
+  if (!hasExactKeys(value, [...baseKeys, ...additiveKeys])) return null
   if (value.schema_version !== 1 || typeof value.description !== 'string' || !value.description.trim()) return null
   if (!isRecord(value.viewport) || !hasExactKeys(value.viewport, ['min_x', 'min_y', 'width', 'height'])) return null
   if (!isFiniteNumber(value.viewport.min_x) || !isFiniteNumber(value.viewport.min_y)
@@ -51,11 +56,12 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
     ids.add(segment.id)
   }
   for (const polygon of value.polygons) {
-    if (!isRecord(polygon) || !hasExactKeys(polygon, ['id', 'point_ids'])
+    if (!isRecord(polygon) || !hasExactKeys(polygon, Object.hasOwn(polygon, 'template') ? ['id', 'point_ids', 'template'] : ['id', 'point_ids'])
       || typeof polygon.id !== 'string' || ids.has(polygon.id)
       || !Array.isArray(polygon.point_ids) || polygon.point_ids.length < 3
       || polygon.point_ids.some((id) => typeof id !== 'string' || !pointIds.has(id))
       || new Set(polygon.point_ids).size !== polygon.point_ids.length) return null
+    if (Object.hasOwn(polygon, 'template') && !validPolygonTemplate(polygon.template, polygon.point_ids.length)) return null
     ids.add(polygon.id)
   }
   const texts: GeometryTextV1[] = []
@@ -67,6 +73,51 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
     ids.add(text.id)
     texts.push({ id: text.id, x: text.x, y: text.y, content: text.content })
   }
+  const points = new Map((value.points as GeometrySourceDataV1['points']).map(point => [point.id, point]))
+  const validId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(id) && !ids.has(id)
+  if (Object.hasOwn(value, 'lines')) {
+    if (!Array.isArray(value.lines) || value.lines.length > 1000) return null
+    for (const line of value.lines) {
+      if (!isRecord(line) || !hasExactKeys(line, ['id', 'kind', 'start_point_id', 'end_point_id']) || !validId(line.id)
+        || !['line', 'directed_line', 'vector'].includes(String(line.kind))
+        || typeof line.start_point_id !== 'string' || typeof line.end_point_id !== 'string') return null
+      const a = points.get(line.start_point_id), b = points.get(line.end_point_id)
+      if (!a || !b || a.id === b.id || (a.x === b.x && a.y === b.y)) return null
+      ids.add(line.id)
+    }
+  }
+  if (Object.hasOwn(value, 'polylines')) {
+    if (!Array.isArray(value.polylines) || value.polylines.length > 200) return null
+    for (const polyline of value.polylines) {
+      if (!isRecord(polyline) || !hasExactKeys(polyline, ['id', 'point_ids']) || !validId(polyline.id)
+        || !Array.isArray(polyline.point_ids) || polyline.point_ids.length < 2 || polyline.point_ids.length > 500
+        || new Set(polyline.point_ids).size !== polyline.point_ids.length
+        || polyline.point_ids.some(id => typeof id !== 'string' || !points.has(id))) return null
+      const vertices = (polyline.point_ids as string[]).map(id => points.get(id)!)
+      if (vertices.some((p, i) => i > 0 && p.x === vertices[i - 1].x && p.y === vertices[i - 1].y)) return null
+      ids.add(polyline.id)
+    }
+  }
+  if (Object.hasOwn(value, 'circles')) {
+    if (!Array.isArray(value.circles) || value.circles.length > 200) return null
+    for (const circle of value.circles) {
+      if (!isRecord(circle) || !hasExactKeys(circle, ['id', 'center_point_id', 'radius', 'kind']) || !validId(circle.id)
+        || typeof circle.kind !== 'string' || !isCircleTool(circle.kind) || !validCircleRadius(circle.radius)
+        || typeof circle.center_point_id !== 'string' || !points.has(circle.center_point_id)) return null
+      ids.add(circle.id)
+    }
+  }
+  if (Object.hasOwn(value, 'arcs')) {
+    if (!Array.isArray(value.arcs) || value.arcs.length > 200) return null
+    for (const arc of value.arcs) {
+      if (!isRecord(arc) || !hasExactKeys(arc, ['id', 'center_point_id', 'radius', 'kind', 'start_angle', 'sweep_angle']) || !validId(arc.id)
+        || typeof arc.kind !== 'string' || !isArcTool(arc.kind) || !validCircleRadius(arc.radius)
+        || !validArcAngles(arc.start_angle, arc.sweep_angle)
+        || typeof arc.center_point_id !== 'string' || !points.has(arc.center_point_id)) return null
+      ids.add(arc.id)
+    }
+  }
+  if (Object.hasOwn(value, 'constructions') && !evaluateConstructions(value.points as GeometrySourceDataV1['points'], value.constructions, ids, true, value as GeometrySourceDataV1)) return null
   return {
     schema_version: 1,
     viewport: value.viewport,
@@ -75,6 +126,11 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
     segments: value.segments,
     polygons: value.polygons,
     texts,
+    ...(Object.hasOwn(value, 'lines') ? { lines: value.lines } : {}),
+    ...(Object.hasOwn(value, 'polylines') ? { polylines: value.polylines } : {}),
+    ...(Object.hasOwn(value, 'circles') ? { circles: value.circles } : {}),
+    ...(Object.hasOwn(value, 'arcs') ? { arcs: value.arcs } : {}),
+    ...(Object.hasOwn(value, 'constructions') ? { constructions: value.constructions } : {}),
   } as GeometrySourceDataV1
 }
 

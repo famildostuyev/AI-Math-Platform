@@ -20,6 +20,12 @@ class FontFamilyToken(StrEnum):
     SERIF = "serif"
     SANS = "sans"
     MATH_COMPATIBLE = "math-compatible"
+    TIMES_NEW_ROMAN = "times-new-roman"
+    ARIAL = "arial"
+    CALIBRI = "calibri"
+    CAMBRIA = "cambria"
+    GEORGIA = "georgia"
+    VERDANA = "verdana"
 
 
 class FontSizeToken(StrEnum):
@@ -55,7 +61,23 @@ class FontFamilyMark(StrictSchema):
 
 class FontSizeMark(StrictSchema):
     type: Literal["font_size"]
-    value: FontSizeToken
+    value: FontSizeToken | int
+
+    @model_validator(mode="after")
+    def validate_point_size(self) -> "FontSizeMark":
+        if isinstance(self.value, int) and not 8 <= self.value <= 72:
+            raise ValueError("Font size must be between 8 and 72 pt.")
+        return self
+
+
+class ForegroundColorMark(StrictSchema):
+    type: Literal["foreground_color"]
+    value: str = Field(pattern=r"^#[0-9a-f]{6}$")
+
+
+class BackgroundColorMark(StrictSchema):
+    type: Literal["background_color"]
+    value: str = Field(pattern=r"^#[0-9a-f]{6}$")
 
 
 TextMark = Annotated[
@@ -65,6 +87,8 @@ TextMark = Annotated[
         UnderlineMark,
         FontFamilyMark,
         FontSizeMark,
+        ForegroundColorMark,
+        BackgroundColorMark,
     ],
     Field(discriminator="type"),
 ]
