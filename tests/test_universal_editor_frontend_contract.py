@@ -1,739 +1,338 @@
-import { difficultyLabels, questionTypeLabel, statusLabels } from './questionPropertyLabels'
-import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import {
-  ArrowLeft,
-  FileText,
-  Save,
-  X,
-  LoaderCircle,
-  PanelLeftClose,
-  PanelLeftOpen,
-  RefreshCw,
-  Sparkles,
-  Type,
-  Sigma,
-  Triangle,
-  ChartLine,
-  Table,
-  ChartPie,
-  Image,
-  Network,
-  Omega,
-  type LucideIcon,
-} from 'lucide-react'
-import { ApiError } from '../api/client'
-import {
-  getQuestionTypes,
-  type QuestionTypeCatalogResponse,
-} from '../api/catalog'
-import {
-  createGeometryBlock,
-  createQuestionDraft,
-  createTextBlock,
-  deleteBlock,
-  getQuestionRevisionForEditor,
-  reorderBlocks,
-  updateFormulaBlock,
-  updateGeometryBlock,
-  updateVisualPlacement,
-  type GeometryBlockRead,
-  type PersistedVisualPlacement,
-  updateTextBlock,
-  updateQuestionMetadata,
-  type QuestionMetadataRead,
-  type QuestionMetadataUpdate,
-  type QuestionDifficulty,
-  type ContentBlockRead,
-  type GeometrySourceDataV1,
-  type QuestionRevisionEditorRead,
-  type StructuredTextDocument,
-} from '../api/questionEditor'
-import AIAuthoringPanel from './AIAuthoringPanel'
-import AnswerEditorSection from './AnswerEditorSection'
-import { defaultGeometryPlacement } from './geometryFrameModel'
-import SolutionEditorSection from './SolutionEditorSection'
-import UniversalQuestionCanvas from './UniversalQuestionCanvas'
-import { emptyGeometryV1, normalizeGeometrySourceDataV1 } from './geometryV1'
-import {
-  getUniversalEditorModule,
-  UNIVERSAL_EDITOR_MODULES,
-  type UniversalEditorModuleId,
-} from './universalEditorModules'
-import UniversalEditorRibbon from './UniversalEditorRibbon'
-import UniversalEditorHistoryControls from './UniversalEditorHistoryControls'
-import { fieldTraceState, traceContext } from './universalContextTrace'
-import { UniversalEditorSessionContext, useUniversalEditorSession } from './universalEditorSession'
-import './UniversalEditor.css'
-import { adaptContentBlocksToUniversalDocument } from './universalEditorDocumentAdapter'
+from __future__ import annotations
 
-type AuthenticatedRequest = <T>(
-  request: (accessToken: string) => Promise<T>,
-) => Promise<T>
+import unittest
+from pathlib import Path
 
-const MODULE_ICONS: Record<UniversalEditorModuleId, LucideIcon> = {
-  text: Type, algebra: Sigma, geometry: Triangle, graph: ChartLine,
-  table: Table, chart: ChartPie, image: Image, diagram: Network, symbols: Omega,
-}
 
-type AdminQuestionEditorProps = {
-  authenticatedRequest: AuthenticatedRequest
-  onBack: () => void
-  initialRevisionId?: string
-}
+ROOT = Path(__file__).resolve().parents[1]
 
-type MutationName = 'metadata' | 'text-create' | 'text-update' | 'formula-create'
-  | 'formula-update' | 'geometry-create' | 'geometry-update' | 'delete' | 'reorder' | 'answer' | 'solution'
 
-type EditorDocumentSectionId = 'question' | 'answer' | 'solution' | 'hint' | 'assessment' | 'history'
+class UniversalEditorFrontendContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        components = ROOT / "frontend/src/components"
+        cls.registry = (components / "universalEditorModules.ts").read_text(encoding="utf-8")
+        cls.document_model = (components / "universalEditorDocument.ts").read_text(encoding="utf-8")
+        cls.editor = (components / "AdminQuestionEditor.tsx").read_text(encoding="utf-8")
+        cls.ai_panel = (components / "AIAuthoringPanel.tsx").read_text(encoding="utf-8")
+        cls.styles = (components / "UniversalEditor.css").read_text(encoding="utf-8")
+        cls.ribbon = (components / "UniversalEditorRibbon.tsx").read_text(encoding="utf-8")
+        cls.session = (components / "universalEditorSession.ts").read_text(encoding="utf-8")
+        cls.prompt = (components / "AICommandInput.tsx").read_text(encoding="utf-8")
+        cls.geometry = (components / "GeometryEditor.tsx").read_text(encoding="utf-8")
+        cls.commands = (components / "structuredContinuousTextEditorCommands.ts").read_text(encoding="utf-8")
 
-const EDITOR_DOCUMENT_SECTIONS: readonly {
-  id: EditorDocumentSectionId
-  label: string
-  available: boolean
-}[] = [
-  { id: 'question', label: 'Sual', available: true },
-  { id: 'answer', label: 'Cavab', available: true },
-  { id: 'solution', label: 'Həll', available: true },
-  { id: 'hint', label: 'İpucu', available: false },
-  { id: 'assessment', label: 'Qiymətləndirmə', available: false },
-  { id: 'history', label: 'Tarixçə', available: false },
-] as const
-
-function editorErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 403) return 'Bu redaktora giriş icazəniz yoxdur.'
-    if (error.status === 404) return 'Sual reviziyası və ya blok tapılmadı.'
-    return error.message
-  }
-  if (error instanceof Error && error.message) return error.message
-  return 'Əməliyyatı tamamlamaq mümkün olmadı.'
-}
-
-function solutionErrorMessage(error: ApiError): string {
-  const detail = typeof error.detail === 'string' ? error.detail : ''
-  if (detail.includes('already exists')) return 'Bu reviziya üçün həll artıq mövcuddur.'
-  if (detail.includes('not editable')) return 'Bu reviziya redaktə edilə bilməz.'
-  if (detail.includes('type does not match')) return 'Həll blokunun tipi əməliyyata uyğun deyil.'
-  if (detail.includes('not found')) return 'Həll və ya həll bloku tapılmadı.'
-  if (detail.includes('order does not match')) return 'Həll bloklarının sırası mövcud bloklarla uyğun deyil.'
-  return 'Həll əməliyyatını icra etmək mümkün olmadı.'
-}
-
-function formatUpdatedAt(value: string): string {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('az-AZ')
-}
-
-export default function AdminQuestionEditor({
-  authenticatedRequest,
-  onBack,
-  initialRevisionId,
-}: AdminQuestionEditorProps) {
-  const [revisionInput, setRevisionInput] = useState('')
-  const [revision, setRevision] = useState<QuestionRevisionEditorRead | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [isStale, setIsStale] = useState(false)
-  const [questionTypes, setQuestionTypes] = useState<QuestionTypeCatalogResponse[]>([])
-  const [selectedQuestionTypeId, setSelectedQuestionTypeId] = useState('')
-  const [questionTypesLoading, setQuestionTypesLoading] = useState(true)
-  const [questionTypesError, setQuestionTypesError] = useState<string | null>(null)
-  const [isCreatingDraft, setIsCreatingDraft] = useState(false)
-  const [mutationPending, setMutationPending] = useState<MutationName | null>(null)
-  const [framePlacements, setFramePlacements] = useState<Record<string, PersistedVisualPlacement>>({})
-  const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
-  const [selectedDocumentNodeId, setSelectedDocumentNodeId] = useState<string | null>(null)
-  const [editingValue, setEditingValue] = useState('')
-  const [editingGeometry, setEditingGeometry] = useState<GeometrySourceDataV1 | null>(null)
-  const [activeSection, setActiveSection] = useState<EditorDocumentSectionId>('question')
-  const [activeModule, setActiveModule] = useState<UniversalEditorModuleId>('text')
-  const restoreFormulaAfterModuleChange = useRef(false)
-  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(true)
-  const [documentDrawerOpen, setDocumentDrawerOpen] = useState(false)
-  const documentDrawerRef = useRef<HTMLDialogElement>(null)
-  const mutationInFlight = useRef(false)
-  const documentButtonRef = useRef<HTMLButtonElement>(null)
-  const session = useUniversalEditorSession()
-  useLayoutEffect(() => {
-    if (!restoreFormulaAfterModuleChange.current) return
-    restoreFormulaAfterModuleChange.current = false
-    traceContext('module-restore-formula-start', { module: activeModule, targetKind: session.getActiveContext()?.kind ?? null, field: fieldTraceState(session.math.current) })
-    session.restoreMathTarget()
-    traceContext('module-restore-formula-end', { module: activeModule, targetKind: session.getActiveContext()?.kind ?? null, field: fieldTraceState(session.math.current) })
-  }, [activeModule, session])
-  useEffect(() => {
-    if (documentDrawerOpen) documentDrawerRef.current?.showModal()
-    else documentDrawerRef.current?.close()
-  }, [documentDrawerOpen])
-  useLayoutEffect(() => {
-    if (!documentDrawerOpen) return
-    const drawer = documentDrawerRef.current
-    const workspace = drawer?.parentElement?.querySelector('.universal-editor') ?? drawer?.parentElement
-    if (!drawer || !workspace) return
-    const positionDrawer = () => {
-      const bounds = workspace.getBoundingClientRect()
-      const top = Math.max(0, bounds.top)
-      const right = Math.min(window.innerWidth, bounds.right)
-      drawer.style.setProperty('--document-drawer-top', `${top}px`)
-      drawer.style.setProperty('--document-drawer-right', `${Math.max(0, window.innerWidth - right)}px`)
-      drawer.style.setProperty('--document-drawer-height', `${Math.max(0, Math.min(window.innerHeight, bounds.bottom) - top)}px`)
-      drawer.style.setProperty('--document-drawer-width', `${Math.max(0, right - Math.max(0, bounds.left))}px`)
-    }
-    positionDrawer()
-    const observer = new ResizeObserver(positionDrawer)
-    observer.observe(workspace)
-    window.addEventListener('resize', positionDrawer)
-    window.addEventListener('scroll', positionDrawer, true)
-    return () => {
-      observer.disconnect()
-      window.removeEventListener('resize', positionDrawer)
-      window.removeEventListener('scroll', positionDrawer, true)
-    }
-  }, [documentDrawerOpen])
-  const runAuthenticatedRequest = useEffectEvent(authenticatedRequest)
-  const initialRevisionLoadId = useRef<string | null>(null)
-
-  useEffect(() => {
-    let isCurrent = true
-    const loadQuestionTypes = async () => {
-      setQuestionTypesLoading(true)
-      setQuestionTypesError(null)
-      try {
-        const loaded = await authenticatedRequest((token) => getQuestionTypes(token))
-        if (!isCurrent) return
-        setQuestionTypes(loaded)
-        setSelectedQuestionTypeId((current) => current || loaded[0]?.id || '')
-      } catch (loadError: unknown) {
-        if (!isCurrent) return
-        setQuestionTypes([])
-        setQuestionTypesError(editorErrorMessage(loadError))
-      } finally {
-        if (isCurrent) setQuestionTypesLoading(false)
-      }
-    }
-    void loadQuestionTypes()
-    return () => { isCurrent = false }
-  }, [authenticatedRequest])
-
-  useEffect(() => {
-    if (!initialRevisionId || initialRevisionLoadId.current === initialRevisionId) return
-    initialRevisionLoadId.current = initialRevisionId
-    let isCurrent = true
-    let completed = false
-    setRevisionInput(initialRevisionId)
-    setIsLoading(true)
-    setError(null)
-
-    const loadInitialRevision = async () => {
-      try {
-        const loaded = await runAuthenticatedRequest((token) =>
-          getQuestionRevisionForEditor(token, initialRevisionId),
-        )
-        if (!isCurrent) return
-        setRevision(loaded)
-        setRevisionInput(loaded.revision_id)
-        setIsStale(false)
-        setEditingBlockId(null)
-        setSelectedDocumentNodeId(null)
-        setEditingValue('')
-      } catch (loadError: unknown) {
-        if (!isCurrent) return
-        setRevision(null)
-        setError(editorErrorMessage(loadError))
-      } finally {
-        if (isCurrent) {
-          completed = true
-          setIsLoading(false)
+    def test_registry_has_stable_ids_and_azerbaijani_labels(self) -> None:
+        expected = {
+            "text": "Mətn",
+            "algebra": "Cəbr",
+            "geometry": "Həndəsə",
+            "graph": "Qrafik",
+            "table": "Cədvəl",
+            "chart": "Diaqram",
+            "image": "Şəkil",
+            "diagram": "Sxem",
+            "symbols": "Simvollar",
         }
-      }
-    }
+        for module_id, label in expected.items():
+            self.assertIn(f"id: '{module_id}', label: '{label}'", self.registry)
 
-    void loadInitialRevision()
-    return () => {
-      isCurrent = false
-      if (!completed && initialRevisionLoadId.current === initialRevisionId) {
-        initialRevisionLoadId.current = null
-      }
-    }
-  }, [initialRevisionId])
+    def test_editor_tabs_are_registry_driven_and_default_to_text(self) -> None:
+        self.assertIn("UNIVERSAL_EDITOR_MODULES.map", self.editor)
+        self.assertIn("useState<UniversalEditorModuleId>('text')", self.editor)
+        self.assertIn("setActiveModule(module.id)", self.editor)
+        self.assertNotIn("setRevision(null); setActiveModule", self.editor)
 
-  const fetchRevision = async (revisionId: string) => {
-    const loaded = await authenticatedRequest((token) =>
-      getQuestionRevisionForEditor(token, revisionId),
-    )
-    setRevision(loaded)
-    setRevisionInput(loaded.revision_id)
-    setIsStale(false)
-    return loaded
-  }
+    def test_module_icons_and_truthful_availability(self) -> None:
+        for module_id in ("text", "algebra", "geometry", "graph", "table", "chart", "image", "diagram", "symbols"):
+            self.assertIn(f"{module_id}:", self.editor)
+        self.assertIn("const Icon = MODULE_ICONS[module.id]", self.editor)
+        self.assertIn('<Icon size={15} aria-hidden="true" />', self.editor)
+        self.assertIn("disabled={!module.available || activeSection !== 'question'}", self.editor)
+        self.assertIn("aria-selected={activeModule === module.id}", self.editor)
 
-  const loadRevision = async () => {
-    const revisionId = revisionInput.trim()
-    if (!revisionId || isLoading || isCreatingDraft || mutationPending) return
-    setIsLoading(true)
-    setError(null)
-    try {
-      await fetchRevision(revisionId)
-      setEditingBlockId(null)
-      setSelectedDocumentNodeId(null)
-      setEditingValue('')
-    } catch (loadError: unknown) {
-      if (!isStale) setRevision(null)
-      setError(editorErrorMessage(loadError))
-    } finally {
-      setIsLoading(false)
-    }
-  }
+    def test_symbol_palette_routes_to_the_retained_compatible_target(self) -> None:
+        symbols = (ROOT / "frontend/src/components/universalEditorSymbols.ts").read_text(encoding="utf-8")
+        for category in ("Tez-tez", "Əməliyyatlar", "Münasibətlər", "Çoxluqlar", "Yunan hərfləri", "Məntiq", "Oxlar", "Həndəsə"):
+            self.assertIn(f"name: '{category}'", symbols)
+        self.assertIn("universal-editor-symbol-grid", self.ribbon)
+        self.assertIn("session?.restoreTextTarget()?.insertText(item.glyph)", self.ribbon)
+        self.assertIn("session?.insertMath(item.latex)", self.ribbon)
+        self.assertIn("insertText: (value)", self.commands)
+        self.assertIn("aria-label={`${item.name} (${item.glyph})`}", self.ribbon)
+        self.assertIn("grid-template-columns: repeat(8", self.styles)
 
-  const createDraft = async () => {
-    if (!selectedQuestionTypeId || isCreatingDraft || isLoading || mutationPending || isStale) return
-    setIsCreatingDraft(true)
-    setError(null)
-    try {
-      const draft = await authenticatedRequest((token) =>
-        createQuestionDraft(token, {
-          question_type_id: selectedQuestionTypeId,
-          primary_topic_id: null,
-          related_topic_ids: [],
-          purpose_ids: [],
-        }),
-      )
-      setRevisionInput(draft.revision_id)
-      await fetchRevision(draft.revision_id)
-      setEditingBlockId(null)
-      setSelectedDocumentNodeId(null)
-      setEditingValue('')
-    } catch (createError: unknown) {
-      setRevision(null)
-      setError(editorErrorMessage(createError))
-    } finally {
-      setIsCreatingDraft(false)
-    }
-  }
+    def test_font_controls_offer_validated_named_families_and_point_sizes(self) -> None:
+        self.assertIn("<option value=\"serif\">Serif</option>", self.ribbon)
+        for name in ("Times New Roman", "Arial", "Calibri", "Cambria", "Georgia", "Verdana"):
+            self.assertIn(name, self.ribbon)
+        self.assertIn("TEXT_SIZE_PRESETS.map", self.ribbon)
+        self.assertNotIn('aria-label="Üslub"', self.ribbon)
+        self.assertIn('className="universal-editor-global-keyboard"', self.ribbon)
+        self.assertIn("canFormat(kind === 'foreground' ? 'format-foreground-color' : 'format-background-color')", self.ribbon)
 
-  const runMutation = async (
-    name: MutationName,
-    operation: (token: string, current: QuestionRevisionEditorRead) => Promise<unknown>,
-    afterReload?: () => void,
-    conflictMessage?: string,
-  ) => {
-    const current = revision
-    if (
-      current === null
-      || current.status !== 'draft'
-      || mutationPending
-      || mutationInFlight.current
-      || isLoading
-      || isCreatingDraft
-      || isStale
-    ) return false
-    setMutationPending(name)
-    mutationInFlight.current = true
-    setError(null)
-    try {
-      await authenticatedRequest((token) => operation(token, current))
-      try {
-        await fetchRevision(current.revision_id)
-        afterReload?.()
-        return true
-      } catch (reloadError: unknown) {
-        setIsStale(true)
-        setError(`Əməliyyat tamamlandı, lakin yenilənmiş reviziya yüklənmədi. Redaktə bloklanıb: ${editorErrorMessage(reloadError)}`)
-        return false
-      }
-    } catch (mutationError: unknown) {
-      if (mutationError instanceof ApiError && mutationError.status === 409 && conflictMessage) {
-        setError(conflictMessage)
-      } else if (
-        name === 'solution'
-        && mutationError instanceof ApiError
-        && !(mutationError.status === 409 && typeof mutationError.detail === 'string' && mutationError.detail.includes('modified by another request'))
-      ) {
-        setError(solutionErrorMessage(mutationError))
-      } else if (mutationError instanceof ApiError && mutationError.status === 409) {
-        setIsStale(true)
-        setError('Reviziya başqa sorğu tərəfindən dəyişdirilib. Son vəziyyət yüklənir; əməliyyatı yenidən özünüz başladın.')
-        try {
-          await fetchRevision(current.revision_id)
-        } catch (reloadError: unknown) {
-          setIsStale(true)
-          setError(`Reviziya konflikti yarandı və son vəziyyət yüklənmədi. Redaktə bloklanıb: ${editorErrorMessage(reloadError)}`)
-        }
-      } else {
-        setError(editorErrorMessage(mutationError))
-      }
-      return false
-    } finally {
-      setMutationPending(null)
-      mutationInFlight.current = false
-    }
-  }
+    def test_contextual_colors_and_formula_clipboard_menu_are_functional(self) -> None:
+        colors = self.ribbon.split('className="universal-editor-color-control"', 1)[1].split('</details>', 1)[0]
+        self.assertNotIn('son rəngi tətbiq et', colors)
+        self.assertEqual(colors.count('<summary'), 1)
+        self.assertIn('className="universal-editor-color-icon"', colors)
+        self.assertIn('backgroundColor: lastColor[kind]', colors)
+        self.assertIn('<span aria-hidden="true">▾</span></summary>', colors)
+        self.assertIn('open={activeMenu === menu}', colors)
+        self.assertIn('.universal-editor-color-palette { position: absolute; top: 100%; left: 0;', self.styles)
+        self.assertIn("textCommands?.setColor(kind", self.ribbon)
+        self.assertIn("session?.formatMathColor(kind, color)", self.ribbon)
+        self.assertIn("formulaClipboardHtml(latex)", self.ribbon)
+        self.assertIn("navigator.clipboard.write", self.ribbon)
+        self.assertIn("navigator.clipboard.read", self.ribbon)
+        for command in ('copy', 'cut', 'paste', 'selectAll'):
+            self.assertIn(f"runContextClipboard('{command}')", self.ribbon)
+        self.assertIn("role=\"status\"", self.ribbon)
+        self.assertIn("Ctrl+V istifadə edin", self.ribbon)
 
-  const revisionReadOnly = revision !== null && revision.status !== 'draft'
-  const mutationDisabled = mutationPending !== null
-    || isLoading
-    || isCreatingDraft
-    || isStale
-    || revisionReadOnly
-  const universalDocument = useMemo(
-    () => adaptContentBlocksToUniversalDocument(revision?.blocks ?? []),
-    [revision?.blocks],
-  )
-  const applyMetadata = (result: QuestionMetadataRead) => {
-    // Keep mounted content objects/history and unsaved structured text intact.
-    setRevision((current) => current?.revision_id === result.revision_id ? {
-      ...current, question_type_id: result.question_type_id, difficulty: result.difficulty,
-      updated_at: result.updated_at, answer_policy: result.answer_policy,
-    } : current)
-  }
-  const updateMetadata = async (change: Omit<QuestionMetadataUpdate, 'expected_revision_updated_at'>) => {
-    if (!revision || mutationDisabled || mutationInFlight.current) return
-    const current = revision
-    mutationInFlight.current = true
-    setMutationPending('metadata')
-    setError(null)
-    try {
-      const persisted = await authenticatedRequest((token) => updateQuestionMetadata(token, current.revision_id, {
-        ...change, expected_revision_updated_at: current.updated_at,
-      }))
-      applyMetadata(persisted)
-    } catch (mutationError: unknown) {
-      if (mutationError instanceof ApiError && mutationError.status === 409) {
-        if (mutationError.detail === 'Question type is shared by other revisions.') {
-          setError('Bu sual tipi digər reviziyalarla ortaqdır. Onu burada dəyişmək mümkün deyil.')
-        } else {
-          setIsStale(true)
-          setError('Reviziya dəyişib. Son vəziyyəti sinxronlaşdırın və əməliyyatı yenidən başladın.')
-        }
-      } else {
-        setError(editorErrorMessage(mutationError))
-      }
-    } finally {
-      mutationInFlight.current = false
-      setMutationPending(null)
-    }
-  }
-  const blockForNode = (nodeId: string) => revision?.blocks.find((block) => block.id === nodeId) ?? null
+    def test_math_keyboard_and_context_menu_are_shared_capabilities(self) -> None:
+        self.assertEqual(self.ribbon.count('className="universal-editor-global-keyboard"'), 1)
+        self.assertIn("activeContext.kind !== 'text' && activeContext.kind !== 'formula'", self.ribbon)
+        self.assertIn("text?.insertInlineMath('', (element)", self.session)
+        self.assertIn("window.mathVirtualKeyboard?.show()", self.session)
+        self.assertIn("document.addEventListener('contextmenu', open, true)", self.ribbon)
+        self.assertIn('role="menu" aria-label="Redaktə menyusu"', self.ribbon)
+        for command in ("'cut'", "'copy'", "'paste'", "'selectAll'"):
+            self.assertIn(f"runContextClipboard({command})", self.ribbon)
+        self.assertIn("window.innerWidth - 190", self.ribbon)
+        self.assertIn("window.innerHeight - 180", self.ribbon)
 
-  const startEditing = (block: ContentBlockRead) => {
-    if (block.block_type === 'formula') setEditingValue(block.payload.source_latex)
-    else if (block.block_type === 'geometry') {
-      const geometry = normalizeGeometrySourceDataV1(block.payload.source_data)
-      if (geometry === null) return
-      setEditingGeometry(structuredClone(geometry))
-      setActiveModule('geometry')
-      session.activateGeometry(block.id)
-    }
-    else return
-    setEditingBlockId(block.id)
-  }
+    def test_geometry_tools_use_existing_engine_in_shared_ribbon(self) -> None:
+        self.assertIn("setGeometryCommands({ id: targetId", self.geometry)
+        self.assertIn("active.id !== targetId", self.geometry)
+        self.assertIn("geometry?.run(item.action)", self.ribbon)
+        self.assertIn("ref={session?.setGeometryToolbarHost}", self.ribbon)
+        self.assertIn("<GeometryAuthoringBoard", self.geometry)
+        self.assertIn("source_data: editingGeometry", self.editor)
 
-  const clearFrameDraft = (id: string) => setFramePlacements(current => {
-    const next = { ...current }; delete next[id]; return next
-  })
-  const saveFrame = (id: string) => {
-    const placement = framePlacements[id]
-    if (!placement) return
-    void runMutation('geometry-update', (token, current) => updateVisualPlacement(token, current.revision_id, id,
-      placement, current.updated_at), () => clearFrameDraft(id))
-  }
-  const createGeometryFrame = () => {
-    if (editingBlockId) { setError('Əvvəlcə cari redaktəni yadda saxlayın və ya ləğv edin.'); return }
-    const geometry = { ...emptyGeometryV1(), description: 'Həndəsə təsviri' }
-    const canvas = document.querySelector('.universal-question-canvas')
-    const placement = defaultGeometryPlacement(geometry, canvas?.scrollHeight ?? 0)
-    let created: GeometryBlockRead | null = null
-    void runMutation('geometry-create', async (token, current) => {
-      created = await createGeometryBlock(token, current.revision_id, {
-        block_type: 'geometry', payload: { source_data: geometry, format_version: 1 },
-        visual_placement: placement, expected_revision_updated_at: current.updated_at,
-      })
-    }, () => {
-      if (!created) return
-      setSelectedDocumentNodeId(created.id); startEditing(created)
-      const id = created.id
-      requestAnimationFrame(() => document.querySelector(`[data-frame-id="${id}"]`)?.scrollIntoView({ block: 'center' }))
-    })
-  }
-  const saveEditing = (block: ContentBlockRead) => {
-    if (block.block_type === 'formula') {
-      void runMutation('formula-update', (token, current) =>
-        updateFormulaBlock(token, current.revision_id, block.id, {
-          source_latex: editingValue,
-          format_version: 1,
-          expected_revision_updated_at: current.updated_at,
-        }), () => { setEditingBlockId(null); setEditingValue('') })
-    } else if (block.block_type === 'geometry' && editingGeometry !== null) {
-      // A frame-only gesture must not canonicalize or rewrite the Geometry payload,
-      // including a legacy V1 payload with omitted optional fields.
-      if (JSON.stringify(editingGeometry) === JSON.stringify(normalizeGeometrySourceDataV1(block.payload.source_data))) {
-        const placement = framePlacements[block.id]
-        if (placement) void runMutation('geometry-update', (token, current) => updateVisualPlacement(token,
-          current.revision_id, block.id, placement, current.updated_at),
-        () => { setEditingBlockId(null); setEditingGeometry(null); clearFrameDraft(block.id) })
-        else { setEditingBlockId(null); setEditingGeometry(null) }
-        return
-      }
-      void runMutation('geometry-update', (token, current) =>
-        updateGeometryBlock(token, current.revision_id, block.id, {
-          visual_placement: framePlacements[block.id],
-          source_data: editingGeometry,
-          format_version: 1,
-          expected_revision_updated_at: current.updated_at,
-        }), () => { setEditingBlockId(null); setEditingGeometry(null); clearFrameDraft(block.id) })
-    }
-  }
+    def test_future_modules_are_inert_not_fake_persistence(self) -> None:
+        self.assertIn("available: false", self.registry)
+        self.assertIn("!getUniversalEditorModule(activeModule).available", self.editor)
+        self.assertIn("disabled={!module.available", self.editor)
+        self.assertNotIn("createGraphBlock", self.editor)
+        self.assertNotIn("createTableBlock", self.editor)
 
-  const removeBlock = (block: ContentBlockRead) => {
-    if (!window.confirm('Bu məzmunu silmək istədiyinizə əminsiniz?')) return
-    void runMutation('delete', (token, current) =>
-      deleteBlock(token, current.revision_id, block.id, {
-        expected_revision_updated_at: current.updated_at,
-      }), () => {
-        if (editingBlockId === block.id) { setEditingBlockId(null); setEditingValue(''); setEditingGeometry(null) }
-        if (selectedDocumentNodeId === block.id) setSelectedDocumentNodeId(null)
-      })
-  }
+    def test_existing_authoring_engines_and_domain_sections_remain(self) -> None:
+        for token in (
+            "<UniversalEditorRibbon",
+            "const createGeometryFrame = () => {",
+            "onCreateGeometryFrame={createGeometryFrame}",
+            "<AnswerEditorSection",
+            "<SolutionEditorSection",
+            "<AIAuthoringPanel",
+            "createTextBlock(token, current.revision_id",
+            "expected_revision_updated_at: current.updated_at",
+        ):
+            self.assertIn(token, self.editor)
 
-  const moveBlock = (index: number, direction: -1 | 1) => {
-    if (revision === null) return
-    const target = index + direction
-    if (target < 0 || target >= revision.blocks.length) return
-    const blockIds = revision.blocks.map((block) => block.id)
-    ;[blockIds[index], blockIds[target]] = [blockIds[target], blockIds[index]]
-    void runMutation('reorder', (token, current) =>
-      reorderBlocks(token, current.revision_id, {
-        block_ids: blockIds,
-        expected_revision_updated_at: current.updated_at,
-      }))
-  }
+    def test_algebra_is_inline_ribbon_without_redundant_formula_form(self) -> None:
+        self.assertIn("data-active-module={activeModule}", self.editor)
+        self.assertIn("textAuthoringEnabled={activeModule === 'text' || activeModule === 'algebra'}", self.editor)
+        self.assertEqual(self.editor.count("const createGeometryFrame = () => {"), 1)
+        self.assertEqual(self.editor.count("onCreateGeometryFrame={createGeometryFrame}"), 1)
+        self.assertNotIn("newFormula", self.editor)
+        self.assertNotIn("createFormulaBlock", self.editor)
+        for label in ("Əlavə et", "Kəsr", "Qüvvət", "Kök", "Mötərizə", "Funksiya", "Cəm/hasil", "İnteqral", "Limit", "Matris", "Simvollar", "Klaviatura"):
+            self.assertIn(label, self.ribbon)
+        self.assertIn("session?.insertMath('', true)", self.ribbon)
+        self.assertIn("text?.insertInlineMath(latex)", self.session)
+        self.assertIn("restoreTextTarget()", self.session)
+        self.assertIn("type: 'inline_math'", self.commands)
+        self.assertIn("querySelectorAll<HTMLElement>('math-field')", self.commands)
+        self.assertIn("onReady?.(field)", self.commands)
+        self.assertNotIn("Yazmağa başla", self.editor)
+        self.assertNotIn("Mətn blokları ilə işləyin", self.registry)
 
-  const createDirectText = (document: StructuredTextDocument) =>
-    runMutation('text-create', (token, current) => createTextBlock(token, current.revision_id, {
-      block_type: 'text',
-      payload: { document, format_version: 1 },
-      expected_revision_updated_at: current.updated_at,
-    }))
+    def test_document_details_are_a_dismissible_modal_drawer_without_ids(self) -> None:
+        self.assertIn("documentDrawerRef.current?.showModal()", self.editor)
+        self.assertIn("onCancel={() => setDocumentDrawerOpen(false)}", self.editor)
+        self.assertIn("documentButtonRef.current?.focus()", self.editor)
+        self.assertNotIn("universal-editor-sidebar--right", self.editor + self.styles)
+        self.assertIn('<section aria-label="Sənəd paneli">', self.editor)
+        self.assertIn('className="universal-editor-document-properties"', self.editor)
+        self.assertIn('workspace.getBoundingClientRect()', self.editor)
+        self.assertIn('observer.disconnect()', self.editor)
+        for token in ('width: min(320px, var(--document-drawer-width, 100vw))',
+                      '.universal-editor-document-drawer::backdrop { background: transparent; }',
+                      'overflow-y: auto', 'overflow-x: hidden',
+                      '.universal-editor-document-properties dd { margin: 0;'):
+            self.assertIn(token, self.styles)
+        for token in (
+            "revision.revision_number", "revision.status",
+            "revision.source_display_name", "revision.source_detail",
+            "revision.difficulty", "formatUpdatedAt(revision.updated_at)",
+        ):
+            self.assertIn(token, self.editor)
+        for token in ("UUID", "<dd>{revision.question_type_id}", "<dd>{revision.source_id}", "<dd>{revision.revision_id}"):
+            self.assertNotIn(token, self.editor)
 
-  const updateStructuredText = (blockId: string, document: StructuredTextDocument) =>
-    runMutation('text-update', (token, current) => updateTextBlock(
-      token,
-      current.revision_id,
-      blockId,
-      {
-        document,
-        format_version: 1,
-        expected_revision_updated_at: current.updated_at,
-      },
-    ))
+    def test_document_labels_and_canvas_selection_survive_navigation_removal(self) -> None:
+        self.assertIn("function universalDocumentNodeLabel", self.document_model)
+        for label in ("Mətn", "Düstur", "Şəkil", "Həndəsə"):
+            self.assertIn(label, self.document_model)
+        self.assertIn("selectedNodeId={selectedDocumentNodeId}", self.editor)
+        self.assertIn("setSelectedDocumentNodeId(nodeId)", self.editor)
 
-  return (
-    <UniversalEditorSessionContext.Provider value={session}>
-    <main className="workspace admin-editor-workspace">
-      <div className="content admin-editor-content">
-        <header className="admin-editor-header">
-          <button className="admin-editor-back" type="button" onClick={onBack}><ArrowLeft size={19} /> Sual bazası</button>
-          <div className="admin-editor-header__identity"><h1>Universal Sual Redaktoru</h1></div>
-          <div className="admin-editor-header__status" aria-label="Cari sənəd statusu">
-            {revision ? <><span>{statusLabels[revision.status]}</span><small>Reviziya #{revision.revision_number}</small></> : <small>Sənəd açılmayıb</small>}
-          </div>
-          <UniversalEditorHistoryControls disabled={!revision || mutationDisabled || activeSection !== 'question'} />
-          <button ref={documentButtonRef} data-editor-ribbon="" type="button" aria-haspopup="dialog" aria-expanded={documentDrawerOpen} onClick={() => setDocumentDrawerOpen(true)}><FileText size={16} /> Sənəd</button>
-          <button type="button" data-editor-ribbon="" disabled={!revision || mutationDisabled || activeSection !== 'question'} onMouseDown={(event) => event.preventDefault()} onClick={() => {
-            const block = editingBlockId ? blockForNode(editingBlockId) : null
-            if (block) saveEditing(block)
-            else if (selectedDocumentNodeId && framePlacements[selectedDocumentNodeId]) saveFrame(selectedDocumentNodeId)
-            else void session.save.current?.()
-          }}><Save size={16} /> Yadda saxla</button>
-        </header>
+    def test_current_document_properties_use_real_metadata_contract(self) -> None:
+        drawer = self.editor.split("<dialog", 1)[1].split("</dialog>", 1)[0]
+        for absent in ("Yeni sual qaralaması", "Qaralama yarat", "createDraft", "deleteBlock", "session.history"):
+            self.assertNotIn(absent, drawer)
+        for control in ("document-question-type", "document-difficulty"):
+            opening = drawer.split(f'<select id="{control}"', 1)[1].split(">", 1)[0]
+            self.assertIn("disabled={mutationDisabled", opening)
+        self.assertIn("questionTypes.map", drawer)
+        self.assertIn("questionTypeLabel(type)", drawer)
+        self.assertNotIn("type.display_name", drawer)
+        self.assertNotIn("{type.name}", drawer)
+        self.assertIn("updateMetadata({ question_type_id:", drawer)
+        self.assertIn("updateMetadata({ difficulty:", drawer)
+        mutation = self.editor.split("const updateMetadata =", 1)[1].split("const blockForNode", 1)[0]
+        self.assertIn("applyMetadata(persisted)", mutation)
+        self.assertIn("expected_revision_updated_at: current.updated_at", mutation)
+        self.assertIn("setIsStale(true)", mutation)
+        self.assertNotIn("saveEditing", mutation)
+        self.assertNotIn("session.history", mutation)
+        self.assertIn("!revision &&", self.editor)
+        self.assertEqual(self.editor.count("Yeni sual qaralaması"), 1)
 
-        {!revision && <div className="admin-editor-entrybar" aria-label="Sual və reviziya əməliyyatları">
-        <section className="admin-editor-create" aria-labelledby="draft-create-title">
-          <div className="admin-editor-create__intro"><span className="admin-editor-create__icon"><Sparkles size={20} /></span><div><strong id="draft-create-title">Yeni sual qaralaması</strong><span>Aktiv sual tipini seçin və boş redaktor yaradın.</span></div></div>
-          <div className="admin-editor-create__controls">
-            <label><span>Sual tipi</span><select value={selectedQuestionTypeId} onChange={(event) => setSelectedQuestionTypeId(event.target.value)} disabled={questionTypesLoading || isCreatingDraft || mutationPending !== null || isStale}>
-              {questionTypes.length === 0 && <option value="">{questionTypesLoading ? 'Yüklənir…' : 'Sual tipi yoxdur'}</option>}
-              {questionTypes.map((type) => <option value={type.id} key={type.id}>{questionTypeLabel(type)}</option>)}
-            </select></label>
-            <button type="button" onClick={() => void createDraft()} disabled={questionTypesLoading || isCreatingDraft || isLoading || mutationPending !== null || isStale || !selectedQuestionTypeId}>
-              {isCreatingDraft && <LoaderCircle className="admin-editor-spinner" size={18} />}{isCreatingDraft ? 'Yaradılır…' : 'Qaralama yarat'}
-            </button>
-          </div>
-          {questionTypesError && <p className="admin-editor-create__error" role="alert">Sual tiplərini yükləmək mümkün olmadı: {questionTypesError}</p>}
-        </section>
+    def test_property_labels_follow_existing_catalog_and_enum(self) -> None:
+        labels = (ROOT / "frontend/src/components/questionPropertyLabels.ts").read_text(encoding="utf-8")
+        enums = (ROOT / "backend/app/core/enums.py").read_text(encoding="utf-8")
+        self.assertIn("type.name === 'multiple_choice') return 'Qapalı'", labels)
+        self.assertIn("type.name === 'open_response') return 'Açıq'", labels)
+        self.assertIn("return 'Tərcüməsi olmayan sual tipi'", labels)
+        self.assertNotIn("return type.name", labels)
+        self.assertNotIn("return type.display_name", labels)
+        for key, label in (("easy", "Asan"), ("medium", "Orta"), ("hard", "Çətin")):
+            self.assertIn(f'"{key}"', enums)
+            self.assertIn(f"{key}: '{label}'", labels)
+        # These are translations, never an alternative catalog with persistence IDs.
+        self.assertNotIn("id:", labels)
+        self.assertIn("Record<QuestionDifficulty, string>", labels)
 
-        </div>}
+    def test_formatting_uses_project_commands_and_unsupported_controls_are_inert(self) -> None:
+        for command in ("setFontFamily", "setFontSize", "setAlignment", "toggleBold", "toggleItalic", "toggleUnderline", "toggleBulletList", "toggleOrderedList"):
+            self.assertIn(f"textCommands?.{command}", self.ribbon)
+        self.assertIn("textCommands?.setColor(kind", self.ribbon)
+        self.assertIn("TEXT_COLOR_HEX[color]", self.ribbon)
 
-        {error && <div className={`admin-editor-error${isStale ? ' admin-editor-error--stale' : ''}`} role="alert">{error}</div>}
-        {mutationPending && <div className="admin-editor-pending"><LoaderCircle className="admin-editor-spinner" size={17} /> Dəyişiklik saxlanılır və reviziya yenilənir…</div>}
+    def test_workspace_header_and_typed_document_sections_exist(self) -> None:
+        self.assertIn("Universal Sual Redaktoru", self.editor)
+        self.assertIn("Sual bazası", self.editor)
+        self.assertIn("type EditorDocumentSectionId", self.editor)
+        for section_id in ("question", "answer", "solution", "hint", "assessment", "history"):
+            self.assertIn(f"id: '{section_id}'", self.editor)
+        self.assertIn("EDITOR_DOCUMENT_SECTIONS.map", self.editor)
+        self.assertLess(self.editor.index('<header className="admin-editor-header">'), self.editor.index('className="universal-editor-sections"'))
+        self.assertLess(self.editor.index('className="universal-editor-sections"'), self.editor.index('className="universal-editor-modules"'))
+        self.assertLess(self.editor.index('className="universal-editor-modules"'), self.editor.index('<UniversalEditorRibbon'))
+        self.assertIn("session.save.current?.()", self.editor)
 
-        <dialog ref={documentDrawerRef} data-editor-ribbon="" className="universal-editor-document-drawer" aria-label="Sənəd" onCancel={() => setDocumentDrawerOpen(false)} onClose={() => { setDocumentDrawerOpen(false); documentButtonRef.current?.focus() }} onClick={(event) => { if (event.target === event.currentTarget) setDocumentDrawerOpen(false) }}>
-          <section aria-label="Sənəd paneli">
-            <header><h2>Sənəd</h2><button type="button" aria-label="Sənədi bağla" onClick={() => setDocumentDrawerOpen(false)}><X size={18} /></button></header>
-            <div className="universal-editor-document-properties">
-            {revision && <dl>
-              <div><dt>Reviziya</dt><dd>#{revision.revision_number}</dd></div>
-              <div><dt>Status</dt><dd>{statusLabels[revision.status]}</dd></div>
-              <div><dt><label htmlFor="document-question-type">Sual tipi</label></dt><dd>
-                <select id="document-question-type" value={revision.question_type_id} disabled={mutationDisabled || questionTypesLoading || !questionTypes.some((type) => type.id === revision.question_type_id)} onChange={(event) => void updateMetadata({ question_type_id: event.target.value })}>
-                  {!questionTypes.some((type) => type.id === revision.question_type_id) && <option value={revision.question_type_id}>{questionTypesLoading ? 'Yüklənir…' : 'Cari sual tipi yüklənmədi'}</option>}
-                  {questionTypes.map((type) => <option key={type.id} value={type.id}>{questionTypeLabel(type)}</option>)}
-                </select>
-              </dd></div>
-              <div><dt>Mənbə</dt><dd>{revision.source_display_name ?? 'Təyin edilməyib'}</dd></div>
-              <div><dt>Mənbə detalı</dt><dd>{revision.source_detail ?? 'Təyin edilməyib'}</dd></div>
-              <div><dt><label htmlFor="document-difficulty">Çətinlik</label></dt><dd>
-                <select id="document-difficulty" value={revision.difficulty ?? ''} disabled={mutationDisabled} onChange={(event) => void updateMetadata({ difficulty: (event.target.value || null) as QuestionDifficulty | null })}>
-                  <option value="">Təyin edilməyib</option>
-                  {Object.entries(difficultyLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-              </dd></div>
-              <div><dt>Yenilənib</dt><dd>{formatUpdatedAt(revision.updated_at)}</dd></div>
-            </dl>}
-            {error && <p role="alert">{error}</p>}
-            {isStale && <button type="button" disabled={isLoading} onClick={() => void loadRevision()}>Sinxronlaşdır</button>}
-            </div>
-          </section>
-        </dialog>
-        {isStale && <button type="button" onClick={() => void loadRevision()} disabled={isLoading}><RefreshCw size={16} /> Sinxronlaşdır</button>}
-        {revision && <>
-          <section className="universal-editor" aria-label="Universal sual redaktoru">
-            <nav className="universal-editor-sections" aria-label="Sənəd bölmələri">
-              {EDITOR_DOCUMENT_SECTIONS.map((section) => (
-                <button
-                  type="button"
-                  key={section.id}
-                  disabled={!section.available}
-                  aria-current={activeSection === section.id ? 'page' : undefined}
-                  title={section.available ? `${section.label} bölməsini aç` : 'Növbəti mərhələ'}
-                  onClick={section.available ? () => { session.history.activate(null); session.showAI(false); setActiveSection(section.id) } : undefined}
-                >{section.label}{!section.available && <small>Sonra</small>}</button>
-              ))}
-            </nav>
-          <div className="universal-editor-modules" role="tablist" aria-label="Redaktor modulları" data-active-module={activeModule}>
-            {UNIVERSAL_EDITOR_MODULES.map((module) => {
-              const Icon = MODULE_ICONS[module.id]
-              return (
-              <button
-                className="universal-editor-module-tab"
-                type="button"
-                role="tab"
-                aria-selected={activeModule === module.id}
-                key={module.id}
-                disabled={!module.available || activeSection !== 'question'}
-                title={module.description}
-                onPointerDown={() => traceContext('module-pointerdown', { previousModule: activeModule, nextModule: module.id, targetKind: session.activeContext.current?.kind ?? null, field: fieldTraceState(session.math.current) })}
-                onClick={() => {
-                  traceContext('module-click', { previousModule: activeModule, nextModule: module.id, targetKind: session.activeContext.current?.kind ?? null, field: fieldTraceState(session.math.current) })
-                  restoreFormulaAfterModuleChange.current = module.id !== activeModule && session.getActiveContext()?.kind === 'formula'
-                  setActiveModule(module.id)
-                }}
-              ><Icon size={15} aria-hidden="true" />{module.label}</button>
-              )
-            })}
-          </div>
-          {activeSection === 'question' && <UniversalEditorRibbon module={activeModule} disabled={mutationDisabled} onCreateGeometryFrame={createGeometryFrame} />}
-          <div className={`admin-authoring-workspace-grid universal-editor-layout${leftPanelCollapsed ? ' is-left-collapsed' : ''}`}>
-            <aside className="admin-authoring-source universal-editor-sidebar universal-editor-sidebar--left" aria-label="Sənəd naviqasiyası">
-              <div className="universal-editor-pages-header">
-              {!leftPanelCollapsed && <strong>Səhifələr</strong>}
-              <button
-                className="universal-editor-collapse"
-                type="button"
-                onClick={() => setLeftPanelCollapsed((collapsed) => !collapsed)}
-                title={leftPanelCollapsed ? 'Səhifələr panelini genişləndir' : 'Səhifələr panelini yığ'}
-                aria-label={leftPanelCollapsed ? 'Səhifələr panelini genişləndir' : 'Səhifələr panelini yığ'}
-                aria-expanded={!leftPanelCollapsed}
-              >{leftPanelCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button>
-              </div>
-              {!leftPanelCollapsed && <ol className="universal-editor-pages-list" aria-label="Səhifələr">
-                {/* The loaded revision has one continuous document surface, not a paginated page collection. */}
-                <li className="universal-editor-page-item" aria-current="page" data-document-id={revision.revision_id}>
-                  <span className="universal-editor-page-preview" aria-hidden="true" />
-                  <span>Səhifə 1</span>
-                </li>
-              </ol>}
-            </aside>
-            <section className="admin-authoring-editor-column universal-editor-canvas" aria-label="Manual sual redaktoru">
-          {activeSection === 'question' ? <>
-          {revisionReadOnly && (
-            <div className="admin-editor-read-only" role="status">
-              Bu reviziya qaralama statusunda deyil və yalnız baxış üçün açılıb.
-            </div>
-          )}
+    def test_answer_and_solution_are_exclusive_document_sections(self) -> None:
+        self.assertIn("activeSection === 'answer' ? <AnswerEditorSection", self.editor)
+        self.assertIn("activeSection === 'solution' ? <SolutionEditorSection", self.editor)
+        question_branch = self.editor.split("activeSection === 'question' ? <>", 1)[1].split(
+            ": activeSection === 'answer' ?", 1
+        )[0]
+        self.assertNotIn("<AnswerEditorSection", question_branch)
+        self.assertNotIn("<SolutionEditorSection", question_branch)
 
-          {!getUniversalEditorModule(activeModule).available && <div className="universal-editor-future-module">
-            <strong>{getUniversalEditorModule(activeModule).label} modulu</strong>
-            <p>Bu modulun alətləri ayrıca tətbiq mərhələsində qoşulacaq. Cari reviziya və bloklar dəyişməz qalır.</p>
-          </div>}
+    def test_page_navigation_retains_accessible_collapse(self) -> None:
+        for token in (
+            "leftPanelCollapsed", "setLeftPanelCollapsed",
+            "Səhifələr panelini genişləndir", "aria-expanded={!leftPanelCollapsed}",
+            "is-left-collapsed",
+        ):
+            self.assertIn(token, self.editor + self.styles)
 
-          <UniversalQuestionCanvas
-            key={revision.revision_id}
-            document={universalDocument}
-            framePlacements={framePlacements}
-            onFramePlacementChange={(id, placement) => setFramePlacements(current => ({ ...current, [id]: placement }))}
-            onSaveFrame={saveFrame}
-            selectedNodeId={selectedDocumentNodeId}
-            editingNodeId={editingBlockId}
-            editingValue={editingValue}
-            editingGeometry={editingGeometry}
-            textAuthoringEnabled={activeModule === 'text' || activeModule === 'algebra'}
-            disabled={mutationDisabled}
-            onSelectNode={(nodeId) => {
-              if (editingGeometry && editingBlockId && nodeId && nodeId !== editingBlockId) {
-                setError('Əvvəlcə cari həndəsə redaktəsini yadda saxlayın və ya ləğv edin.'); return
-              }
-              setSelectedDocumentNodeId(nodeId)
-              const node = universalDocument.nodes.find((item) => item.id === nodeId)
-              if (node?.type !== 'paragraph') session.history.activate(null)
-              if (node?.type === 'geometry' && session.getActiveContext()?.id !== node.id) session.activateGeometry(node.id)
-            }}
-            onEditingValueChange={setEditingValue}
-            onEditingGeometryChange={setEditingGeometry}
-            onCreateText={createDirectText}
-            onUpdateText={updateStructuredText}
-            onStartEdit={(nodeId) => {
-              const block = blockForNode(nodeId)
-              if (block) { setSelectedDocumentNodeId(nodeId); startEditing(block) }
-            }}
-            onCancelEdit={() => { if (editingBlockId) clearFrameDraft(editingBlockId); setEditingBlockId(null); setEditingValue(''); setEditingGeometry(null) }}
-            onSaveEdit={(nodeId) => {
-              const block = blockForNode(nodeId)
-              if (block) saveEditing(block)
-            }}
-            onDelete={(nodeId) => {
-              const block = blockForNode(nodeId)
-              if (block) removeBlock(block)
-            }}
-            onMove={(nodeId, direction) => {
-              const index = universalDocument.nodes.findIndex((node) => node.id === nodeId)
-              if (index >= 0) moveBlock(index, direction)
-            }}
-          />
-          </> : activeSection === 'answer' ? <AnswerEditorSection
-            revision={revision}
-            disabled={mutationDisabled}
-            runMutation={(operation, afterReload, conflictMessage) => {
-              void runMutation('answer', operation, afterReload, conflictMessage)
-            }}
-          /> : activeSection === 'solution' ? <SolutionEditorSection
-            revision={revision}
-            disabled={mutationDisabled}
-            runMutation={(operation, afterReload, conflictMessage) => {
-              void runMutation('solution', operation, afterReload, conflictMessage)
-            }}
-          /> : <div className="universal-editor-future-section">Bu sənəd bölməsi növbəti tətbiq mərhələsi üçün hazırlanıb.</div>}
-            </section>
+    def test_left_rail_only_presents_existing_page_availability(self) -> None:
+        rail = self.editor.split('<aside className="admin-authoring-source', 1)[1].split('</aside>', 1)[0]
+        self.assertIn('>Səhifələr</strong>', rail)
+        self.assertIn('className="universal-editor-page-preview"', rail)
+        self.assertIn('Səhifə 1</span>', rail)
+        self.assertIn('data-document-id={revision.revision_id}', rail)
+        self.assertNotIn('aria-disabled="true"', rail)
+        for obsolete in ('Struktur', 'Sənəd strukturu', 'universal-editor-block-nav', '<small>', 'role="tab', 'universalDocument.nodes'):
+            self.assertNotIn(obsolete, rail)
+        self.assertIn('onClick={() => setLeftPanelCollapsed((collapsed) => !collapsed)}', rail)
+        self.assertIn('selectedNodeId={selectedDocumentNodeId}', self.editor)
+        self.assertIn('document={universalDocument}', self.editor)
+
+    def test_ai_is_presented_as_one_integrated_region(self) -> None:
+        self.assertEqual(self.editor.count('className="universal-editor-ai"'), 1)
+        self.assertNotIn('id="universal-ai-command"', self.editor)
+        self.assertEqual(self.editor.count("<AIAuthoringPanel"), 1)
+        self.assertIn("<AIAuthoringPanel embedded", self.editor)
+        self.assertIn("embedded?: boolean", self.ai_panel)
+        self.assertIn("{!embedded && <header>", self.ai_panel)
+        self.assertIn(".universal-editor-ai .ai-authoring-panel", self.styles)
+        default_panel = self.ai_panel.split("export default function AIAuthoringPanel", 1)[1].split("const warningLabels", 1)[0]
+        self.assertEqual(default_panel.count("<AICommandInput"), 1)
+        self.assertEqual(default_panel.count("const [instruction, setInstruction]"), 1)
+        self.assertIn('id="ai-authoring-instruction"', self.prompt)
+        self.assertIn("rows={expanded ? 2 : 1}", self.prompt)
+        for label in ("AI əmri", "Bənzər suallar", "AI cavabı", "Çətinlik səviyyəsini qiymətləndir"):
+            self.assertIn(label, default_panel)
+        self.assertNotIn("Çətinlik səviyyəsini təyin et", default_panel)
+
+    def test_shell_has_accessible_inert_foundations_and_no_unsafe_execution(self) -> None:
+        self.assertNotIn("<PermanentFormatBar", self.editor)
+        self.assertIn("aria-expanded={!leftPanelCollapsed}", self.editor)
+        combined = self.registry + self.editor + self.styles
+        self.assertNotIn("dangerouslySetInnerHTML", combined)
+        self.assertNotIn("eval(", combined)
+
+    def test_ai_and_keyboard_have_one_exclusive_bottom_panel_state(self) -> None:
+        self.assertIn("useState<'compact' | 'ai' | 'keyboard'>('compact')", self.session)
+        show_ai = self.session.split("const showAI", 1)[1].split("const toggleKeyboard", 1)[0]
+        self.assertIn("window.mathVirtualKeyboard?.hide()", show_ai)
+        self.assertIn("setBottomPanel(expanded ? 'ai' : 'compact')", show_ai)
+        self.assertIn("setBottomPanel('keyboard')", self.session)
+        self.assertIn("window.mathVirtualKeyboard?.show()", self.session)
+        self.assertIn("hidden={session.bottomPanel === 'keyboard'}", self.editor)
+        self.assertIn("expanded={session.bottomPanel === 'ai'}", self.editor)
+
+    def test_module_tabs_preserve_persistent_active_context(self) -> None:
+        components = ROOT / "frontend/src/components"
+        session = (components / "universalEditorSession.ts").read_text(encoding="utf-8")
+        ribbon = (components / "UniversalEditorRibbon.tsx").read_text(encoding="utf-8")
+        geometry = (components / "GeometryEditor.tsx").read_text(encoding="utf-8")
+        self.assertIn("restoreFormulaAfterModuleChange.current = module.id !== activeModule", self.editor)
+        self.assertIn("setActiveModule(module.id)", self.editor)
+        self.assertIn("session.restoreMathTarget()", self.editor)
+        self.assertNotIn("useUniversalEditorSession(() => setActiveModule('algebra'))", self.editor)
+        self.assertIn("kind: 'text'", session)
+        self.assertIn("kind: 'formula'", session)
+        self.assertIn("kind: 'geometry'", session)
+        self.assertIn("restoreMathTarget", session)
+        self.assertIn("restoreTextTarget", session)
+        self.assertIn("session?.restoreMathTarget()", ribbon)
+        self.assertIn("session?.activateGeometry(targetId, nextSelection)", geometry.replace("sessionRef.current?", "session?"))
+        self.assertIn("if (targetId) sessionRef.current?.unregisterGeometry(targetId)", geometry)
+        self.assertIn("onMouseDown={(event) => {", ribbon)
+        self.assertIn("<summary {...trigger(label)} title={label}>", ribbon)
+
+    def test_text_ribbon_uses_per_command_owner_capabilities(self) -> None:
+        components = ROOT / "frontend/src/components"
+        session = (components / "universalEditorSession.ts").read_text(encoding="utf-8")
+        ribbon = (components / "UniversalEditorRibbon.tsx").read_text(encoding="utf-8")
+        self.assertIn("FORMULA_FORMAT_CAPABILITIES", session)
+        self.assertIn("'format-font-size', 'format-bold', 'format-italic'", session)
+        self.assertIn("capabilities: ['geometry-edit']", session)
+        self.assertIn("field.applyStyle({ variantStyle:", session)
+        self.assertIn("field.applyStyle({ fontSize:", session)
+        self.assertIn("field.dispatchEvent(new Event('input'", session)
+        for capability in ("format-font-family", "format-font-size", "format-bold", "format-italic", "format-underline", "format-alignment", "format-list"):
+            self.assertIn(f"!canFormat('{capability}')", ribbon)
+        self.assertIn("session?.formatMath('bold')", ribbon)
+        self.assertIn("session?.formatMath('italic')", ribbon)
+        self.assertIn("session?.formatMath('font-size'", ribbon)
 
 
-            {activeSection === 'question' && <div className="universal-editor-ai" hidden={session.bottomPanel === 'keyboard'} onFocusCapture={() => session.history.activate(null)}>
-              <AIAuthoringPanel embedded expanded={session.bottomPanel === 'ai'} onExpandedChange={session.showAI} contextLabel={session.mathContext ? `Sual › Formula: ${session.mathContext}` : 'Sual'} key={revision.revision_id} authenticatedRequest={authenticatedRequest} revisionId={revision.revision_id} onAccepted={() => fetchRevision(revision.revision_id).then(() => undefined)} onOpenRevision={(revisionId) => fetchRevision(revisionId).then(() => undefined)} />
-            </div>}
-          </div>
-          </section>
-        </>}
-      </div>
-    </main>
-    </UniversalEditorSessionContext.Provider>
-  )
-}
+if __name__ == "__main__":
+    unittest.main()
