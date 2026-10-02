@@ -8,7 +8,7 @@ import { isTemplateTool, parseRegularSides, REGULAR_POLYGON_LIMITS } from './geo
 import { commitGeometryTemplate } from './geometryTemplateModel'
 import { circleRadius, commitGeometryCircle, isCircleTool } from './geometryCircleModel'
 import { commitGeometryArc, isArcTool } from './geometryArcModel'
-import { commitMidpoint, findMidpoint, commitLinearConstruction, findLinearConstruction, isLinearConstructionTool } from './geometryConstructionModel'
+import { commitMidpoint, findMidpoint, commitLinearConstruction, findLinearConstruction, isLinearConstructionTool, commitIntersection, findIntersection } from './geometryConstructionModel'
 import { addGeometryPolygon, addGeometrySegment, deleteGeometrySelection, renameGeometryPoint, updateGeometryTextContent, type GeometrySelection, type GeometryTool } from './geometryAuthoringModel'
 
 type GeometryEditorProps = {
@@ -22,6 +22,7 @@ type GeometryEditorProps = {
 const TOOL_LABELS: Record<GeometryTool, string> = {
   parallel: 'Paralel', perpendicular: 'Perpendikulyar',
   midpoint: 'Orta nöqtə',
+  intersection: 'Kəsişmə',
   circle: 'Çevrə', disk: 'Dairə',
   arc: 'Qövs', sector: 'Sektor',
   select: 'Seç / hərəkət etdir', point: 'Nöqtə', segment: 'Parça', polygon: 'Çoxbucaqlı', text: 'Mətn',
@@ -54,6 +55,49 @@ export default function GeometryEditor({ value, onChange, disabled, targetId, fr
 
   const handleObjectClick = useCallback((nextSelection: GeometrySelection) => {
     if (disabled) return
+    if (tool === 'intersection') {
+      let source: GeometryLinearSourceV1 | null = null
+
+      if (nextSelection.kind === 'segment') {
+        source = { kind: 'segment', id: nextSelection.id }
+      } else if (nextSelection.kind === 'line') {
+        const line = value.lines?.find(l => l.id === nextSelection.id)
+        if (line) source = { kind: line.kind, id: line.id }
+      }
+
+      if (!source) return
+
+      if (!linearSource) {
+        setLinearSource(source)
+        setMessage(null)
+        return
+      }
+
+      const existing = findIntersection(value, linearSource, source)
+      const next = commitIntersection(value, linearSource, source)
+
+      if (next === value && !existing) {
+        setMessage('Kəsişən iki fərqli xətt, parça və ya vektor seçin.')
+        return
+      }
+
+      if (next !== value) onChange(next)
+
+      const id = findIntersection(next, linearSource, source)!.output_point_id
+      setSelection({ kind: 'point', id })
+      setLinearSource(null)
+      setTool('select')
+      setMessage(existing ? 'Bu kəsişmə nöqtəsi artıq mövcuddur.' : null)
+
+      if (targetId) {
+        sessionRef.current?.activateGeometry(
+          targetId,
+          { kind: 'point', id },
+        )
+      }
+      return
+    }
+
     if (isLinearConstructionTool(tool)) {
       if (!linearSource) {
         if (nextSelection.kind === 'segment') setLinearSource({ kind:'segment',id:nextSelection.id })

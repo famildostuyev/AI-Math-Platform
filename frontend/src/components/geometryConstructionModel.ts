@@ -1,4 +1,4 @@
-import type { GeometrySourceDataV1, GeometryPointV1, GeometryConstructionV1, GeometryLinearSourceV1, GeometryLinearConstructionV1, GeometryMidpointConstructionV1 } from '../api/questionEditor'
+import type { GeometrySourceDataV1, GeometryPointV1, GeometryConstructionV1, GeometryLinearSourceV1, GeometryLinearConstructionV1, GeometryMidpointConstructionV1, GeometryIntersectionConstructionV1 } from '../api/questionEditor'
 import limitsJson from '../../../backend/app/schemas/geometry_construction_limits.json?raw'
 
 export const CONSTRUCTION_LIMITS = JSON.parse(limitsJson) as { coordinateTolerance: number; minimumSourceDistance: number; maxConstructions: number }
@@ -31,6 +31,25 @@ export function linearSupportCoordinates(a: { x: number; y: number }, b: { x: nu
   return Number.isFinite(result.x) && Number.isFinite(result.y) && (result.x !== p.x || result.y !== p.y) ? result : null
 }
 export const findLinearConstruction = (g: GeometrySourceDataV1, kind: GeometryLinearConstructionV1['kind'], source: GeometryLinearSourceV1, through: string) => g.constructions?.find((c): c is GeometryLinearConstructionV1 => c.kind === kind && c.source.kind === source.kind && c.source.id === source.id && c.through_point_id === through)
+
+const linearSourceKey = (source: GeometryLinearSourceV1) =>
+  JSON.stringify([source.kind, source.id])
+
+export const findIntersection = (
+  g: GeometrySourceDataV1,
+  sourceA: GeometryLinearSourceV1,
+  sourceB: GeometryLinearSourceV1,
+) => {
+  const key = JSON.stringify(
+    [linearSourceKey(sourceA), linearSourceKey(sourceB)].sort(),
+  )
+  return g.constructions?.find((c): c is GeometryIntersectionConstructionV1 =>
+    c.kind === 'intersection'
+    && JSON.stringify(
+      [linearSourceKey(c.source_a), linearSourceKey(c.source_b)].sort(),
+    ) === key
+  )
+}
 const constructionInputs = (c: GeometryConstructionV1) =>
   c.kind === 'midpoint'
     ? c.source_point_ids
@@ -216,6 +235,70 @@ export function constructionDeletionClosure(g: GeometrySourceDataV1, objectId: s
     }
   }
   return removed
+}
+
+export function commitIntersection(
+  g: GeometrySourceDataV1,
+  sourceA: GeometryLinearSourceV1,
+  sourceB: GeometryLinearSourceV1,
+): GeometrySourceDataV1 {
+  if (
+    sourceA.id === sourceB.id
+    || findIntersection(g, sourceA, sourceB)
+    || g.points.length >= 500
+    || (g.constructions?.length ?? 0) >= CONSTRUCTION_LIMITS.maxConstructions
+  ) return g
+
+  const objectA = linearSourceObject(g, sourceA)
+  const objectB = linearSourceObject(g, sourceB)
+  if (!objectA || !objectB) return g
+
+  const a1 = g.points.find(p => p.id === objectA.start_point_id)
+  const a2 = g.points.find(p => p.id === objectA.end_point_id)
+  const b1 = g.points.find(p => p.id === objectB.start_point_id)
+  const b2 = g.points.find(p => p.id === objectB.end_point_id)
+  if (!a1 || !a2 || !b1 || !b2) return g
+
+  const intersection = intersectionCoordinates(a1, a2, b1, b2)
+  if (!intersection) return g
+
+  const tolerance = CONSTRUCTION_LIMITS.coordinateTolerance
+  if (
+    (['segment', 'vector'].includes(sourceA.kind)
+      && !(intersection.t >= -tolerance && intersection.t <= 1 + tolerance))
+    || (['segment', 'vector'].includes(sourceB.kind)
+      && !(intersection.u >= -tolerance && intersection.u <= 1 + tolerance))
+  ) return g
+
+  const ids = geometryObjectIds(g)
+  const nextId = (prefix: string) => {
+    let n = 1
+    while (ids.has(`${prefix}-${n}`)) n++
+    const id = `${prefix}-${n}`
+    ids.add(id)
+    return id
+  }
+
+  const output = {
+    id: nextId('point'),
+    x: intersection.x,
+    y: intersection.y,
+    label: null,
+  }
+
+  const recipe: GeometryIntersectionConstructionV1 = {
+    id: nextId('construction'),
+    kind: 'intersection',
+    source_a: { ...sourceA },
+    source_b: { ...sourceB },
+    output_point_id: output.id,
+  }
+
+  return recomputeConstructions({
+    ...g,
+    points: [...g.points, output],
+    constructions: [...(g.constructions ?? []), recipe],
+  }) ?? g
 }
 
 export function commitLinearConstruction(g: GeometrySourceDataV1, kind: GeometryLinearConstructionV1['kind'], source: GeometryLinearSourceV1, through: string): GeometrySourceDataV1 {
