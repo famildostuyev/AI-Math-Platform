@@ -362,6 +362,21 @@ class GeometryAngleBisectorConstructionV1(StrictEditorSchema):
     source_point_ids: list[str] = Field(min_length=3, max_length=3)
     output_line_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
     support_point_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+    intersection_point_id: str | None = Field(default=None, min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+
+    @field_validator('intersection_point_id')
+    @classmethod
+    def valid_intersection(cls, value):
+        if value is None:
+            raise ValueError('Intersection ID must be omitted or reference a point.')
+        return value
+
+    @model_serializer(mode='wrap')
+    def serialize_optional_intersection(self, handler):
+        data = handler(self)
+        if self.intersection_point_id is None:
+            data.pop('intersection_point_id', None)
+        return data
 
     @field_validator('source_point_ids')
     @classmethod

@@ -13,6 +13,7 @@ export async function runGeometryAngleBisectorAcceptance({evaluate,until,textBut
  const source={
   ...emptyGeometryV1(),
   description:'Angle bisector acceptance',
+  polygons:[{id:'triangle',point_ids:['a','v','c']}],
   points:[
    ['a',15,20],
    ['v',45,45],
@@ -103,6 +104,15 @@ export async function runGeometryAngleBisectorAcceptance({evaluate,until,textBut
  assert.deepEqual(recipe.source_point_ids,['a','v','c'])
  assert.equal(g.lines.find(l=>l.id===recipe.output_line_id).start_point_id,'v')
  assert.ok(g.points.some(p=>p.id===recipe.support_point_id))
+ assert.ok(recipe.intersection_point_id)
+ assert.equal(g.points.find(p=>p.id===recipe.intersection_point_id).label,null)
+ assert.notEqual(recipe.intersection_point_id,recipe.support_point_id)
+ const intersectionPoint=g.points.find(p=>p.id===recipe.intersection_point_id)
+ const savedPointCoordinates=await evaluate(`([...document.querySelectorAll('${frame('frame-1')} .geometry-points circle')].map(p=>[Number(p.getAttribute('cx')),Number(p.getAttribute('cy'))]))`)
+ assert.ok(savedPointCoordinates.some(([x,y])=>x===intersectionPoint.x&&y===intersectionPoint.y))
+ const supportPoint=g.points.find(p=>p.id===recipe.support_point_id)
+ assert.ok(!savedPointCoordinates.some(([x,y])=>x===supportPoint.x&&y===supportPoint.y))
+ assert.deepEqual(await evaluate(`(()=>{const l=document.querySelector('${frame('frame-1')} .geometry-angle-bisectors line');return ['x1','y1','x2','y2'].map(k=>Number(l.getAttribute(k)))})()`),[45,45,intersectionPoint.x,intersectionPoint.y])
 
  assert.ok(
   findAngleBisector(g,'c','v','a'),
@@ -156,7 +166,8 @@ export async function runGeometryAngleBisectorAcceptance({evaluate,until,textBut
 
  await edit()
  await action('Seç')
- const supportBox=await box(point(recipe.support_point_id))
+ assert.equal(await evaluate(`getComputedStyle(document.querySelector('${point(recipe.support_point_id)}')).display`),'none')
+ const supportBox=await box(point(recipe.intersection_point_id))
  const supportX=supportBox.x+supportBox.width/2
  const supportY=supportBox.y+1
  await pointer('mouseMoved',supportX,supportY)
@@ -170,7 +181,7 @@ export async function runGeometryAngleBisectorAcceptance({evaluate,until,textBut
  assert.deepEqual(
   saved.payload.source_data,
   g,
-  'Derived angle-bisector support point must remain locked',
+  'Derived angle-bisector intersection point must remain locked',
  )
 
  assert.equal(await evaluate('JSON.stringify(savedRevision.blocks[0])'),originalText)

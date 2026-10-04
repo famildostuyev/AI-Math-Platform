@@ -26,7 +26,10 @@ export default function GeometryRenderer({ geometry, blockId, frameSize }: Geome
     if (!a || !b) return null
     let ends = line.kind === 'vector' ? [a, b] : clipInfiniteLine(a, b, boundary)
     const bisector = (geometry.constructions ?? []).find(c => c.kind === 'angle_bisector' && c.output_line_id === line.id)
-    if (bisector?.kind === 'angle_bisector' && geometry.polygons.some(p =>
+    if (bisector?.kind === 'angle_bisector' && bisector.intersection_point_id) {
+      const intersection = points.get(bisector.intersection_point_id)
+      if (intersection) ends = [a, intersection]
+    } else if (bisector?.kind === 'angle_bisector' && geometry.polygons.some(p =>
       p.point_ids.length === 3 && bisector.source_point_ids.every(id => p.point_ids.includes(id)))) {
       const [armA, vertex, armC] = bisector.source_point_ids.map(id => points.get(id))
       if (armA && vertex && armC) {

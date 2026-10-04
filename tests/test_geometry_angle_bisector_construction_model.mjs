@@ -5,6 +5,7 @@ const {
   commitAngleBisector,
   findAngleBisector,
   angleBisectorSupportCoordinates,
+  commitMidpoint,
 } = await loadGeometryModule('geometryConstructionModel')
 const {
   moveGeometryPoint,
@@ -112,6 +113,54 @@ wrongSupport.points.find(
   p => p.id === recipe.support_point_id,
 ).x += 1
 assert.equal(normalize(wrongSupport), null)
+
+const triangle = commitAngleBisector({...base, polygons: [{id:'triangle', point_ids:['c','a','b']}]}, 'a', 'b', 'c')
+const triangleRecipe = triangle.constructions[0]
+const dId = triangleRecipe.intersection_point_id
+assert.ok(dId)
+assert.notEqual(dId, triangleRecipe.support_point_id)
+const d = triangle.points.find(p => p.id === dId)
+assert.equal(d.label, null)
+assert.ok(Math.abs(d.x - 5) < 1e-9 && Math.abs(d.y - 5) < 1e-9)
+assert.ok(normalize(triangle))
+assert.equal(moveGeometryPoint(triangle, dId, 99, 99), triangle)
+assert.equal(commitAngleBisector(triangle, 'c', 'b', 'a'), triangle)
+for (const [id,x,y] of [['a',20,5], ['b',-5,-3], ['c',3,20]]) {
+  const edited = moveGeometryPoint(triangle,id,x,y)
+  assert.notEqual(edited,triangle)
+  assert.ok(normalize(edited))
+  const [a,v,c] = ['a','b','c'].map(id => edited.points.find(p=>p.id===id))
+  const result = edited.points.find(p=>p.id===dId)
+  const ratio = Math.hypot(a.x-v.x,a.y-v.y) / (Math.hypot(a.x-v.x,a.y-v.y)+Math.hypot(c.x-v.x,c.y-v.y))
+  assert.ok(Math.abs(result.x-(a.x+ratio*(c.x-a.x)))<1e-9)
+  assert.ok(Math.abs(result.y-(a.y+ratio*(c.y-a.y)))<1e-9)
+}
+assert.equal(moveGeometryPoint(triangle,'a',0,-10),triangle)
+const chain = commitMidpoint(triangle,dId,'a')
+for (const selection of [{kind:'line',id:triangleRecipe.output_line_id},{kind:'point',id:'a'},{kind:'point',id:dId}]) {
+  const deleted = deleteGeometrySelection(chain,selection)
+  assert.equal(deleted.constructions.length,0)
+  for (const id of [dId,triangleRecipe.support_point_id,chain.constructions[1].output_point_id])
+    assert.ok(!deleted.points.some(p=>p.id===id))
+  assert.ok(deleted.points.some(p=>p.id==='c'))
+  assert.ok(normalize(deleted))
+}
+for (const id of ['missing','a',triangleRecipe.support_point_id,null,'']) {
+  const bad = structuredClone(triangle)
+  bad.constructions[0].intersection_point_id=id
+  assert.equal(normalize(bad),null)
+}
+const stale = structuredClone(triangle)
+stale.points.find(p=>p.id===dId).x+=1
+assert.equal(normalize(stale),null)
+const duplicate = structuredClone(triangle)
+duplicate.constructions.push({...duplicate.constructions[0],id:'duplicate',source_point_ids:['c','b','a']})
+assert.equal(normalize(duplicate),null)
+const legacy = structuredClone(triangle)
+delete legacy.constructions[0].intersection_point_id
+legacy.points=legacy.points.filter(p=>p.id!==dId)
+assert.deepEqual(normalize(legacy),legacy,'Legacy triangle recipes remain valid without automatic migration')
+assert.ok(!g.constructions[0].intersection_point_id,'General bisectors retain their original contract')
 
 console.log(
   'PASS: angle bisector creation, symmetric identity, deterministic coordinates, source recompute, locked derived point, atomic degenerate edit, transitive deletion and strict normalization'

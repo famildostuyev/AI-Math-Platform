@@ -59,11 +59,12 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
     window.addEventListener('scroll', refreshScreenOrigin, true)
     container.addEventListener('pointerdown', refreshScreenOrigin, true)
     const pointElements = new Map<string, JXG.Point>()
+    const hiddenSupportIds = new Set((geometry.constructions ?? []).filter(c => c.kind === 'angle_bisector').map(c => c.support_point_id))
     geometry.points.forEach((point) => {
-      const element = board.create('point', [point.x, boardYFromGeometry(geometry, point.y)], { ...POINT_ATTRIBUTES, name: point.label ?? '', label: { fontSize: framed ? GEOMETRY_FRAME_FONT : 12, offset: [10, 10] }, fixed: disabled || tool !== 'select' || isDerivedPoint(geometry, point.id) })
+      const element = board.create('point', [point.x, boardYFromGeometry(geometry, point.y)], { ...POINT_ATTRIBUTES, visible: !hiddenSupportIds.has(point.id), name: point.label ?? '', label: { fontSize: framed ? GEOMETRY_FRAME_FONT : 12, offset: [10, 10] }, fixed: disabled || tool !== 'select' || isDerivedPoint(geometry, point.id) })
       element.rendNode?.setAttribute('data-geometry-point-id', point.id)
       element.on('down', () => {
-        if (!isDerivedPoint(geometry, point.id)) {
+        if (!isDerivedPoint(geometry, point.id) || (geometry.constructions ?? []).some(c => c.kind === 'angle_bisector' && c.intersection_point_id === point.id)) {
           onObjectClick({ kind: 'point', id: point.id })
         }
       })

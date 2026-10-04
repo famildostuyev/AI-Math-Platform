@@ -6,13 +6,13 @@ export const midpointCoordinates = (a: { x: number; y: number }, b: { x: number;
 export const ownedConstructionIds = (c: GeometryConstructionV1) =>
   c.kind === 'midpoint' || c.kind === 'intersection'
     ? [c.output_point_id]
-    : [c.output_line_id, c.support_point_id]
+    : [c.output_line_id, c.support_point_id, ...(c.kind === 'angle_bisector' && c.intersection_point_id ? [c.intersection_point_id] : [])]
 
 export const isDerivedPoint = (g: GeometrySourceDataV1, id: string) =>
   (g.constructions ?? []).some(c =>
     c.kind === 'midpoint' || c.kind === 'intersection'
       ? c.output_point_id === id
-      : c.support_point_id === id
+      : c.support_point_id === id || (c.kind === 'angle_bisector' && c.intersection_point_id === id)
   )
 export const geometryObjectIds = (g: GeometrySourceDataV1) => new Set([...g.points, ...g.segments, ...g.polygons, ...g.texts, ...(g.lines ?? []), ...(g.polylines ?? []), ...(g.circles ?? []), ...(g.arcs ?? []), ...(g.constructions ?? [])].map(o => o.id))
 const pairKey = (ids: readonly string[]) => JSON.stringify([...ids].sort())
@@ -141,6 +141,13 @@ export function intersectionCoordinates(
   return [t, u, x, y].every(Number.isFinite) ? { x, y, t, u } : null
 }
 
+export function angleBisectorIntersectionCoordinates(a: GeometryPointV1, vertex: GeometryPointV1, c: GeometryPointV1, support: { x: number; y: number }) {
+  const intersection = intersectionCoordinates(vertex, support, a, c)
+  const tolerance = CONSTRUCTION_LIMITS.coordinateTolerance
+  return intersection && intersection.t >= 0 && intersection.u >= -tolerance && intersection.u <= 1 + tolerance
+    ? { x: intersection.x, y: intersection.y } : null
+}
+
 // One bounded evaluation boundary for validation and atomic source edits. Recipes
 // own their output only; sources are borrowed. Array order is never dependency order.
 export function evaluateConstructions(points: GeometryPointV1[], recipes: unknown, otherIds: Set<string>, checkStored = true, linear: LinearObjects = { segments: [] }): GeometryPointV1[] | null {
@@ -194,7 +201,9 @@ export function evaluateConstructions(points: GeometryPointV1[], recipes: unknow
       ])
     } else if (c.kind === 'angle_bisector') {
       if (
-        Object.keys(c).sort().join(',') !== 'id,kind,output_line_id,source_point_ids,support_point_id'
+        Object.keys(c).sort().join(',') !== (Object.hasOwn(c, 'intersection_point_id')
+          ? 'id,intersection_point_id,kind,output_line_id,source_point_ids,support_point_id'
+          : 'id,kind,output_line_id,source_point_ids,support_point_id')
         || !Array.isArray(c.source_point_ids)
         || c.source_point_ids.length !== 3
         || !c.source_point_ids.every((id: unknown) => validId(id) && locations.has(id))
@@ -203,6 +212,9 @@ export function evaluateConstructions(points: GeometryPointV1[], recipes: unknow
         || !locations.has(c.support_point_id)
         || c.source_point_ids.includes(c.support_point_id)
         || !validId(c.output_line_id)
+        || (Object.hasOwn(c, 'intersection_point_id') && (!validId(c.intersection_point_id)
+          || !locations.has(c.intersection_point_id) || c.source_point_ids.includes(c.intersection_point_id)
+          || c.intersection_point_id === c.support_point_id))
       ) return null
 
       const output = linear.lines?.find(l => l.id === c.output_line_id)
@@ -215,7 +227,7 @@ export function evaluateConstructions(points: GeometryPointV1[], recipes: unknow
 
       key = JSON.stringify([
         'angle_bisector',
-        ...c.source_point_ids,
+        c.source_point_ids[1], ...[c.source_point_ids[0], c.source_point_ids[2]].sort(),
       ])
     } else if (isLinearConstructionTool(c.kind)) {
       if (Object.keys(c).sort().join(',') !== 'id,kind,output_line_id,source,support_point_id,through_point_id'
@@ -275,6 +287,18 @@ export function evaluateConstructions(points: GeometryPointV1[], recipes: unknow
           locations.get(c.source_point_ids[2])!,
         )
         stored = locations.get(c.support_point_id)!
+        if (c.intersection_point_id) {
+          if (!expected) return null
+          const intersection = angleBisectorIntersectionCoordinates(
+            locations.get(c.source_point_ids[0])!, locations.get(c.source_point_ids[1])!,
+            locations.get(c.source_point_ids[2])!, expected,
+          )
+          const output = locations.get(c.intersection_point_id)!
+          if (!intersection || ![output.x, output.y].every(Number.isFinite)
+            || (checkStored && (Math.abs(intersection.x - output.x) > CONSTRUCTION_LIMITS.coordinateTolerance
+              || Math.abs(intersection.y - output.y) > CONSTRUCTION_LIMITS.coordinateTolerance))) return null
+          locations.set(output.id, { ...output, ...intersection })
+        }
       } else {
         const source = linearSourceObject(linear, c.source)!
         expected = linearSupportCoordinates(
@@ -335,6 +359,9 @@ export function commitAngleBisector(
 
   const coordinates = angleBisectorSupportCoordinates(a, vertex, c)
   if (!coordinates) return g
+  const triangle = g.polygons.some(p => p.point_ids.length === 3 && [aId, vertexId, cId].every(id => p.point_ids.includes(id)))
+  const intersection = triangle ? angleBisectorIntersectionCoordinates(a, vertex, c, coordinates) : null
+  if (triangle && (!intersection || g.points.length > 498)) return g
 
   const ids = geometryObjectIds(g)
   const nextId = (prefix: string) => {
@@ -350,6 +377,7 @@ export function commitAngleBisector(
     ...coordinates,
     label: null,
   }
+  const intersectionPoint = intersection ? { id: nextId('point'), ...intersection, label: null } : null
 
   const line = {
     id: nextId('line'),
@@ -364,11 +392,12 @@ export function commitAngleBisector(
     source_point_ids: [aId, vertexId, cId],
     output_line_id: line.id,
     support_point_id: support.id,
+    ...(intersectionPoint ? { intersection_point_id: intersectionPoint.id } : {}),
   }
 
   return recomputeConstructions({
     ...g,
-    points: [...g.points, support],
+    points: [...g.points, support, ...(intersectionPoint ? [intersectionPoint] : [])],
     lines: [...(g.lines ?? []), line],
     constructions: [...(g.constructions ?? []), recipe],
   }) ?? g

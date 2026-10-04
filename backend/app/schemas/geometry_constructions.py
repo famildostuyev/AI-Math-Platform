@@ -95,7 +95,9 @@ def validate_constructions(points, constructions, segments=(), lines=()):
     def owned(c):
         if c.kind in ('midpoint', 'intersection'):
             return [c.output_point_id]
-        return [c.output_line_id, c.support_point_id]
+        return [c.output_line_id, c.support_point_id] + (
+            [c.intersection_point_id] if c.kind == 'angle_bisector' and c.intersection_point_id else []
+        )
 
     def inputs(c):
         if c.kind in ('midpoint', 'angle_bisector'):
@@ -164,7 +166,12 @@ def validate_constructions(points, constructions, segments=(), lines=()):
             ):
                 raise ValueError('Invalid angle bisector construction references.')
 
-            pair = ('angle_bisector', a, vertex, c_point)
+            if c.intersection_point_id is not None and (
+                c.intersection_point_id not in locations
+                or c.intersection_point_id in (a, vertex, c_point, c.support_point_id)
+            ):
+                raise ValueError('Invalid angle bisector intersection references.')
+            pair = ('angle_bisector', vertex, *sorted((a, c_point)))
 
         else:
             source = typed_source(c.source)
@@ -235,6 +242,15 @@ def validate_constructions(points, constructions, segments=(), lines=()):
                     locations[c_point],
                 )
                 output = locations[c.support_point_id]
+                if c.intersection_point_id is not None:
+                    support = output.model_copy(update={'x': x, 'y': y})
+                    ix, iy, t, u = intersection_coordinates(locations[vertex], support, locations[a], locations[c_point])
+                    intersection = locations[c.intersection_point_id]
+                    tolerance = LIMITS['coordinateTolerance']
+                    if (t < 0 or not -tolerance <= u <= 1 + tolerance
+                        or abs(ix - intersection.x) > tolerance or abs(iy - intersection.y) > tolerance):
+                        raise ValueError('Angle bisector intersection contradicts its sources.')
+                    intersection.x, intersection.y = ix, iy
 
             else:
                 source = linear[c.source.id]

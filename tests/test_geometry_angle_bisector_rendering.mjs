@@ -55,10 +55,12 @@ for (const frameSize of [undefined, {width: 480, height: 360}]) {
   assert.ok(support, 'Support point remains stored for the line definition')
   assert.ok(!visiblePoints.some(([x, y]) => x === support.x && y === support.y),
     'Angle-bisector support point must be absent from SVG point output')
-  assert.deepEqual(visiblePoints, ['a', 'v', 'c'].map(id => {
+  const intersectionId = geometry.constructions[0].intersection_point_id
+  assert.ok(intersectionId)
+  assert.deepEqual(visiblePoints, ['a', 'v', 'c', intersectionId].map(id => {
     const p = geometry.points.find(p => p.id === id)
     return [p.x, p.y]
-  }), 'All three source points remain visible')
+  }), 'All three source points and persisted intersection remain visible')
 
   const withMidpoint = commitMidpoint(geometry, 'a', 'v')
   const midpointOriginal = structuredClone(withMidpoint)
@@ -91,7 +93,7 @@ for (const frameSize of [undefined, {width: 480, height: 360}]) {
 
   for (const polygons of [[], [{id: 'quad', point_ids: ['a', 'v', 'c', support.id]}],
     [{id: 'other-triangle', point_ids: ['a', 'v', support.id]}]]) {
-    const general = {...geometry, polygons}
+    const general = commitAngleBisector({...geometry, points: geometry.points.filter(p=>p.id!==support.id && p.id!==intersectionId), lines: [ordinaryLine], constructions: [], polygons}, 'a','v','c')
     const before = structuredClone(general)
     const fallback = renderToStaticMarkup(createElement(GeometryRenderer, {...props, geometry: general}))
       .split('<g class="geometry-angle-bisectors"')[1].split('</g>')[0]
@@ -116,6 +118,21 @@ for (const frameSize of [undefined, {width: 480, height: 360}]) {
   assert.ok(Math.abs(coordinates.x2 - (10 + ratio * 65)) < 1e-9)
   assert.ok(Math.abs(coordinates.y2 - (12 + ratio * 8)) < 1e-9)
   assert.deepEqual(moved, movedOriginal, 'Source edits update display without rendering mutations')
+
+  const legacy = structuredClone(geometry)
+  delete legacy.constructions[0].intersection_point_id
+  legacy.points = legacy.points.filter(p=>p.id!==intersectionId)
+  const legacySvg = renderToStaticMarkup(createElement(GeometryRenderer,{...props,geometry:legacy}))
+  assert.ok(legacySvg.includes('x1="45" y1="45" x2="45" y2="20"'),'Legacy triangle retains its render-only extent')
+
+  // A direct renderer fixture proves it reads D, rather than recomputing it.
+  // Strict normalization rejects such stale coordinates before real rendering.
+  const supplied = structuredClone(geometry)
+  supplied.points.find(p=>p.id===intersectionId).x = 46
+  const suppliedOriginal = structuredClone(supplied)
+  const suppliedSvg = renderToStaticMarkup(createElement(GeometryRenderer,{...props,geometry:supplied}))
+  assert.ok(suppliedSvg.includes('x1="45" y1="45" x2="46" y2="20"'))
+  assert.deepEqual(supplied,suppliedOriginal)
 }
 assert.deepEqual(geometry, original, 'Rendering must not mutate source_data')
 console.log('PASS: framed/unframed triangle extent, moved vertices, general fallback, hidden support, source/midpoint visibility, polygon paint order, ordinary clipping and unchanged source_data')
