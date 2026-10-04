@@ -26,6 +26,42 @@ def linear_support_coordinates(a, b, p, kind):
     return x, y
 
 
+def angle_bisector_support_coordinates(a, vertex, c):
+    ax, ay = a.x - vertex.x, a.y - vertex.y
+    cx, cy = c.x - vertex.x, c.y - vertex.y
+
+    a_length = math.hypot(ax, ay)
+    c_length = math.hypot(cx, cy)
+
+    if (
+        not math.isfinite(a_length)
+        or not math.isfinite(c_length)
+        or a_length < LIMITS['minimumSourceDistance']
+        or c_length < LIMITS['minimumSourceDistance']
+    ):
+        raise ValueError('Degenerate angle bisector source.')
+
+    ax, ay = ax / a_length, ay / a_length
+    cx, cy = cx / c_length, cy / c_length
+
+    dx, dy = ax + cx, ay + cy
+    direction_length = math.hypot(dx, dy)
+
+    if (
+        not math.isfinite(direction_length)
+        or direction_length < LIMITS['minimumSourceDistance']
+    ):
+        raise ValueError('Degenerate angle bisector direction.')
+
+    dx, dy = dx / direction_length, dy / direction_length
+    x, y = vertex.x + dx, vertex.y + dy
+
+    if not math.isfinite(x) or not math.isfinite(y):
+        raise ValueError('Unrepresentable angle bisector output.')
+
+    return x, y
+
+
 def intersection_coordinates(a1, a2, b1, b2):
     adx, ady = a2.x - a1.x, a2.y - a1.y
     bdx, bdy = b2.x - b1.x, b2.y - b1.y
@@ -62,7 +98,7 @@ def validate_constructions(points, constructions, segments=(), lines=()):
         return [c.output_line_id, c.support_point_id]
 
     def inputs(c):
-        if c.kind == 'midpoint':
+        if c.kind in ('midpoint', 'angle_bisector'):
             return c.source_point_ids
         if c.kind == 'intersection':
             return [c.source_a.id, c.source_b.id]
@@ -110,6 +146,25 @@ def validate_constructions(points, constructions, segments=(), lines=()):
                 (c.source_b.kind, c.source_b.id),
             ))
             pair = ('intersection', *source_keys)
+
+        elif c.kind == 'angle_bisector':
+            a, vertex, c_point = c.source_point_ids
+            output = linear.get(c.output_line_id)
+
+            if (
+                any(point_id not in locations for point_id in (a, vertex, c_point))
+                or output is None
+                or getattr(output, 'kind', 'segment') != 'line'
+                or c.support_point_id not in locations
+                or c.output_line_id in outputs
+                or c.support_point_id in outputs
+                or output.start_point_id != vertex
+                or output.end_point_id != c.support_point_id
+                or c.support_point_id in (a, vertex, c_point)
+            ):
+                raise ValueError('Invalid angle bisector construction references.')
+
+            pair = ('angle_bisector', a, vertex, c_point)
 
         else:
             source = typed_source(c.source)
@@ -171,6 +226,15 @@ def validate_constructions(points, constructions, segments=(), lines=()):
                 ):
                     raise ValueError('Intersection lies outside segment bounds.')
                 output = locations[c.output_point_id]
+
+            elif c.kind == 'angle_bisector':
+                a, vertex, c_point = c.source_point_ids
+                x, y = angle_bisector_support_coordinates(
+                    locations[a],
+                    locations[vertex],
+                    locations[c_point],
+                )
+                output = locations[c.support_point_id]
 
             else:
                 source = linear[c.source.id]

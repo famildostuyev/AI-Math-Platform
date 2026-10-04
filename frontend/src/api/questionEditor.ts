@@ -163,7 +163,8 @@ export type GeometryLinearSourceV1 = { kind: 'line' | 'directed_line' | 'segment
 export type GeometryMidpointConstructionV1 = { id: string; kind: 'midpoint'; source_point_ids: [string, string]; output_point_id: string }
 export type GeometryLinearConstructionV1 = { id: string; kind: 'parallel' | 'perpendicular'; source: GeometryLinearSourceV1; through_point_id: string; output_line_id: string; support_point_id: string }
 export type GeometryIntersectionConstructionV1 = { id: string; kind: 'intersection'; source_a: GeometryLinearSourceV1; source_b: GeometryLinearSourceV1; output_point_id: string }
-export type GeometryConstructionV1 = GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1
+export type GeometryAngleBisectorConstructionV1 = { id: string; kind: 'angle_bisector'; source_point_ids: [string, string, string]; output_line_id: string; support_point_id: string }
+export type GeometryConstructionV1 = GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1 | GeometryAngleBisectorConstructionV1
 export type GeometrySourceDataV1 = {
   constructions?: GeometryConstructionV1[]
   schema_version: 1

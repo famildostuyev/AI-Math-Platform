@@ -356,6 +356,27 @@ class GeometryIntersectionConstructionV1(StrictEditorSchema):
     output_point_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
 
 
+class GeometryAngleBisectorConstructionV1(StrictEditorSchema):
+    id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+    kind: Literal['angle_bisector']
+    source_point_ids: list[str] = Field(min_length=3, max_length=3)
+    output_line_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+    support_point_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+
+    @field_validator('source_point_ids')
+    @classmethod
+    def valid_sources(cls, values):
+        import re
+        if any(
+            re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', value) is None
+            for value in values
+        ):
+            raise ValueError('Invalid construction point ID.')
+        if len(set(values)) != 3:
+            raise ValueError('Angle bisector requires three distinct points.')
+        return values
+
+
 class GeometrySourceDataV1(StrictEditorSchema):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
@@ -370,7 +391,7 @@ class GeometrySourceDataV1(StrictEditorSchema):
     polylines: list[GeometryPolylineV1] = Field(default_factory=list, max_length=200)
     circles: list[GeometryCircleV1] = Field(default_factory=list, max_length=200)
     arcs: list[GeometryArcV1] = Field(default_factory=list, max_length=200)
-    constructions: list[GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1] = Field(default_factory=list, max_length=200)
+    constructions: list[GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1 | GeometryAngleBisectorConstructionV1] = Field(default_factory=list, max_length=200)
 
     @model_serializer(mode="wrap")
     def serialize_additive_collections(self, handler):

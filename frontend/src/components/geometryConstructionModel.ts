@@ -1,4 +1,4 @@
-import type { GeometrySourceDataV1, GeometryPointV1, GeometryConstructionV1, GeometryLinearSourceV1, GeometryLinearConstructionV1, GeometryMidpointConstructionV1, GeometryIntersectionConstructionV1 } from '../api/questionEditor'
+import type { GeometrySourceDataV1, GeometryPointV1, GeometryConstructionV1, GeometryLinearSourceV1, GeometryLinearConstructionV1, GeometryMidpointConstructionV1, GeometryIntersectionConstructionV1, GeometryAngleBisectorConstructionV1 } from '../api/questionEditor'
 import limitsJson from '../../../backend/app/schemas/geometry_construction_limits.json?raw'
 
 export const CONSTRUCTION_LIMITS = JSON.parse(limitsJson) as { coordinateTolerance: number; minimumSourceDistance: number; maxConstructions: number }
@@ -50,12 +50,71 @@ export const findIntersection = (
     ) === key
   )
 }
+export const findAngleBisector = (
+  g: GeometrySourceDataV1,
+  aId: string,
+  vertexId: string,
+  cId: string,
+) => g.constructions?.find(
+  (construction): construction is GeometryAngleBisectorConstructionV1 =>
+    construction.kind === 'angle_bisector'
+    && construction.source_point_ids[1] === vertexId
+    && pairKey([
+      construction.source_point_ids[0],
+      construction.source_point_ids[2],
+    ]) === pairKey([aId, cId]),
+)
+
 const constructionInputs = (c: GeometryConstructionV1) =>
-  c.kind === 'midpoint'
+  c.kind === 'midpoint' || c.kind === 'angle_bisector'
     ? c.source_point_ids
     : c.kind === 'intersection'
       ? [c.source_a.id, c.source_b.id]
       : [c.source.id, c.through_point_id]
+
+export function angleBisectorSupportCoordinates(
+  a: { x: number; y: number },
+  vertex: { x: number; y: number },
+  c: { x: number; y: number },
+) {
+  let ax = a.x - vertex.x, ay = a.y - vertex.y
+  let cx = c.x - vertex.x, cy = c.y - vertex.y
+
+  const aLength = Math.hypot(ax, ay)
+  const cLength = Math.hypot(cx, cy)
+
+  if (
+    !Number.isFinite(aLength)
+    || !Number.isFinite(cLength)
+    || aLength < CONSTRUCTION_LIMITS.minimumSourceDistance
+    || cLength < CONSTRUCTION_LIMITS.minimumSourceDistance
+  ) return null
+
+  ax /= aLength
+  ay /= aLength
+  cx /= cLength
+  cy /= cLength
+
+  let dx = ax + cx, dy = ay + cy
+  const directionLength = Math.hypot(dx, dy)
+
+  if (
+    !Number.isFinite(directionLength)
+    || directionLength < CONSTRUCTION_LIMITS.minimumSourceDistance
+  ) return null
+
+  dx /= directionLength
+  dy /= directionLength
+
+  const result = {
+    x: vertex.x + dx,
+    y: vertex.y + dy,
+  }
+
+  return Number.isFinite(result.x) && Number.isFinite(result.y)
+    ? result
+    : null
+}
 
 export function intersectionCoordinates(
   a1: { x: number; y: number },
@@ -133,6 +192,31 @@ export function evaluateConstructions(points: GeometryPointV1[], recipes: unknow
           [c.source_b.kind, c.source_b.id],
         ].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
       ])
+    } else if (c.kind === 'angle_bisector') {
+      if (
+        Object.keys(c).sort().join(',') !== 'id,kind,output_line_id,source_point_ids,support_point_id'
+        || !Array.isArray(c.source_point_ids)
+        || c.source_point_ids.length !== 3
+        || !c.source_point_ids.every((id: unknown) => validId(id) && locations.has(id))
+        || new Set(c.source_point_ids).size !== 3
+        || !validId(c.support_point_id)
+        || !locations.has(c.support_point_id)
+        || c.source_point_ids.includes(c.support_point_id)
+        || !validId(c.output_line_id)
+      ) return null
+
+      const output = linear.lines?.find(l => l.id === c.output_line_id)
+      if (
+        !output
+        || output.kind !== 'line'
+        || output.start_point_id !== c.source_point_ids[1]
+        || output.end_point_id !== c.support_point_id
+      ) return null
+
+      key = JSON.stringify([
+        'angle_bisector',
+        ...c.source_point_ids,
+      ])
     } else if (isLinearConstructionTool(c.kind)) {
       if (Object.keys(c).sort().join(',') !== 'id,kind,output_line_id,source,support_point_id,through_point_id'
         || !c.source || typeof c.source !== 'object' || Array.isArray(c.source) || Object.keys(c.source).sort().join(',') !== 'id,kind'
@@ -184,6 +268,13 @@ export function evaluateConstructions(points: GeometryPointV1[], recipes: unknow
 
         expected = { x: intersection.x, y: intersection.y }
         stored = locations.get(c.output_point_id)!
+      } else if (c.kind === 'angle_bisector') {
+        expected = angleBisectorSupportCoordinates(
+          locations.get(c.source_point_ids[0])!,
+          locations.get(c.source_point_ids[1])!,
+          locations.get(c.source_point_ids[2])!,
+        )
+        stored = locations.get(c.support_point_id)!
       } else {
         const source = linearSourceObject(linear, c.source)!
         expected = linearSupportCoordinates(
@@ -221,6 +312,66 @@ export function commitMidpoint(g: GeometrySourceDataV1, aId: string, bId: string
   const output = { id: nextId('point'), ...midpointCoordinates(a, b), label: null }
   const recipe: GeometryConstructionV1 = { id: nextId('construction'), kind: 'midpoint', source_point_ids: [aId, bId].sort() as [string, string], output_point_id: output.id }
   return recomputeConstructions({ ...g, points: [...g.points, output], constructions: [...(g.constructions ?? []), recipe] }) ?? g
+}
+
+export function commitAngleBisector(
+  g: GeometrySourceDataV1,
+  aId: string,
+  vertexId: string,
+  cId: string,
+): GeometrySourceDataV1 {
+  if (
+    new Set([aId, vertexId, cId]).size !== 3
+    || findAngleBisector(g, aId, vertexId, cId)
+    || (g.lines?.length ?? 0) >= 1000
+    || g.points.length >= 500
+    || (g.constructions?.length ?? 0) >= CONSTRUCTION_LIMITS.maxConstructions
+  ) return g
+
+  const a = g.points.find(p => p.id === aId)
+  const vertex = g.points.find(p => p.id === vertexId)
+  const c = g.points.find(p => p.id === cId)
+  if (!a || !vertex || !c) return g
+
+  const coordinates = angleBisectorSupportCoordinates(a, vertex, c)
+  if (!coordinates) return g
+
+  const ids = geometryObjectIds(g)
+  const nextId = (prefix: string) => {
+    let n = 1
+    while (ids.has(`${prefix}-${n}`)) n++
+    const id = `${prefix}-${n}`
+    ids.add(id)
+    return id
+  }
+
+  const support = {
+    id: nextId('point'),
+    ...coordinates,
+    label: null,
+  }
+
+  const line = {
+    id: nextId('line'),
+    kind: 'line' as const,
+    start_point_id: vertexId,
+    end_point_id: support.id,
+  }
+
+  const recipe: GeometryAngleBisectorConstructionV1 = {
+    id: nextId('construction'),
+    kind: 'angle_bisector',
+    source_point_ids: [aId, vertexId, cId],
+    output_line_id: line.id,
+    support_point_id: support.id,
+  }
+
+  return recomputeConstructions({
+    ...g,
+    points: [...g.points, support],
+    lines: [...(g.lines ?? []), line],
+    constructions: [...(g.constructions ?? []), recipe],
+  }) ?? g
 }
 
 export function constructionDeletionClosure(g: GeometrySourceDataV1, objectId: string): Set<string> {

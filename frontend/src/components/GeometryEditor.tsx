@@ -8,7 +8,7 @@ import { isTemplateTool, parseRegularSides, REGULAR_POLYGON_LIMITS } from './geo
 import { commitGeometryTemplate } from './geometryTemplateModel'
 import { circleRadius, commitGeometryCircle, isCircleTool } from './geometryCircleModel'
 import { commitGeometryArc, isArcTool } from './geometryArcModel'
-import { commitMidpoint, findMidpoint, commitLinearConstruction, findLinearConstruction, isLinearConstructionTool, commitIntersection, findIntersection } from './geometryConstructionModel'
+import { commitMidpoint, findMidpoint, commitLinearConstruction, findLinearConstruction, isLinearConstructionTool, commitIntersection, findIntersection, commitAngleBisector, findAngleBisector } from './geometryConstructionModel'
 import { addGeometryPolygon, addGeometrySegment, deleteGeometrySelection, renameGeometryPoint, updateGeometryTextContent, type GeometrySelection, type GeometryTool } from './geometryAuthoringModel'
 
 type GeometryEditorProps = {
@@ -23,6 +23,7 @@ const TOOL_LABELS: Record<GeometryTool, string> = {
   parallel: 'Paralel', perpendicular: 'Perpendikulyar',
   midpoint: 'Orta nöqtə',
   intersection: 'Kəsişmə',
+  angle_bisector: 'Tənbölən',
   circle: 'Çevrə', disk: 'Dairə',
   arc: 'Qövs', sector: 'Sektor',
   select: 'Seç / hərəkət etdir', point: 'Nöqtə', segment: 'Parça', polygon: 'Çoxbucaqlı', text: 'Mətn',
@@ -93,6 +94,52 @@ export default function GeometryEditor({ value, onChange, disabled, targetId, fr
         sessionRef.current?.activateGeometry(
           targetId,
           { kind: 'point', id },
+        )
+      }
+      return
+    }
+
+    if (tool === 'angle_bisector') {
+      if (nextSelection.kind !== 'point') return
+
+      const nextPointIds = [...pendingPointIds, nextSelection.id]
+
+      if (
+        nextPointIds.length > 1
+        && nextPointIds.slice(0, -1).includes(nextSelection.id)
+      ) {
+        setMessage('Tənbölən üçün üç fərqli nöqtə seçin.')
+        return
+      }
+
+      if (nextPointIds.length < 3) {
+        setPendingPointIds(nextPointIds)
+        setMessage(null)
+        return
+      }
+
+      const [aId, vertexId, cId] = nextPointIds
+      const existing = findAngleBisector(value, aId, vertexId, cId)
+      const next = commitAngleBisector(value, aId, vertexId, cId)
+
+      if (next === value && !existing) {
+        setMessage('Etibarlı bucaq yaradan üç fərqli nöqtə seçin.')
+        setPendingPointIds([])
+        return
+      }
+
+      if (next !== value) onChange(next)
+
+      const id = findAngleBisector(next, aId, vertexId, cId)!.output_line_id
+      setSelection({ kind: 'line', id })
+      setPendingPointIds([])
+      setTool('select')
+      setMessage(existing ? 'Bu bucağın tənböləni artıq mövcuddur.' : null)
+
+      if (targetId) {
+        sessionRef.current?.activateGeometry(
+          targetId,
+          { kind: 'line', id },
         )
       }
       return
