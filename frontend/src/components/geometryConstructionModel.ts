@@ -232,6 +232,28 @@ export function commitMedian(
   }) ?? g
 }
 
+export function commitTriangleMedian(g: GeometrySourceDataV1, aId: string, vertexId: string, cId: string):
+  { geometry: GeometrySourceDataV1; status: 'rejected' }
+  | { geometry: GeometrySourceDataV1; status: 'existing' | 'created'; outputSegmentId: string } {
+  const rejected = { geometry: g, status: 'rejected' as const }
+  const sourceIds = [aId, vertexId, cId]
+  if (new Set(sourceIds).size !== 3
+    || !g.polygons.some(p => p.point_ids.length === 3 && sourceIds.every(id => p.point_ids.includes(id)))) return rejected
+  const [a, vertex, c] = sourceIds.map(id => g.points.find(p => p.id === id))
+  if (!a || !vertex || !c || ![a.x, a.y, vertex.x, vertex.y, c.x, c.y].every(Number.isFinite)
+    || !altitudeFootCoordinates(a, vertex, c)) return rejected
+
+  // Keep both commits local so a failed Median cannot publish an orphan midpoint.
+  const candidate = findMidpoint(g, aId, cId) ? g : commitMidpoint(g, aId, cId)
+  const midpoint = findMidpoint(candidate, aId, cId)
+  if (!midpoint) return rejected
+  const existing = findMedian(candidate, vertexId, midpoint.output_point_id)
+  if (existing) return { geometry: g, status: 'existing', outputSegmentId: existing.output_segment_id }
+  const next = commitMedian(candidate, vertexId, midpoint.output_point_id)
+  const median = findMedian(next, vertexId, midpoint.output_point_id)
+  return median ? { geometry: next, status: 'created', outputSegmentId: median.output_segment_id } : rejected
+}
+
 // Shared presentation only: keep the owned foot even when its marker overlaps a source.
 export function altitudePresentation(g: GeometrySourceDataV1) {
   const points = new Map(g.points.map(p => [p.id, p]))

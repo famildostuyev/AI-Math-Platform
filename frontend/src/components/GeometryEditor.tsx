@@ -11,7 +11,7 @@ import { commitGeometryArc, isArcTool } from './geometryArcModel'
 import { commitMidpoint, findMidpoint, commitLinearConstruction, findLinearConstruction, isLinearConstructionTool, commitIntersection, findIntersection, commitAngleBisector, findAngleBisector } from './geometryConstructionModel'
 import { addGeometryPolygon, addGeometrySegment, deleteGeometrySelection, renameGeometryPoint, updateGeometryTextContent, type GeometrySelection, type GeometryTool } from './geometryAuthoringModel'
 import { commitAltitude, findAltitude } from './geometryConstructionModel'
-import { commitMedian, findMedian } from './geometryConstructionModel'
+import { commitTriangleMedian } from './geometryConstructionModel'
 
 type GeometryEditorProps = {
   frameSize?: { width: number; height: number }
@@ -63,29 +63,27 @@ export default function GeometryEditor({ value, onChange, disabled, targetId, fr
     if (tool === 'median') {
       if (nextSelection.kind !== 'point') return
       if (pendingPointIds.includes(nextSelection.id)) {
-        setMessage('Median ucun iki ferqli noqte secin: evvel tepe, sonra qarsi terefin orta noqtesi.')
+        setMessage('Median üçün üç fərqli nöqtə seçin: A, V, C.')
         return
       }
       const sources = [...pendingPointIds, nextSelection.id]
-      if (sources.length < 2) {
+      if (sources.length < 3) {
         setPendingPointIds(sources)
-        setMessage('Indi qarsi terefin movcud orta noqtesini secin.')
+        setMessage(sources.length === 1 ? 'İndi medianın təpəsi V-ni seçin.' : 'İndi qarşı tərəfin digər ucu C-ni seçin.')
         return
       }
-      const [vertex, midpoint] = sources
-      const existing = findMedian(value, vertex, midpoint)
-      const next = commitMedian(value, vertex, midpoint)
+      const [a, vertex, c] = sources
+      const result = commitTriangleMedian(value, a, vertex, c)
       setPendingPointIds([])
-      if (next === value && !existing) {
-        setMessage('Median ucun iki ferqli movcud noqte secin: tepe ve orta noqte.')
+      if (result.status === 'rejected') {
+        setMessage('Eyni üçbucağın üç fərqli, bir düz xətt üzərində olmayan təpəsini seçin.')
         return
       }
-      if (next !== value) onChange(next)
-      const recipe = findMedian(next, vertex, midpoint)!
-      const selected = { kind: 'segment' as const, id: recipe.output_segment_id }
+      if (result.geometry !== value) onChange(result.geometry)
+      const selected = { kind: 'segment' as const, id: result.outputSegmentId }
       setSelection(selected)
       setTool('select')
-      setMessage(existing ? 'Bu median artiq movcuddur.' : null)
+      setMessage(result.status === 'existing' ? 'Bu median artıq mövcuddur.' : null)
       if (targetId) sessionRef.current?.activateGeometry(targetId, selected)
       return
     }
