@@ -1,17 +1,20 @@
 import type { GeometrySourceDataV1, GeometryPointV1, GeometryConstructionV1, GeometryLinearSourceV1, GeometryLinearConstructionV1, GeometryMidpointConstructionV1, GeometryIntersectionConstructionV1, GeometryAngleBisectorConstructionV1 } from '../api/questionEditor'
 import limitsJson from '../../../backend/app/schemas/geometry_construction_limits.json?raw'
+import type { GeometryAltitudeConstructionV1 } from '../api/questionEditor'
 
 export const CONSTRUCTION_LIMITS = JSON.parse(limitsJson) as { coordinateTolerance: number; minimumSourceDistance: number; maxConstructions: number }
 export const midpointCoordinates = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: a.x / 2 + b.x / 2, y: a.y / 2 + b.y / 2 })
 export const ownedConstructionIds = (c: GeometryConstructionV1) =>
   c.kind === 'midpoint' || c.kind === 'intersection'
     ? [c.output_point_id]
+    : c.kind === 'altitude' ? [c.output_segment_id, c.foot_point_id]
     : [c.output_line_id, c.support_point_id, ...(c.kind === 'angle_bisector' && c.intersection_point_id ? [c.intersection_point_id] : [])]
 
 export const isDerivedPoint = (g: GeometrySourceDataV1, id: string) =>
   (g.constructions ?? []).some(c =>
     c.kind === 'midpoint' || c.kind === 'intersection'
       ? c.output_point_id === id
+      : c.kind === 'altitude' ? c.foot_point_id === id
       : c.support_point_id === id || (c.kind === 'angle_bisector' && c.intersection_point_id === id)
   )
 export const geometryObjectIds = (g: GeometrySourceDataV1) => new Set([...g.points, ...g.segments, ...g.polygons, ...g.texts, ...(g.lines ?? []), ...(g.polylines ?? []), ...(g.circles ?? []), ...(g.arcs ?? []), ...(g.constructions ?? [])].map(o => o.id))
@@ -66,7 +69,7 @@ export const findAngleBisector = (
 )
 
 const constructionInputs = (c: GeometryConstructionV1) =>
-  c.kind === 'midpoint' || c.kind === 'angle_bisector'
+  c.kind === 'midpoint' || c.kind === 'angle_bisector' || c.kind === 'altitude'
     ? c.source_point_ids
     : c.kind === 'intersection'
       ? [c.source_a.id, c.source_b.id]
@@ -148,6 +151,62 @@ export function angleBisectorIntersectionCoordinates(a: GeometryPointV1, vertex:
     ? { x: intersection.x, y: intersection.y } : null
 }
 
+export function altitudeFootCoordinates(a: { x: number; y: number }, vertex: { x: number; y: number }, c: { x: number; y: number }) {
+  const length = Math.hypot(c.x - a.x, c.y - a.y)
+  if (!Number.isFinite(length) || length < CONSTRUCTION_LIMITS.minimumSourceDistance) return null
+  const dx = (c.x - a.x) / length, dy = (c.y - a.y) / length
+  const vx = vertex.x - a.x, vy = vertex.y - a.y
+  const distance = vx * dx + vy * dy
+  const height = vx * dy - vy * dx
+  const result = { x: a.x + distance * dx, y: a.y + distance * dy }
+  return [distance, height, result.x, result.y].every(Number.isFinite)
+    && Math.abs(height) >= CONSTRUCTION_LIMITS.minimumSourceDistance
+    && (result.x !== vertex.x || result.y !== vertex.y) ? result : null
+}
+
+// Shared presentation only: keep the owned foot even when its marker overlaps a source.
+export function altitudePresentation(g: GeometrySourceDataV1) {
+  const points = new Map(g.points.map(p => [p.id, p]))
+  const hiddenFootIds = new Set<string>()
+  const extensions: { id: string; start: GeometryPointV1; end: GeometryPointV1 }[] = []
+  for (const recipe of g.constructions ?? []) {
+    if (recipe.kind !== 'altitude') continue
+    const a = points.get(recipe.source_point_ids[0]), c = points.get(recipe.source_point_ids[2]), h = points.get(recipe.foot_point_id)
+    if (!a || !c || !h) continue
+    const tolerance = CONSTRUCTION_LIMITS.coordinateTolerance
+    if ([a, c].some(p => Math.hypot(p.x - h.x, p.y - h.y) <= tolerance)) {
+      hiddenFootIds.add(h.id)
+      continue
+    }
+    const length = Math.hypot(c.x - a.x, c.y - a.y)
+    if (!length) continue
+    const along = (h.x - a.x) * ((c.x - a.x) / length) + (h.y - a.y) * ((c.y - a.y) / length)
+    if (along < -tolerance || along > length + tolerance) extensions.push({ id: recipe.id, start: along < 0 ? a : c, end: h })
+  }
+  return { hiddenFootIds, extensions }
+}
+
+export const findAltitude = (g: GeometrySourceDataV1, a: string, vertex: string, c: string) =>
+  g.constructions?.find((recipe): recipe is GeometryAltitudeConstructionV1 => recipe.kind === 'altitude' && recipe.source_point_ids[1] === vertex
+    && pairKey([recipe.source_point_ids[0], recipe.source_point_ids[2]]) === pairKey([a, c]))
+
+export function commitAltitude(g: GeometrySourceDataV1, aId: string, vertexId: string, cId: string): GeometrySourceDataV1 {
+  const sourceIds: [string, string, string] = [aId, vertexId, cId]
+  if (new Set(sourceIds).size !== 3 || findAltitude(g, ...sourceIds) || g.points.length >= 500
+    || g.segments.length >= 1000 || (g.constructions?.length ?? 0) >= CONSTRUCTION_LIMITS.maxConstructions
+    || !g.polygons.some(p => p.point_ids.length === 3 && sourceIds.every(id => p.point_ids.includes(id)))) return g
+  const [a, vertex, c] = sourceIds.map(id => g.points.find(p => p.id === id))
+  if (!a || !vertex || !c) return g
+  const foot = altitudeFootCoordinates(a, vertex, c)
+  if (!foot) return g
+  const ids = geometryObjectIds(g)
+  const nextId = (prefix: string) => { let n = 1; while (ids.has(`${prefix}-${n}`)) n++; const id = `${prefix}-${n}`; ids.add(id); return id }
+  const h = { id: nextId('point'), ...foot, label: null }
+  const segment = { id: nextId('segment'), start_point_id: vertexId, end_point_id: h.id }
+  const recipe: GeometryConstructionV1 = { id: nextId('construction'), kind: 'altitude', source_point_ids: sourceIds, output_segment_id: segment.id, foot_point_id: h.id }
+  return recomputeConstructions({ ...g, points: [...g.points, h], segments: [...g.segments, segment], constructions: [...(g.constructions ?? []), recipe] }) ?? g
+}
+
 // One bounded evaluation boundary for validation and atomic source edits. Recipes
 // own their output only; sources are borrowed. Array order is never dependency order.
 export function evaluateConstructions(points: GeometryPointV1[], recipes: unknown, otherIds: Set<string>, checkStored = true, linear: LinearObjects = { segments: [] }): GeometryPointV1[] | null {
@@ -199,6 +258,15 @@ export function evaluateConstructions(points: GeometryPointV1[], recipes: unknow
           [c.source_b.kind, c.source_b.id],
         ].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
       ])
+    } else if (c.kind === 'altitude') {
+      if (Object.keys(c).sort().join(',') !== 'foot_point_id,id,kind,output_segment_id,source_point_ids'
+        || !Array.isArray(c.source_point_ids) || c.source_point_ids.length !== 3 || new Set(c.source_point_ids).size !== 3
+        || !c.source_point_ids.every((id: unknown) => validId(id) && locations.has(id))
+        || !validId(c.foot_point_id) || !locations.has(c.foot_point_id) || c.source_point_ids.includes(c.foot_point_id)
+        || !validId(c.output_segment_id)) return null
+      const segment = linear.segments.find(s => s.id === c.output_segment_id)
+      if (!segment || segment.start_point_id !== c.source_point_ids[1] || segment.end_point_id !== c.foot_point_id) return null
+      key = JSON.stringify(['altitude', c.source_point_ids[1], ...[c.source_point_ids[0], c.source_point_ids[2]].sort()])
     } else if (c.kind === 'angle_bisector') {
       if (
         Object.keys(c).sort().join(',') !== (Object.hasOwn(c, 'intersection_point_id')
@@ -280,6 +348,9 @@ export function evaluateConstructions(points: GeometryPointV1[], recipes: unknow
 
         expected = { x: intersection.x, y: intersection.y }
         stored = locations.get(c.output_point_id)!
+      } else if (c.kind === 'altitude') {
+        expected = altitudeFootCoordinates(locations.get(c.source_point_ids[0])!, locations.get(c.source_point_ids[1])!, locations.get(c.source_point_ids[2])!)
+        stored = locations.get(c.foot_point_id)!
       } else if (c.kind === 'angle_bisector') {
         expected = angleBisectorSupportCoordinates(
           locations.get(c.source_point_ids[0])!,

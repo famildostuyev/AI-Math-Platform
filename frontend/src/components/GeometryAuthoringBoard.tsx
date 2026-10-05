@@ -5,7 +5,7 @@ import { isTemplateTool } from './geometryTemplateContract'
 import { templateVertices } from './geometryTemplateModel'
 import { circleRadius, isCircleTool } from './geometryCircleModel'
 import { arcFromPointers, isArcTool } from './geometryArcModel'
-import { CONSTRUCTION_LIMITS, isDerivedPoint, midpointCoordinates, isLinearConstructionTool, linearSourceObject, linearSupportCoordinates } from './geometryConstructionModel'
+import { CONSTRUCTION_LIMITS, isDerivedPoint, midpointCoordinates, isLinearConstructionTool, linearSourceObject, linearSupportCoordinates, altitudePresentation } from './geometryConstructionModel'
 import { geometryFrameMetrics, GEOMETRY_FRAME_SCALE, GEOMETRY_FRAME_FONT } from './geometryFrameModel'
 import type { GeometryArcV1, GeometrySourceDataV1, GeometryLinearSourceV1 } from '../api/questionEditor'
 import { addGeometryPoint, addGeometryText, boardYFromGeometry, geometryYFromBoard, moveGeometryPoint, moveGeometryText, type GeometrySelection, type GeometryTool } from './geometryAuthoringModel'
@@ -59,12 +59,14 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
     window.addEventListener('scroll', refreshScreenOrigin, true)
     container.addEventListener('pointerdown', refreshScreenOrigin, true)
     const pointElements = new Map<string, JXG.Point>()
+    const { hiddenFootIds, extensions } = altitudePresentation(geometry)
     const hiddenSupportIds = new Set((geometry.constructions ?? []).filter(c => c.kind === 'angle_bisector').map(c => c.support_point_id))
     geometry.points.forEach((point) => {
+      if (hiddenFootIds.has(point.id)) hiddenSupportIds.add(point.id)
       const element = board.create('point', [point.x, boardYFromGeometry(geometry, point.y)], { ...POINT_ATTRIBUTES, visible: !hiddenSupportIds.has(point.id), name: point.label ?? '', label: { fontSize: framed ? GEOMETRY_FRAME_FONT : 12, offset: [10, 10] }, fixed: disabled || tool !== 'select' || isDerivedPoint(geometry, point.id) })
       element.rendNode?.setAttribute('data-geometry-point-id', point.id)
       element.on('down', () => {
-        if (!isDerivedPoint(geometry, point.id) || (geometry.constructions ?? []).some(c => c.kind === 'angle_bisector' && c.intersection_point_id === point.id)) {
+        if (!isDerivedPoint(geometry, point.id) || (geometry.constructions ?? []).some(c => (c.kind === 'angle_bisector' && c.intersection_point_id === point.id) || (c.kind === 'altitude' && c.foot_point_id === point.id))) {
           onObjectClick({ kind: 'point', id: point.id })
         }
       })
@@ -207,6 +209,10 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       element.rendNode?.setAttribute('data-geometry-segment-id', segment.id)
       element.on('down', () => onObjectClick({ kind: 'segment', id: segment.id }))
     })
+    for (const extension of extensions) {
+      const element = board.create('segment', [[extension.start.x, boardYFromGeometry(geometry, extension.start.y)], [extension.end.x, boardYFromGeometry(geometry, extension.end.y)]], { ...SEGMENT_ATTRIBUTES, fixed: true, dash: 2, highlight: false })
+      element.rendNode?.setAttribute('data-geometry-altitude-extension', extension.id)
+    }
     geometry.texts.forEach((text) => {
       const element = board.create('text', [text.x, boardYFromGeometry(geometry, text.y), text.content], {
         ...TEXT_ATTRIBUTES, cssStyle: 'font-family:Arial', fixed: disabled || tool !== 'select',
@@ -297,7 +303,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
         onObjectClick({ kind: 'text', id: updated.texts[updated.texts.length - 1].id })
       }
     })
-    if ((tool === 'midpoint' || isLinearConstructionTool(tool)) && !disabled) container.focus({ preventScroll: true })
+    if ((tool === 'midpoint' || tool === 'altitude' || isLinearConstructionTool(tool)) && !disabled) container.focus({ preventScroll: true })
     return () => {
       window.removeEventListener('scroll', refreshScreenOrigin, true)
       container.removeEventListener('pointerdown', refreshScreenOrigin, true)
@@ -306,7 +312,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
   }, [disabled, geometry, tool, frameWidth, frameHeight, lineDraft, regularSides, midpointSource, linearSource])
 
   return <div id={boardId} ref={containerRef} tabIndex={0} onKeyDown={event => {
-    if ((tool !== 'midpoint' && !isLinearConstructionTool(tool) && !isLineTool(tool) && !isTemplateTool(tool) && !isCircleTool(tool) && !isArcTool(tool)) || disabled) return
+    if ((tool !== 'midpoint' && tool !== 'altitude' && !isLinearConstructionTool(tool) && !isLineTool(tool) && !isTemplateTool(tool) && !isCircleTool(tool) && !isArcTool(tool)) || disabled) return
     if (event.key === 'Enter') { event.preventDefault(); onFinishLine?.() }
     if (event.key === 'Escape') { event.preventDefault(); onCancelLine?.() }
   }} style={frameSize ? { width: frameSize.width, height: frameSize.height } : undefined} className="geometry-authoring-board jxgbox" aria-label="İnteraktiv həndəsə lövhəsi" />

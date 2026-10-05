@@ -28,7 +28,7 @@ export const GEOMETRY_RIBBON: GeometryRibbonControl[] = [
     { label: 'Qövs', items: [{ label: 'Qövs', action: 'arc' }, ...group('', ['Mərkəz + başlanğıc + son nöqtə', '3 nöqtə ilə']).items] },
     { label: '', items: [{ label: 'Sektor', action: 'sector' }] }, group('Əyri', ['Sərbəst əyri']),
   ] },
-  { label: 'Konstruksiya', groups: [{ label: 'Konstruksiya', items: [{ label: 'Orta nöqtə', action: 'midpoint' }, { label: 'Paralel', action: 'parallel' }, { label: 'Perpendikulyar', action: 'perpendicular' }, { label: 'Kəsişmə', action: 'intersection' }, { label: 'Tənbölən', action: 'angle_bisector' }] }] },
+  { label: 'Konstruksiya', groups: [{ label: 'Konstruksiya', items: [{ label: 'Orta nöqtə', action: 'midpoint' }, { label: 'Paralel', action: 'parallel' }, { label: 'Perpendikulyar', action: 'perpendicular' }, { label: 'Kəsişmə', action: 'intersection' }, { label: 'Tənbölən', action: 'angle_bisector' }, { label: 'Hündürlük', action: 'altitude' }] }] },
   { label: 'Ölçü', groups: [group('Ölçü', ['Uzunluq', 'Məsafə', 'Bucaq', 'Perimetr', 'Sahə'])] },
   { label: '3D', groups: [
     group('Müstəvi və bucaqlar', ['Müstəvi', 'İkiüzlü bucaq']),

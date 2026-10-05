@@ -87,12 +87,28 @@ def intersection_coordinates(a1, a2, b1, b2):
     return x, y, t, u
 
 
+def altitude_foot_coordinates(a, vertex, c):
+    length = math.hypot(c.x - a.x, c.y - a.y)
+    if not math.isfinite(length) or length < LIMITS['minimumSourceDistance']:
+        raise ValueError('Degenerate altitude opposite side.')
+    dx, dy = (c.x - a.x) / length, (c.y - a.y) / length
+    vx, vy = vertex.x - a.x, vertex.y - a.y
+    distance, height = vx * dx + vy * dy, vx * dy - vy * dx
+    x, y = a.x + distance * dx, a.y + distance * dy
+    if (not all(math.isfinite(value) for value in (distance, height, x, y))
+        or abs(height) < LIMITS['minimumSourceDistance'] or (x == vertex.x and y == vertex.y)):
+        raise ValueError('Degenerate or unrepresentable altitude.')
+    return x, y
+
+
 def validate_constructions(points, constructions, segments=(), lines=()):
     locations = {p.id: p.model_copy() for p in points}
     linear = {s.id: s for s in [*segments, *lines]}
     outputs, pairs = set(), set()
 
     def owned(c):
+        if c.kind == 'altitude':
+            return [c.output_segment_id, c.foot_point_id]
         if c.kind in ('midpoint', 'intersection'):
             return [c.output_point_id]
         return [c.output_line_id, c.support_point_id] + (
@@ -100,7 +116,7 @@ def validate_constructions(points, constructions, segments=(), lines=()):
         )
 
     def inputs(c):
-        if c.kind in ('midpoint', 'angle_bisector'):
+        if c.kind in ('midpoint', 'angle_bisector', 'altitude'):
             return c.source_point_ids
         if c.kind == 'intersection':
             return [c.source_a.id, c.source_b.id]
@@ -148,6 +164,15 @@ def validate_constructions(points, constructions, segments=(), lines=()):
                 (c.source_b.kind, c.source_b.id),
             ))
             pair = ('intersection', *source_keys)
+
+        elif c.kind == 'altitude':
+            a, vertex, c_point = c.source_point_ids
+            output = next((s for s in segments if s.id == c.output_segment_id), None)
+            if (any(id not in locations for id in (a, vertex, c_point))
+                or c.foot_point_id not in locations or c.foot_point_id in (a, vertex, c_point)
+                or output is None or output.start_point_id != vertex or output.end_point_id != c.foot_point_id):
+                raise ValueError('Invalid altitude references.')
+            pair = ('altitude', vertex, *sorted((a, c_point)))
 
         elif c.kind == 'angle_bisector':
             a, vertex, c_point = c.source_point_ids
@@ -233,6 +258,10 @@ def validate_constructions(points, constructions, segments=(), lines=()):
                 ):
                     raise ValueError('Intersection lies outside segment bounds.')
                 output = locations[c.output_point_id]
+
+            elif c.kind == 'altitude':
+                x, y = altitude_foot_coordinates(*(locations[id] for id in c.source_point_ids))
+                output = locations[c.foot_point_id]
 
             elif c.kind == 'angle_bisector':
                 a, vertex, c_point = c.source_point_ids

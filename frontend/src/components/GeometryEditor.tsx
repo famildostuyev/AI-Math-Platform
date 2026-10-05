@@ -10,6 +10,7 @@ import { circleRadius, commitGeometryCircle, isCircleTool } from './geometryCirc
 import { commitGeometryArc, isArcTool } from './geometryArcModel'
 import { commitMidpoint, findMidpoint, commitLinearConstruction, findLinearConstruction, isLinearConstructionTool, commitIntersection, findIntersection, commitAngleBisector, findAngleBisector } from './geometryConstructionModel'
 import { addGeometryPolygon, addGeometrySegment, deleteGeometrySelection, renameGeometryPoint, updateGeometryTextContent, type GeometrySelection, type GeometryTool } from './geometryAuthoringModel'
+import { commitAltitude, findAltitude } from './geometryConstructionModel'
 
 type GeometryEditorProps = {
   frameSize?: { width: number; height: number }
@@ -20,6 +21,7 @@ type GeometryEditorProps = {
 }
 
 const TOOL_LABELS: Record<GeometryTool, string> = {
+  altitude: 'Hündürlük',
   parallel: 'Paralel', perpendicular: 'Perpendikulyar',
   midpoint: 'Orta nöqtə',
   intersection: 'Kəsişmə',
@@ -56,6 +58,24 @@ export default function GeometryEditor({ value, onChange, disabled, targetId, fr
 
   const handleObjectClick = useCallback((nextSelection: GeometrySelection) => {
     if (disabled) return
+    if (tool === 'altitude') {
+      if (nextSelection.kind !== 'point') return
+      if (pendingPointIds.includes(nextSelection.id)) { setMessage('Hündürlük üçün üç fərqli nöqtə seçin: A, V, C.'); return }
+      const sources = [...pendingPointIds, nextSelection.id]
+      if (sources.length < 3) { setPendingPointIds(sources); setMessage('Əvvəl A, sonra hündürlüyün təpəsi V, sonra C nöqtəsini seçin.'); return }
+      const [a, vertex, c] = sources
+      const existing = findAltitude(value, a, vertex, c)
+      const next = commitAltitude(value, a, vertex, c)
+      setPendingPointIds([])
+      if (next === value && !existing) { setMessage('Eyni üçbucağın üç fərqli, bir düz xətt üzərində olmayan təpəsini seçin.'); return }
+      if (next !== value) onChange(next)
+      const recipe = findAltitude(next, a, vertex, c)!
+      const selected = { kind: 'segment' as const, id: recipe.output_segment_id }
+      setSelection(selected); setTool('select')
+      setMessage(existing ? 'Bu hündürlük artıq mövcuddur.' : null)
+      if (targetId) sessionRef.current?.activateGeometry(targetId, selected)
+      return
+    }
     if (tool === 'intersection') {
       let source: GeometryLinearSourceV1 | null = null
 

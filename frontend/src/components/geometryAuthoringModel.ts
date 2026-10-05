@@ -2,7 +2,7 @@ import type { GeometrySourceDataV1 } from '../api/questionEditor'
 import type { GeometryTemplateTool } from './geometryTemplateContract'
 import { constructionDeletionClosure, geometryObjectIds, isDerivedPoint, recomputeConstructions } from './geometryConstructionModel'
 
-export type GeometryTool = 'parallel' | 'perpendicular' | 'midpoint' | 'intersection' | 'angle_bisector' | 'select' | 'point' | 'segment' | 'polygon' | 'text' | 'line' | 'directed_line' | 'vector' | 'polyline' | 'circle' | 'disk' | 'arc' | 'sector' | GeometryTemplateTool
+export type GeometryTool = 'parallel' | 'perpendicular' | 'midpoint' | 'intersection' | 'angle_bisector' | 'altitude' | 'select' | 'point' | 'segment' | 'polygon' | 'text' | 'line' | 'directed_line' | 'vector' | 'polyline' | 'circle' | 'disk' | 'arc' | 'sector' | GeometryTemplateTool
 export type GeometrySelection = { kind: 'point' | 'segment' | 'polygon' | 'text' | 'line' | 'polyline' | 'circle' | 'arc'; id: string }
 
 export const GEOMETRY_BOARD_VIEWPORT = Object.freeze({ min_x: 0, min_y: 0, width: 100, height: 100 })

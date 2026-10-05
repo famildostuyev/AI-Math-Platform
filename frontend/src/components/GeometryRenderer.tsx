@@ -4,12 +4,13 @@ import { geometryFrameMetrics, GEOMETRY_FRAME_SCALE, GEOMETRY_FRAME_FONT } from 
 import './VisualFrame.css'
 import { clipInfiniteLine } from './geometryLineModel'
 import { arcPath } from './geometryArcModel'
-import { intersectionCoordinates, CONSTRUCTION_LIMITS } from './geometryConstructionModel'
+import { intersectionCoordinates, CONSTRUCTION_LIMITS, altitudePresentation } from './geometryConstructionModel'
 
 type GeometryRendererProps = { geometry: GeometrySourceDataV1; blockId: string; frameSize?: { width: number; height: number } }
 
 export default function GeometryRenderer({ geometry, blockId, frameSize }: GeometryRendererProps) {
   const points = new Map(geometry.points.map((point) => [point.id, point]))
+  const { hiddenFootIds, extensions } = altitudePresentation(geometry)
   const metrics = frameSize ? geometryFrameMetrics(geometry) : null
   const viewBox = frameSize && metrics
     ? `${metrics.originX} ${metrics.originY} ${frameSize.width / GEOMETRY_FRAME_SCALE} ${frameSize.height / GEOMETRY_FRAME_SCALE}`
@@ -68,6 +69,9 @@ export default function GeometryRenderer({ geometry, blockId, frameSize }: Geome
           return start && end ? <line key={segment.id} x1={start.x} y1={start.y} x2={end.x} y2={end.y} /> : null
         })}
       </g>
+      <g className="geometry-altitude-extensions" fill="none" stroke="#374151" strokeWidth="0.5" strokeDasharray="2 2">
+        {extensions.map(extension => <line key={extension.id} x1={extension.start.x} y1={extension.start.y} x2={extension.end.x} y2={extension.end.y} />)}
+      </g>
       <g className="geometry-circles" stroke="#374151" strokeWidth="0.5">
         {(geometry.circles ?? []).map(circle => {
           const center = points.get(circle.center_point_id)
@@ -81,7 +85,7 @@ export default function GeometryRenderer({ geometry, blockId, frameSize }: Geome
         })}
       </g>
       <g className="geometry-points">
-        {geometry.points.filter(point => !bisectorSupportPointIds.has(point.id)).map((point) => <g key={point.id}>
+        {geometry.points.filter(point => !bisectorSupportPointIds.has(point.id) && !hiddenFootIds.has(point.id)).map((point) => <g key={point.id}>
           <circle cx={point.x} cy={point.y} r={frameSize ? 1 : '1.7'} />
           {point.label && <text style={frameSize ? { font: `${GEOMETRY_FRAME_FONT / GEOMETRY_FRAME_SCALE}px Arial` } : undefined} x={point.x + 2.5} y={point.y - 2.5}>{point.label}</text>}
         </g>)}
