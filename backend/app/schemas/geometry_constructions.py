@@ -101,12 +101,15 @@ def altitude_foot_coordinates(a, vertex, c):
     return x, y
 
 
+
 def validate_constructions(points, constructions, segments=(), lines=()):
     locations = {p.id: p.model_copy() for p in points}
     linear = {s.id: s for s in [*segments, *lines]}
     outputs, pairs = set(), set()
 
     def owned(c):
+        if c.kind == 'median':
+            return [c.output_segment_id]
         if c.kind == 'altitude':
             return [c.output_segment_id, c.foot_point_id]
         if c.kind in ('midpoint', 'intersection'):
@@ -116,6 +119,8 @@ def validate_constructions(points, constructions, segments=(), lines=()):
         )
 
     def inputs(c):
+        if c.kind == 'median':
+            return [c.vertex_point_id, c.midpoint_point_id]
         if c.kind in ('midpoint', 'angle_bisector', 'altitude'):
             return c.source_point_ids
         if c.kind == 'intersection':
@@ -164,6 +169,19 @@ def validate_constructions(points, constructions, segments=(), lines=()):
                 (c.source_b.kind, c.source_b.id),
             ))
             pair = ('intersection', *source_keys)
+
+        elif c.kind == 'median':
+            output = next((s for s in segments if s.id == c.output_segment_id), None)
+            if (
+                c.vertex_point_id not in locations
+                or c.midpoint_point_id not in locations
+                or c.vertex_point_id == c.midpoint_point_id
+                or output is None
+                or output.start_point_id != c.vertex_point_id
+                or output.end_point_id != c.midpoint_point_id
+            ):
+                raise ValueError('Invalid median references.')
+            pair = ('median', c.vertex_point_id, c.midpoint_point_id)
 
         elif c.kind == 'altitude':
             a, vertex, c_point = c.source_point_ids
@@ -258,6 +276,19 @@ def validate_constructions(points, constructions, segments=(), lines=()):
                 ):
                     raise ValueError('Intersection lies outside segment bounds.')
                 output = locations[c.output_point_id]
+
+
+            elif c.kind == 'median':
+                vertex = locations[c.vertex_point_id]
+                midpoint = locations[c.midpoint_point_id]
+                if (
+                    not all(math.isfinite(v) for v in (vertex.x, vertex.y, midpoint.x, midpoint.y))
+                    or math.hypot(vertex.x - midpoint.x, vertex.y - midpoint.y) < LIMITS['minimumSourceDistance']
+                ):
+                    raise ValueError('Invalid median endpoint distance.')
+                ready.update(owned(c))
+                ready.add(c.id)
+                continue
 
             elif c.kind == 'altitude':
                 x, y = altitude_foot_coordinates(*(locations[id] for id in c.source_point_ids))

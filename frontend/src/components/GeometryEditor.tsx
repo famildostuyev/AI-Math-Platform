@@ -11,6 +11,7 @@ import { commitGeometryArc, isArcTool } from './geometryArcModel'
 import { commitMidpoint, findMidpoint, commitLinearConstruction, findLinearConstruction, isLinearConstructionTool, commitIntersection, findIntersection, commitAngleBisector, findAngleBisector } from './geometryConstructionModel'
 import { addGeometryPolygon, addGeometrySegment, deleteGeometrySelection, renameGeometryPoint, updateGeometryTextContent, type GeometrySelection, type GeometryTool } from './geometryAuthoringModel'
 import { commitAltitude, findAltitude } from './geometryConstructionModel'
+import { commitMedian, findMedian } from './geometryConstructionModel'
 
 type GeometryEditorProps = {
   frameSize?: { width: number; height: number }
@@ -21,6 +22,7 @@ type GeometryEditorProps = {
 }
 
 const TOOL_LABELS: Record<GeometryTool, string> = {
+  median: 'Median',
   altitude: 'Hündürlük',
   parallel: 'Paralel', perpendicular: 'Perpendikulyar',
   midpoint: 'Orta nöqtə',
@@ -58,6 +60,35 @@ export default function GeometryEditor({ value, onChange, disabled, targetId, fr
 
   const handleObjectClick = useCallback((nextSelection: GeometrySelection) => {
     if (disabled) return
+    if (tool === 'median') {
+      if (nextSelection.kind !== 'point') return
+      if (pendingPointIds.includes(nextSelection.id)) {
+        setMessage('Median ucun iki ferqli noqte secin: evvel tepe, sonra qarsi terefin orta noqtesi.')
+        return
+      }
+      const sources = [...pendingPointIds, nextSelection.id]
+      if (sources.length < 2) {
+        setPendingPointIds(sources)
+        setMessage('Indi qarsi terefin movcud orta noqtesini secin.')
+        return
+      }
+      const [vertex, midpoint] = sources
+      const existing = findMedian(value, vertex, midpoint)
+      const next = commitMedian(value, vertex, midpoint)
+      setPendingPointIds([])
+      if (next === value && !existing) {
+        setMessage('Median ucun iki ferqli movcud noqte secin: tepe ve orta noqte.')
+        return
+      }
+      if (next !== value) onChange(next)
+      const recipe = findMedian(next, vertex, midpoint)!
+      const selected = { kind: 'segment' as const, id: recipe.output_segment_id }
+      setSelection(selected)
+      setTool('select')
+      setMessage(existing ? 'Bu median artiq movcuddur.' : null)
+      if (targetId) sessionRef.current?.activateGeometry(targetId, selected)
+      return
+    }
     if (tool === 'altitude') {
       if (nextSelection.kind !== 'point') return
       if (pendingPointIds.includes(nextSelection.id)) { setMessage('Hündürlük üçün üç fərqli nöqtə seçin: A, V, C.'); return }

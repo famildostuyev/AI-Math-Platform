@@ -1,6 +1,7 @@
 import type { GeometrySourceDataV1, GeometryPointV1, GeometryConstructionV1, GeometryLinearSourceV1, GeometryLinearConstructionV1, GeometryMidpointConstructionV1, GeometryIntersectionConstructionV1, GeometryAngleBisectorConstructionV1 } from '../api/questionEditor'
 import limitsJson from '../../../backend/app/schemas/geometry_construction_limits.json?raw'
 import type { GeometryAltitudeConstructionV1 } from '../api/questionEditor'
+import type { GeometryMedianConstructionV1 } from '../api/questionEditor'
 
 export const CONSTRUCTION_LIMITS = JSON.parse(limitsJson) as { coordinateTolerance: number; minimumSourceDistance: number; maxConstructions: number }
 export const midpointCoordinates = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: a.x / 2 + b.x / 2, y: a.y / 2 + b.y / 2 })
@@ -8,6 +9,7 @@ export const ownedConstructionIds = (c: GeometryConstructionV1) =>
   c.kind === 'midpoint' || c.kind === 'intersection'
     ? [c.output_point_id]
     : c.kind === 'altitude' ? [c.output_segment_id, c.foot_point_id]
+    : c.kind === 'median' ? [c.output_segment_id]
     : [c.output_line_id, c.support_point_id, ...(c.kind === 'angle_bisector' && c.intersection_point_id ? [c.intersection_point_id] : [])]
 
 export const isDerivedPoint = (g: GeometrySourceDataV1, id: string) =>
@@ -15,6 +17,7 @@ export const isDerivedPoint = (g: GeometrySourceDataV1, id: string) =>
     c.kind === 'midpoint' || c.kind === 'intersection'
       ? c.output_point_id === id
       : c.kind === 'altitude' ? c.foot_point_id === id
+      : c.kind === 'median' ? false
       : c.support_point_id === id || (c.kind === 'angle_bisector' && c.intersection_point_id === id)
   )
 export const geometryObjectIds = (g: GeometrySourceDataV1) => new Set([...g.points, ...g.segments, ...g.polygons, ...g.texts, ...(g.lines ?? []), ...(g.polylines ?? []), ...(g.circles ?? []), ...(g.arcs ?? []), ...(g.constructions ?? [])].map(o => o.id))
@@ -69,12 +72,13 @@ export const findAngleBisector = (
 )
 
 const constructionInputs = (c: GeometryConstructionV1) =>
-  c.kind === 'midpoint' || c.kind === 'angle_bisector' || c.kind === 'altitude'
-    ? c.source_point_ids
-    : c.kind === 'intersection'
-      ? [c.source_a.id, c.source_b.id]
-      : [c.source.id, c.through_point_id]
-
+  c.kind === 'median'
+    ? [c.vertex_point_id, c.midpoint_point_id]
+    : c.kind === 'midpoint' || c.kind === 'angle_bisector' || c.kind === 'altitude'
+      ? c.source_point_ids
+      : c.kind === 'intersection'
+        ? [c.source_a.id, c.source_b.id]
+        : [c.source.id, c.through_point_id]
 export function angleBisectorSupportCoordinates(
   a: { x: number; y: number },
   vertex: { x: number; y: number },
@@ -162,6 +166,70 @@ export function altitudeFootCoordinates(a: { x: number; y: number }, vertex: { x
   return [distance, height, result.x, result.y].every(Number.isFinite)
     && Math.abs(height) >= CONSTRUCTION_LIMITS.minimumSourceDistance
     && (result.x !== vertex.x || result.y !== vertex.y) ? result : null
+}
+
+export const findMedian = (
+  g: GeometrySourceDataV1,
+  vertexId: string,
+  midpointId: string,
+) =>
+  g.constructions?.find(
+    (recipe): recipe is GeometryMedianConstructionV1 =>
+      recipe.kind === 'median'
+      && recipe.vertex_point_id === vertexId
+      && recipe.midpoint_point_id === midpointId
+  )
+
+export function commitMedian(
+  g: GeometrySourceDataV1,
+  vertexId: string,
+  midpointId: string,
+): GeometrySourceDataV1 {
+  if (
+    vertexId === midpointId
+    || findMedian(g, vertexId, midpointId)
+    || g.segments.length >= 1000
+    || (g.constructions?.length ?? 0) >= CONSTRUCTION_LIMITS.maxConstructions
+  ) return g
+
+  const vertex = g.points.find(p => p.id === vertexId)
+  const midpoint = g.points.find(p => p.id === midpointId)
+  if (
+    !vertex
+    || !midpoint
+    || ![vertex.x, vertex.y, midpoint.x, midpoint.y].every(Number.isFinite)
+    || Math.hypot(vertex.x - midpoint.x, vertex.y - midpoint.y)
+      < CONSTRUCTION_LIMITS.minimumSourceDistance
+  ) return g
+
+  const ids = geometryObjectIds(g)
+  const nextId = (prefix: string) => {
+    let n = 1
+    while (ids.has(`${prefix}-${n}`)) n++
+    const id = `${prefix}-${n}`
+    ids.add(id)
+    return id
+  }
+
+  const segment = {
+    id: nextId('segment'),
+    start_point_id: vertexId,
+    end_point_id: midpointId,
+  }
+
+  const recipe: GeometryMedianConstructionV1 = {
+    id: nextId('construction'),
+    kind: 'median',
+    vertex_point_id: vertexId,
+    midpoint_point_id: midpointId,
+    output_segment_id: segment.id,
+  }
+
+  return recomputeConstructions({
+    ...g,
+    segments: [...g.segments, segment],
+    constructions: [...(g.constructions ?? []), recipe],
+  }) ?? g
 }
 
 // Shared presentation only: keep the owned foot even when its marker overlaps a source.
@@ -258,6 +326,29 @@ export function evaluateConstructions(points: GeometryPointV1[], recipes: unknow
           [c.source_b.kind, c.source_b.id],
         ].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
       ])
+    } else if (c.kind === 'median') {
+      if (
+        Object.keys(c).sort().join(',') !== 'id,kind,midpoint_point_id,output_segment_id,vertex_point_id'
+        || !validId(c.vertex_point_id)
+        || !locations.has(c.vertex_point_id)
+        || !validId(c.midpoint_point_id)
+        || !locations.has(c.midpoint_point_id)
+        || c.vertex_point_id === c.midpoint_point_id
+        || !validId(c.output_segment_id)
+      ) return null
+
+      const segment = linear.segments.find(s => s.id === c.output_segment_id)
+      if (
+        !segment
+        || segment.start_point_id !== c.vertex_point_id
+        || segment.end_point_id !== c.midpoint_point_id
+      ) return null
+
+      key = JSON.stringify([
+        'median',
+        c.vertex_point_id,
+        c.midpoint_point_id,
+      ])
     } else if (c.kind === 'altitude') {
       if (Object.keys(c).sort().join(',') !== 'foot_point_id,id,kind,output_segment_id,source_point_ids'
         || !Array.isArray(c.source_point_ids) || c.source_point_ids.length !== 3 || new Set(c.source_point_ids).size !== 3
@@ -348,6 +439,14 @@ export function evaluateConstructions(points: GeometryPointV1[], recipes: unknow
 
         expected = { x: intersection.x, y: intersection.y }
         stored = locations.get(c.output_point_id)!
+      } else if (c.kind === 'median') {
+        const vertex = locations.get(c.vertex_point_id)!
+        const midpoint = locations.get(c.midpoint_point_id)!
+        if (![vertex.x, vertex.y, midpoint.x, midpoint.y].every(Number.isFinite)
+          || Math.hypot(vertex.x - midpoint.x, vertex.y - midpoint.y) < CONSTRUCTION_LIMITS.minimumSourceDistance) return null
+        ownedConstructionIds(c).forEach(id => ready.add(id))
+        ready.add(c.id)
+        continue
       } else if (c.kind === 'altitude') {
         expected = altitudeFootCoordinates(locations.get(c.source_point_ids[0])!, locations.get(c.source_point_ids[1])!, locations.get(c.source_point_ids[2])!)
         stored = locations.get(c.foot_point_id)!

@@ -8,8 +8,8 @@ const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarg
 const { GEOMETRY_RIBBON: catalogue } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'))
 assert.deepEqual(catalogue.map(x => x.label), ['Çərçivə əlavə et', 'Seç', 'Nöqtə', 'Xətt', '2D fiqurlar', 'Çevrə', 'Konstruksiya', 'Ölçü', '3D', 'Mətn', 'Düstur', 'Qələm', 'Daha çox'])
 assert.deepEqual(catalogue.find(x => x.label === 'Xətt').groups[0].items.map(x => x.label), ['Düz xətt', 'İstiqamətlənmiş düz xətt', 'Parça', 'Vektor', 'Sınıq xətt'])
-assert.deepEqual(catalogue.filter(x => x.groups).map(x => x.groups.reduce((n, g) => n + g.items.length, 0)), [5, 11, 14, 6, 5, 15, 3, 13])
-assert.deepEqual(catalogue.flatMap(x => x.groups ? x.groups.flatMap(g => g.items) : [x]).filter(x => x.action).map(x => x.action), ['select', 'point', 'line', 'directed_line', 'segment', 'vector', 'polyline', 'triangle', 'right_triangle', 'rectangle', 'square', 'parallelogram', 'rhombus', 'trapezoid', 'regular_pentagon', 'regular_hexagon', 'regular_polygon', 'polygon', 'circle', 'disk', 'arc', 'sector', 'midpoint', 'parallel', 'perpendicular', 'intersection', 'angle_bisector', 'altitude', 'text', 'delete'])
+assert.deepEqual(catalogue.filter(x => x.groups).map(x => x.groups.reduce((n, g) => n + g.items.length, 0)), [5, 11, 14, 7, 5, 15, 3, 13])
+assert.deepEqual(catalogue.flatMap(x => x.groups ? x.groups.flatMap(g => g.items) : [x]).filter(x => x.action).map(x => x.action), ['select', 'point', 'line', 'directed_line', 'segment', 'vector', 'polyline', 'triangle', 'right_triangle', 'rectangle', 'square', 'parallelogram', 'rhombus', 'trapezoid', 'regular_pentagon', 'regular_hexagon', 'regular_polygon', 'polygon', 'circle', 'disk', 'arc', 'sector', 'midpoint', 'parallel', 'perpendicular', 'intersection', 'angle_bisector', 'altitude', 'median', 'text', 'delete'])
 assert.equal(catalogue.find(x => x.label === '3D').groups.flatMap(x => x.items).filter(x => x.title === 'Oturacağın tərəflərinin sayı (n)').length, 3)
 
 export async function runGeometryRibbonAcceptance({ evaluate, until, textButton, click, box, pointer, delay, send }) {

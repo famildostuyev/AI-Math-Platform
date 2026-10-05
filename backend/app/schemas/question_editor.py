@@ -408,6 +408,14 @@ class GeometryAltitudeConstructionV1(StrictEditorSchema):
         return values
 
 
+class GeometryMedianConstructionV1(StrictEditorSchema):
+    id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+    kind: Literal['median']
+    vertex_point_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+    midpoint_point_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+    output_segment_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+
+
 class GeometrySourceDataV1(StrictEditorSchema):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
@@ -422,7 +430,7 @@ class GeometrySourceDataV1(StrictEditorSchema):
     polylines: list[GeometryPolylineV1] = Field(default_factory=list, max_length=200)
     circles: list[GeometryCircleV1] = Field(default_factory=list, max_length=200)
     arcs: list[GeometryArcV1] = Field(default_factory=list, max_length=200)
-    constructions: list[GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1 | GeometryAngleBisectorConstructionV1 | GeometryAltitudeConstructionV1] = Field(default_factory=list, max_length=200)
+    constructions: list[GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1 | GeometryAngleBisectorConstructionV1 | GeometryAltitudeConstructionV1 | GeometryMedianConstructionV1] = Field(default_factory=list, max_length=200)
 
     @model_serializer(mode="wrap")
     def serialize_additive_collections(self, handler):

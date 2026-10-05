@@ -66,7 +66,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       const element = board.create('point', [point.x, boardYFromGeometry(geometry, point.y)], { ...POINT_ATTRIBUTES, visible: !hiddenSupportIds.has(point.id), name: point.label ?? '', label: { fontSize: framed ? GEOMETRY_FRAME_FONT : 12, offset: [10, 10] }, fixed: disabled || tool !== 'select' || isDerivedPoint(geometry, point.id) })
       element.rendNode?.setAttribute('data-geometry-point-id', point.id)
       element.on('down', () => {
-        if (!isDerivedPoint(geometry, point.id) || (geometry.constructions ?? []).some(c => (c.kind === 'angle_bisector' && c.intersection_point_id === point.id) || (c.kind === 'altitude' && c.foot_point_id === point.id))) {
+        if (tool === 'median' || !isDerivedPoint(geometry, point.id) || (geometry.constructions ?? []).some(c => (c.kind === 'angle_bisector' && c.intersection_point_id === point.id) || (c.kind === 'altitude' && c.foot_point_id === point.id) || (c.kind === 'median' && c.midpoint_point_id === point.id))) {
           onObjectClick({ kind: 'point', id: point.id })
         }
       })
@@ -303,7 +303,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
         onObjectClick({ kind: 'text', id: updated.texts[updated.texts.length - 1].id })
       }
     })
-    if ((tool === 'midpoint' || tool === 'altitude' || isLinearConstructionTool(tool)) && !disabled) container.focus({ preventScroll: true })
+    if ((tool === 'midpoint' || tool === 'altitude' || tool === 'median' || isLinearConstructionTool(tool)) && !disabled) container.focus({ preventScroll: true })
     return () => {
       window.removeEventListener('scroll', refreshScreenOrigin, true)
       container.removeEventListener('pointerdown', refreshScreenOrigin, true)
@@ -312,7 +312,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
   }, [disabled, geometry, tool, frameWidth, frameHeight, lineDraft, regularSides, midpointSource, linearSource])
 
   return <div id={boardId} ref={containerRef} tabIndex={0} onKeyDown={event => {
-    if ((tool !== 'midpoint' && tool !== 'altitude' && !isLinearConstructionTool(tool) && !isLineTool(tool) && !isTemplateTool(tool) && !isCircleTool(tool) && !isArcTool(tool)) || disabled) return
+    if ((tool !== 'midpoint' && tool !== 'altitude' && tool !== 'median' && !isLinearConstructionTool(tool) && !isLineTool(tool) && !isTemplateTool(tool) && !isCircleTool(tool) && !isArcTool(tool)) || disabled) return
     if (event.key === 'Enter') { event.preventDefault(); onFinishLine?.() }
     if (event.key === 'Escape') { event.preventDefault(); onCancelLine?.() }
   }} style={frameSize ? { width: frameSize.width, height: frameSize.height } : undefined} className="geometry-authoring-board jxgbox" aria-label="İnteraktiv həndəsə lövhəsi" />
