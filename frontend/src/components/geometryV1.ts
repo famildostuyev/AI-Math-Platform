@@ -19,37 +19,82 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+// Python re.IGNORECASE equivalence classes for this ASCII token. Expand each
+// letter rather than relying on JS /i or locale-dependent text conversion.
+const pythonScriptCaseClasses: Record<string, string> = { i: 'iI\u0130\u0131', s: 'sS\u017f' }
+const pythonScriptScheme = new RegExp([...'javascript']
+  .map(letter => `[${pythonScriptCaseClasses[letter] ?? letter + letter.toUpperCase()}]`)
+  .join('') + ' *:')
+
 function isPlainText(value: string): boolean {
-  return value.trim().length > 0
-    && !/<\s*\/?\s*[A-Za-z][^>]*>/.test(value)
-    && !/javascript\s*:/i.test(value)
+  // Match Python regex whitespace for these checks without changing stored text.
+  const checked = value.replace(/[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/g, ' ')
+  return !isBlank(value)
+    && !/< *\/? *[A-Za-z][^>]*>/.test(checked)
+    && !pythonScriptScheme.test(checked)
+}
+
+function isBlank(value: string): boolean {
+  // Match Python str.strip(), including its additional control whitespace.
+  return /^[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/.test(value)
+}
+
+// Python/Pydantic string lengths count Unicode code points, not UTF-16 units.
+function boundedString(value: unknown, maximum: number): value is string {
+  return typeof value === 'string' && [...value].length >= 1 && [...value].length <= maximum
+}
+
+function geometryId(value: unknown): value is string {
+  return boundedString(value, 64) && /^[A-Za-z][A-Za-z0-9_-]*$/.test(value)
+}
+
+function baseNumber<T>(value: T): T | number {
+  if (typeof value === 'boolean') return Number(value)
+  if (typeof value === 'string') {
+    // Pydantic's float parser trims Unicode White_Space (not JS trim's BOM).
+    const stripped = value.replace(/^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g, '')
+    // Isolated internal underscores are removed, including around punctuation.
+    if (stripped.startsWith('_') || stripped.endsWith('_') || stripped.includes('__')) return value
+    const decimal = stripped.replaceAll('_', '')
+    if (/^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/.test(decimal)) return Number(decimal)
+  }
+  return value
 }
 
 export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySourceDataV1 | null {
-  const baseKeys = ['schema_version', 'viewport', 'description', 'points', 'segments', 'polygons']
+  const baseKeys = ['schema_version', 'viewport', 'description']
+  const defaultKeys = ['points', 'segments', 'polygons']
   const hasTexts = Object.hasOwn(value, 'texts')
-  const additiveKeys = ['texts', 'lines', 'polylines', 'circles', 'arcs', 'constructions'].filter(key => Object.hasOwn(value, key))
+  const additiveKeys = [...defaultKeys, 'texts', 'lines', 'polylines', 'circles', 'arcs', 'constructions'].filter(key => Object.hasOwn(value, key))
   if (!hasExactKeys(value, [...baseKeys, ...additiveKeys])) return null
-  if (value.schema_version !== 1 || typeof value.description !== 'string' || !value.description.trim()) return null
+  if ((value.schema_version !== 1 && value.schema_version !== true) || !boundedString(value.description, 500) || isBlank(value.description)) return null
+  value = { points: [], segments: [], polygons: [], ...value }
+  if (Array.isArray(value.points)) {
+    value = { ...value, points: value.points.map(point => isRecord(point) ? { label: null, ...point, x: baseNumber(point.x), y: baseNumber(point.y) } : point) }
+  }
+  if (Array.isArray(value.texts)) value = { ...value, texts: value.texts.map(text => isRecord(text) ? { ...text, x: baseNumber(text.x), y: baseNumber(text.y) } : text) }
+  if (isRecord(value.viewport)) value = { ...value, viewport: Object.fromEntries(Object.entries(value.viewport).map(([key, number]) => [key, baseNumber(number)])) }
   if (!isRecord(value.viewport) || !hasExactKeys(value.viewport, ['min_x', 'min_y', 'width', 'height'])) return null
   if (!isFiniteNumber(value.viewport.min_x) || !isFiniteNumber(value.viewport.min_y)
     || !isFiniteNumber(value.viewport.width) || value.viewport.width <= 0
     || !isFiniteNumber(value.viewport.height) || value.viewport.height <= 0) return null
   if (!Array.isArray(value.points) || !Array.isArray(value.segments)
     || !Array.isArray(value.polygons) || (hasTexts && !Array.isArray(value.texts))) return null
+  if (value.points.length > 500 || value.segments.length > 1000 || value.polygons.length > 200
+    || (hasTexts && (value.texts as unknown[]).length > 500)) return null
 
   const ids = new Set<string>()
   const pointIds = new Set<string>()
   for (const point of value.points) {
     if (!isRecord(point) || !hasExactKeys(point, ['id', 'x', 'y', 'label'])
-      || typeof point.id !== 'string' || !point.id || ids.has(point.id)
+      || !geometryId(point.id) || ids.has(point.id)
       || !isFiniteNumber(point.x) || !isFiniteNumber(point.y)
-      || !(point.label === null || typeof point.label === 'string')) return null
+      || !(point.label === null || boundedString(point.label, 100))) return null
     ids.add(point.id); pointIds.add(point.id)
   }
   for (const segment of value.segments) {
     if (!isRecord(segment) || !hasExactKeys(segment, ['id', 'start_point_id', 'end_point_id'])
-      || typeof segment.id !== 'string' || ids.has(segment.id)
+      || !geometryId(segment.id) || ids.has(segment.id)
       || typeof segment.start_point_id !== 'string' || typeof segment.end_point_id !== 'string'
       || segment.start_point_id === segment.end_point_id
       || !pointIds.has(segment.start_point_id) || !pointIds.has(segment.end_point_id)) return null
@@ -57,7 +102,7 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
   }
   for (const polygon of value.polygons) {
     if (!isRecord(polygon) || !hasExactKeys(polygon, Object.hasOwn(polygon, 'template') ? ['id', 'point_ids', 'template'] : ['id', 'point_ids'])
-      || typeof polygon.id !== 'string' || ids.has(polygon.id)
+      || !geometryId(polygon.id) || ids.has(polygon.id)
       || !Array.isArray(polygon.point_ids) || polygon.point_ids.length < 3
       || polygon.point_ids.some((id) => typeof id !== 'string' || !pointIds.has(id))
       || new Set(polygon.point_ids).size !== polygon.point_ids.length) return null
@@ -67,9 +112,9 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
   const texts: GeometryTextV1[] = []
   for (const text of hasTexts ? value.texts as JsonObject[] : []) {
     if (!isRecord(text) || !hasExactKeys(text, ['id', 'x', 'y', 'content'])
-      || typeof text.id !== 'string' || ids.has(text.id)
+      || !geometryId(text.id) || ids.has(text.id)
       || !isFiniteNumber(text.x) || !isFiniteNumber(text.y)
-      || typeof text.content !== 'string' || !isPlainText(text.content)) return null
+      || !boundedString(text.content, 500) || !isPlainText(text.content)) return null
     ids.add(text.id)
     texts.push({ id: text.id, x: text.x, y: text.y, content: text.content })
   }
