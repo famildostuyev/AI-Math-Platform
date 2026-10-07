@@ -40,13 +40,13 @@ export async function runGeometryArcAcceptance({evaluate,until,textButton,click,
   assert.ok(await evaluate(`Number(getComputedStyle(document.querySelector('${sectorSelector}')).fillOpacity)>0`))
   // Real center drag retains radius and sweep, using accepted point editing.
   await evaluate(`document.querySelector('${board}').scrollIntoView({block:'center'})`)
-  const centerRect=await evaluate(`(()=>{const e=[...document.querySelectorAll('${board} ellipse:not([data-geometry-kind]):not([data-geometry-helper])')][2].getBoundingClientRect();return {x:e.x+e.width/2,y:e.y+e.height/2}})()`)
+  const centerRect=await evaluate(`(()=>{const e=[...document.querySelectorAll('${board} [data-geometry-point-id]')][2].getBoundingClientRect();return {x:e.x+e.width/2,y:e.y+e.height/2}})()`)
   await pointer('mousePressed',centerRect.x,centerRect.y,{button:'left',buttons:1,clickCount:1});await pointer('mouseMoved',centerRect.x+12,centerRect.y+8,{button:'left',buttons:1});await delay(120);await pointer('mouseReleased',centerRect.x+12,centerRect.y+8,{button:'left',clickCount:1});await delay(150)
   const shifted=await box(arcSelector);assert.ok(Math.abs(shifted.width-arcBox.width)<.1 && Math.abs(shifted.x-arcBox.x)>5)
   if(family) for(const [index,kind] of [[0,'circle'],[1,'disk'],[3,'sector']]) {
     await action('Seç')
     const before=await box(`${board} [data-geometry-kind=${kind}]`)
-    const p=await evaluate(`(()=>{const e=[...document.querySelectorAll('${board} ellipse:not([data-geometry-kind]):not([data-geometry-helper])')].filter(e=>getComputedStyle(e).visibility!=='hidden'&&getComputedStyle(e).display!=='none')[${index}].getBoundingClientRect();return {x:e.x+e.width/2,y:e.y+e.height/2}})()`)
+    const p=await evaluate(`(()=>{const e=[...document.querySelectorAll('${board} [data-geometry-point-id]')].filter(e=>getComputedStyle(e).visibility!=='hidden'&&getComputedStyle(e).display!=='none')[${index}].getBoundingClientRect();return {x:e.x+e.width/2,y:e.y+e.height/2}})()`)
     await pointer('mousePressed',p.x,p.y,{button:'left',buttons:1,clickCount:1});await pointer('mouseMoved',p.x+12,p.y+8,{button:'left',buttons:1});await delay(120);await pointer('mouseReleased',p.x+12,p.y+8,{button:'left',clickCount:1});await delay(150)
     const after=await box(`${board} [data-geometry-kind=${kind}]`)
     assert.ok(Math.abs(after.width-before.width)<.1&&Math.abs(after.height-before.height)<.1&&Math.abs(after.x-before.x-12)<1&&Math.abs(after.y-before.y-8)<1,kind+' center translates without distortion')
@@ -55,7 +55,7 @@ export async function runGeometryArcAcceptance({evaluate,until,textButton,click,
   await action('Nöqtə');await at(210,340);await at(310,365)
   await menu('Xətt');await action('Parça')
   for(const offset of [2,1]) {
-    const p=await evaluate(`(()=>{const e=[...document.querySelectorAll('${board} ellipse:not([data-geometry-kind]):not([data-geometry-helper])')].filter(e=>getComputedStyle(e).visibility!=='hidden'&&getComputedStyle(e).display!=='none').at(-${offset}).getBoundingClientRect();return {x:e.x+e.width/2,y:e.y+e.height/2}})()`)
+    const p=await evaluate(`(()=>{const e=[...document.querySelectorAll('${board} [data-geometry-point-id]')].filter(e=>getComputedStyle(e).visibility!=='hidden'&&getComputedStyle(e).display!=='none').at(-${offset}).getBoundingClientRect();return {x:e.x+e.width/2,y:e.y+e.height/2}})()`)
     await pointer('mousePressed',p.x,p.y,{button:'left',clickCount:1});await pointer('mouseReleased',p.x,p.y,{button:'left',clickCount:1});await delay(100)
   }
   if(family){await menu('Xətt');await action('Vektor');await at(330,140);await at(390,180)}

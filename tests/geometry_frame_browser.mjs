@@ -17,6 +17,7 @@ import { runGeometryAngleBisectorAcceptance } from './geometry_angle_bisector_br
 import { runGeometryAltitudeAcceptance } from './geometry_altitude_browser.mjs'
 import { runGeometryMedianAcceptance } from './geometry_median_browser.mjs'
 import { runGeometryCapacityAcceptance } from './geometry_capacity_browser.mjs'
+import { runGeometryReliabilityAcceptance } from './geometry_reliability_browser.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'geometry-frame-edge-'))
@@ -31,7 +32,7 @@ import '/src/components/UniversalEditor.css';
 const root=createRoot(document.getElementById('root'));
 const revision={question_family_id:'family',question_form_id:'form',revision_id:'revision',revision_number:1,status:'draft',question_type_id:'type',source_id:null,source_display_name:null,source_detail:null,difficulty:null,updated_at:'2026-01-01T00:00:00Z',primary_topic_id:null,related_topic_ids:[],purpose_ids:[],blocks:[],answer_policy:'unsupported',answer_options:[],accepted_answers:[],solution:null};
 window.savedRevision=revision;window.requests=[];let serial=0,mount=0;
-${['--ribbon', '--lines', '--triangles', '--quadrilaterals', '--regular', '--complete', '--circles', '--arcs', '--midpoint', '--linear-constructions', '--angle-bisector', '--altitude', '--median', '--capacity'].some(flag => process.argv.includes(flag)) ? `revision.blocks.push({id:'text-fixture',block_type:'text',sort_order:0,payload:{source_text:'Triangle exercise',format_version:1,document:{type:'document',content:[{type:'paragraph',content:[{type:'text',text:'Triangle exercise ',marks:[]},{type:'inline_math',latex:'a^2+b^2=c^2'},{type:'text',text:' — construct below.',marks:[]}]}]}}});` : ''}
+${['--ribbon', '--lines', '--triangles', '--quadrilaterals', '--regular', '--complete', '--circles', '--arcs', '--midpoint', '--linear-constructions', '--angle-bisector', '--altitude', '--median', '--capacity', '--reliability'].some(flag => process.argv.includes(flag)) ? `revision.blocks.push({id:'text-fixture',block_type:'text',sort_order:0,payload:{source_text:'Triangle exercise',format_version:1,document:{type:'document',content:[{type:'paragraph',content:[{type:'text',text:'Triangle exercise ',marks:[]},{type:'inline_math',latex:'a^2+b^2=c^2'},{type:'text',text:' — construct below.',marks:[]}]}]}}});` : ''}
 window.fetch=async(url,init={})=>{
  const method=init.method||'GET';const body=init.body?JSON.parse(init.body):null;
  if(method!=='GET')window.requests.push({url:String(url),method,body});
@@ -53,7 +54,7 @@ window.fetch=async(url,init={})=>{
  }
  throw Error('Unexpected request '+method+' '+url);
 };
-window.reloadEditor=()=>root.render(React.createElement(AdminQuestionEditor,{key:++mount,initialRevisionId:'revision',authenticatedRequest:fn=>fn('fixture'),onBack:()=>{}}));
+window.reloadEditor=()=>root.render(${process.argv.includes('--reliability') ? 'React.createElement(React.StrictMode,null,' : ''}React.createElement(AdminQuestionEditor,{key:++mount,initialRevisionId:'revision',authenticatedRequest:fn=>fn('fixture'),onBack:()=>{}})${process.argv.includes('--reliability') ? ')' : ''});
 window.reloadEditor();
 `
 const server = await createServer({ root: path.join(root, 'frontend'), server: { host: '127.0.0.1', port: 0 }, plugins: [{
@@ -103,7 +104,9 @@ try {
     await pointer('mouseReleased', x + dx, y + dy, { button: 'left', clickCount: 1 }); await delay(150)
   }
   await until('document.querySelector(".universal-question-canvas")')
-  if (process.argv.includes('--capacity')) {
+  if (process.argv.includes('--reliability')) {
+    await runGeometryReliabilityAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--capacity')) {
     await runGeometryCapacityAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--median')) {
     await runGeometryMedianAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})

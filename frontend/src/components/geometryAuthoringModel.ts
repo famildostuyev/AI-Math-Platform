@@ -14,26 +14,13 @@ function nextId(prefix: string, used: Set<string>): string {
   return `${prefix}-${index}`
 }
 
-function labelForIndex(index: number): string {
-  const letter = String.fromCharCode(65 + (index % 26))
-  const cycle = Math.floor(index / 26)
-  return cycle === 0 ? letter : `${letter}${cycle}`
-}
-
-export function nextPointLabel(geometry: GeometrySourceDataV1): string {
-  const used = new Set(geometry.points.map((point) => point.label).filter((label): label is string => label !== null))
-  let index = 0
-  while (used.has(labelForIndex(index))) index += 1
-  return labelForIndex(index)
-}
-
 function geometryIds(geometry: GeometrySourceDataV1): Set<string> {
   return geometryObjectIds(geometry)
 }
 
 export function addGeometryPoint(geometry: GeometrySourceDataV1, x: number, y: number): GeometrySourceDataV1 {
   if (!canAllocateGeometry(geometry, { points: 1 })) return geometry
-  return { ...geometry, points: [...geometry.points, { id: nextId('point', geometryIds(geometry)), x, y, label: nextPointLabel(geometry) }] }
+  return { ...geometry, points: [...geometry.points, { id: nextId('point', geometryIds(geometry)), x, y, label: null }] }
 }
 
 export function moveGeometryPoint(geometry: GeometrySourceDataV1, pointId: string, x: number, y: number): GeometrySourceDataV1 {

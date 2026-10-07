@@ -27,8 +27,8 @@ type GeometryAuthoringBoardProps = {
 }
 
 const POINT_ATTRIBUTES = Object.freeze({ size: 4, face: 'o', fillColor: '#ffffff', strokeColor: '#1f2937', highlightFillColor: '#dbeafe', highlightStrokeColor: '#1d4ed8' })
-const SEGMENT_ATTRIBUTES = Object.freeze({ strokeColor: '#374151', strokeWidth: 2, highlightStrokeColor: '#1d4ed8' })
-const POLYGON_ATTRIBUTES = Object.freeze({ fillColor: '#e5e7eb', fillOpacity: 0.45, strokeColor: '#374151', highlightFillColor: '#dbeafe', highlightStrokeColor: '#1d4ed8', hasInnerPoints: true })
+const SEGMENT_ATTRIBUTES = Object.freeze({ strokeColor: '#374151', strokeWidth: 2, highlightStrokeColor: '#1d4ed8', layer: 5 })
+const POLYGON_ATTRIBUTES: Readonly<JXG.PolygonAttributes> = Object.freeze({ fillColor: 'none', fillOpacity: 0, strokeColor: '#374151', highlightFillColor: 'none', highlightStrokeColor: '#1d4ed8', hasInnerPoints: true, borders: { strokeColor: '#374151', layer: 5 } })
 const TEXT_ATTRIBUTES = Object.freeze({ display: 'internal' as const, parse: false, useMathJax: false, fontSize: 16, color: '#111827', highlightColor: '#1d4ed8', dragArea: 'all' as const })
 
 export default function GeometryAuthoringBoard({ geometry, tool, disabled, onChange, onObjectClick, frameSize, lineDraft, regularSides, midpointSource, linearSource, onLineClick, onFinishLine, onCancelLine }: GeometryAuthoringBoardProps) {
@@ -64,14 +64,17 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
     geometry.points.forEach((point) => {
       if (hiddenFootIds.has(point.id)) hiddenSupportIds.add(point.id)
       const element = board.create('point', [point.x, boardYFromGeometry(geometry, point.y)], { ...POINT_ATTRIBUTES, visible: !hiddenSupportIds.has(point.id), name: point.label ?? '', label: { fontSize: framed ? GEOMETRY_FRAME_FONT : 12, offset: [10, 10] }, fixed: disabled || tool !== 'select' || isDerivedPoint(geometry, point.id) })
+      let dragged = false
       element.rendNode?.setAttribute('data-geometry-point-id', point.id)
       element.on('down', () => {
+        dragged = false
         if (tool === 'median' || !isDerivedPoint(geometry, point.id) || (geometry.constructions ?? []).some(c => (c.kind === 'angle_bisector' && c.intersection_point_id === point.id) || (c.kind === 'altitude' && c.foot_point_id === point.id) || (c.kind === 'median' && c.midpoint_point_id === point.id))) {
           onObjectClick({ kind: 'point', id: point.id })
         }
       })
+      element.on('drag', () => { dragged = true })
       element.on('up', () => {
-        if (!disabled && tool === 'select' && !isDerivedPoint(geometry, point.id)) {
+        if (dragged && !disabled && tool === 'select' && !isDerivedPoint(geometry, point.id)) {
           const next = moveGeometryPoint(geometry, point.id, element.X(), geometryYFromBoard(geometry, element.Y()))
           if (next === geometry) { element.setPosition(JXG.COORDS_BY_USER, [point.x, boardYFromGeometry(geometry, point.y)]); board.update() }
           else onChange(next)
@@ -129,6 +132,10 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       // same selected sweep as the semantic clockwise, y-down SVG path.
       const attributes: JXG.ArcAttributes & { arc: { visible: boolean } } = { selection: 'auto', fixed: true, strokeWidth: 2, strokeColor: transient ? '#6d4bd1' : '#374151', fillColor: kind === 'sector' ? '#e5e7eb' : 'none', fillOpacity: kind === 'sector' ? 0.45 : 0, hasInnerPoints: kind === 'sector', highlight: !transient, highlightStrokeColor: '#1d4ed8', layer: 4, arc: { visible: false } }
       const element = kind === 'sector' ? board.create('sector', [center, ...helpers], attributes) : board.create('arc', [center, ...helpers], attributes)
+      if (kind === 'sector' && !transient) {
+        element.setAttribute({ layer: 1, strokeOpacity: 0 })
+        board.create('sector', [center, ...helpers], { ...attributes, layer: 5, fillColor: 'none', fillOpacity: 0, hasInnerPoints: false, highlight: false })
+      } else element.setAttribute({ layer: 5 })
       if (transient) {
         for (const object of [element, ...helpers]) object.rendNode?.setAttribute('data-geometry-transient', '')
         element.rendNode?.setAttribute('data-geometry-arc-preview', kind)
@@ -148,6 +155,10 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       const center = pointElements.get(circle.center_point_id)
       if (!center) continue
       const element = board.create('circle', [center, circle.radius], circleAttributes(circle.kind))
+      if (circle.kind === 'disk') {
+        element.setAttribute({ layer: 1, strokeOpacity: 0 })
+        board.create('circle', [center, circle.radius], { ...circleAttributes('circle'), layer: 5, highlight: false })
+      } else element.setAttribute({ layer: 5 })
       element.rendNode?.setAttribute('data-geometry-kind', circle.kind)
       element.rendNode?.setAttribute('data-geometry-id', circle.id)
       element.on('down', () => onObjectClick({ kind: 'circle', id: circle.id }))
@@ -217,9 +228,11 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       const element = board.create('text', [text.x, boardYFromGeometry(geometry, text.y), text.content], {
         ...TEXT_ATTRIBUTES, cssStyle: 'font-family:Arial', fixed: disabled || tool !== 'select',
       })
-      element.on('down', () => onObjectClick({ kind: 'text', id: text.id }))
+      let dragged = false
+      element.on('down', () => { dragged = false; onObjectClick({ kind: 'text', id: text.id }) })
+      element.on('drag', () => { dragged = true })
       element.on('up', () => {
-        if (!disabled && tool === 'select') onChange(moveGeometryText(geometry, text.id, element.X(), geometryYFromBoard(geometry, element.Y())))
+        if (dragged && !disabled && tool === 'select') onChange(moveGeometryText(geometry, text.id, element.X(), geometryYFromBoard(geometry, element.Y())))
       })
     })
     let midpointPreview: JXG.Point | null = null

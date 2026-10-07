@@ -31,7 +31,7 @@ export async function runGeometryCircleAcceptance({evaluate,until,textButton,cli
   assert.equal(await evaluate(`Number(getComputedStyle(document.querySelector('${shape('circle')}')).fillOpacity)`),0)
   assert.ok(await evaluate(`Number(getComputedStyle(document.querySelector('${shape('disk')}')).fillOpacity)>0`))
   // Reuse the existing center point drag; radius stays fixed.
-  const circleBefore=await box(shape('circle'));await drag(`${board} svg ellipse:not([data-geometry-kind])`,12,8)
+  const circleBefore=await box(shape('circle'));await drag(`${board} [data-geometry-point-id]`,12,8)
   const circleAfter=await box(shape('circle'));assert.ok(Math.abs(circleBefore.width-circleAfter.width)<.01)
   assert.ok(Math.abs(circleAfter.x-circleBefore.x)>5)
   await menu('2D fiqurlar');await action('Kvadrat');await at(70,245);await at(130,255)

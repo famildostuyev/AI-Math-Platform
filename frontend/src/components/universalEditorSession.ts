@@ -23,7 +23,7 @@ export const FORMULA_FONT_SIZES = { small: 4, normal: 5, large: 6, 'x-large': 7 
 export type PersistentActiveContext =
   | { kind: 'text'; id: string; commands: StructuredContinuousTextCommands; selection: { from: number; to: number }; history: EditorHistoryProvider; capabilities: readonly ActiveContextCapability[] }
   | { kind: 'formula'; id: string; field: MathfieldElement; selection: MathfieldElement['selection']; history: EditorHistoryProvider | null; capabilities: readonly ActiveContextCapability[] }
-  | { kind: 'geometry'; id: string; selection: GeometrySelection | null; history: null; capabilities: readonly ActiveContextCapability[] }
+  | { kind: 'geometry'; id: string; selection: GeometrySelection | null; history: EditorHistoryProvider | null; capabilities: readonly ActiveContextCapability[] }
 
 export function useUniversalEditorSession() {
   const history = useUniversalEditorHistory()
@@ -39,6 +39,7 @@ export function useUniversalEditorSession() {
   const [geometryCommands, setGeometryCommands] = useState<GeometryRibbonCommands | null>(null)
   const [mathSelectionVersion, setMathSelectionVersion] = useState(0)
   const activeContext = useRef<PersistentActiveContext | null>(null)
+  const geometryHistoryProviders = useRef(new Map<string, EditorHistoryProvider>())
   const [activeContextVersion, setActiveContextVersion] = useState(0)
   const setActiveContext = useCallback((next: PersistentActiveContext | null) => {
     traceContext(next ? 'session-target-replace' : 'session-target-clear', { previousKind: activeContext.current?.kind ?? null, nextKind: next?.kind ?? null, field: fieldTraceState(next?.kind === 'formula' ? next.field : math.current) })
@@ -100,9 +101,11 @@ export function useUniversalEditorSession() {
     return true
   }
   const activateGeometry = (id: string, selection: GeometrySelection | null = null) => {
-    setActiveContext({ kind: 'geometry', id, selection, history: null, capabilities: ['geometry-edit'] })
+    setActiveContext({ kind: 'geometry', id, selection, history: geometryHistoryProviders.current.get(id) ?? null, capabilities: ['geometry-edit'] })
   }
+  const registerGeometryHistory = (id: string, provider: EditorHistoryProvider) => { geometryHistoryProviders.current.set(id, provider) }
   const unregisterGeometry = (id: string) => {
+    geometryHistoryProviders.current.delete(id)
     if (activeContext.current?.kind === 'geometry' && activeContext.current.id === id) setActiveContext(null)
   }
   const unregisterMath = useCallback((field: MathfieldElement) => {
@@ -207,7 +210,7 @@ export function useUniversalEditorSession() {
     }
   }, [])
   return { commands, save, math, format, setFormat, activateText, activateMath, unregisterMath, unregisterText, mathSelectionVersion, history,
-    activeContext, activeContextVersion, getActiveContext, canRun, captureTextSelection, restoreTextTarget, restoreMathTarget, activateGeometry, unregisterGeometry,
+    activeContext, activeContextVersion, getActiveContext, canRun, captureTextSelection, restoreTextTarget, restoreMathTarget, activateGeometry, registerGeometryHistory, unregisterGeometry,
     bottomPanel, showAI, toggleKeyboard, insertMath, formatMath, formatMathColor, mathContext, hasMath,
     geometryToolbarHost, setGeometryToolbarHost, geometryCommands, setGeometryCommands }
 }

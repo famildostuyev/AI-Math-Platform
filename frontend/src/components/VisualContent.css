@@ -1,7 +1,7 @@
 .visual-content { margin: 0; }
 .visual-content svg { display: block; width: 100%; max-height: 28rem; min-height: 14rem; background: #fff; border: 1px solid #d7dee8; border-radius: .75rem; }
 .visual-content figcaption { margin-top: .5rem; color: #4b5563; font-size: .9rem; }
-.geometry-polygons polygon { fill: #f3f4f6; stroke: #374151; stroke-width: .8; vector-effect: non-scaling-stroke; }
+.geometry-polygons polygon { fill: none; stroke: #374151; stroke-width: .8; vector-effect: non-scaling-stroke; }
 .geometry-segments line { stroke: #1f2937; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .geometry-points circle { fill: #111827; }
 .geometry-points text { fill: #111827; font: 6px sans-serif; }

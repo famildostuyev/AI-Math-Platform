@@ -48,6 +48,17 @@ export default function GeometryRenderer({ geometry, blockId, frameSize }: Geome
     <svg viewBox={viewBox} style={frameSize ? { width: frameSize.width, height: frameSize.height } : undefined} role="img" aria-labelledby={descriptionId} preserveAspectRatio="xMidYMid meet">
       <title id={descriptionId}>{geometry.description}</title>
       <defs><marker id={arrowId} viewBox="0 0 4 4" refX="4" refY="2" markerWidth="3" markerHeight="3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L4,2 L0,4 Z" fill="#374151" /></marker></defs>
+      {/* Intentional disk/sector fills paint below every outline and annotation. */}
+      <g className="geometry-fills" stroke="none">
+        {(geometry.circles ?? []).filter(circle => circle.kind === 'disk').map(circle => {
+          const center = points.get(circle.center_point_id)
+          return center ? <circle key={circle.id} data-geometry-fill={circle.id} cx={center.x} cy={center.y} r={circle.radius} fill="#e5e7eb" fillOpacity="0.45" /> : null
+        })}
+        {(geometry.arcs ?? []).filter(arc => arc.kind === 'sector').map(arc => {
+          const center = points.get(arc.center_point_id)
+          return center ? <path key={arc.id} data-geometry-fill={arc.id} d={arcPath(center, arc)} fill="#e5e7eb" fillOpacity="0.45" /> : null
+        })}
+      </g>
       <g className="geometry-lines" fill="none" stroke="#374151" strokeWidth="0.5">
         {(geometry.lines ?? []).filter(line => !bisectorLineIds.has(line.id)).map(renderLine)}
         {(geometry.polylines ?? []).map(polyline => <polyline key={polyline.id} data-geometry-kind="polyline" points={polyline.point_ids.map(id => { const p = points.get(id)!; return `${p.x},${p.y}` }).join(' ')} />)}
@@ -56,7 +67,7 @@ export default function GeometryRenderer({ geometry, blockId, frameSize }: Geome
         {geometry.polygons.map((polygon) => <polygon key={polygon.id} points={polygon.point_ids.map((id) => {
           const point = points.get(id)
           return `${point?.x ?? 0},${point?.y ?? 0}`
-        }).join(' ')} />)}
+        }).join(' ')} fill="none" />)}
       </g>
       {/* SVG paints later elements above polygon fill; keep other lines in their existing order. */}
       <g className="geometry-angle-bisectors" fill="none" stroke="#374151" strokeWidth="0.5">
@@ -75,13 +86,13 @@ export default function GeometryRenderer({ geometry, blockId, frameSize }: Geome
       <g className="geometry-circles" stroke="#374151" strokeWidth="0.5">
         {(geometry.circles ?? []).map(circle => {
           const center = points.get(circle.center_point_id)
-          return center ? <circle key={circle.id} data-geometry-kind={circle.kind} data-geometry-id={circle.id} cx={center.x} cy={center.y} r={circle.radius} fill={circle.kind === 'disk' ? '#e5e7eb' : 'none'} fillOpacity={circle.kind === 'disk' ? 0.45 : 0} /> : null
+          return center ? <circle key={circle.id} data-geometry-kind={circle.kind} data-geometry-id={circle.id} cx={center.x} cy={center.y} r={circle.radius} fill="none" /> : null
         })}
       </g>
       <g className="geometry-arcs" stroke="#374151" strokeWidth="0.5">
         {(geometry.arcs ?? []).map(arc => {
           const center = points.get(arc.center_point_id)
-          return center ? <path key={arc.id} data-geometry-kind={arc.kind} data-geometry-id={arc.id} d={arcPath(center, arc)} fill={arc.kind === 'sector' ? '#e5e7eb' : 'none'} fillOpacity={arc.kind === 'sector' ? 0.45 : 0} /> : null
+          return center ? <path key={arc.id} data-geometry-kind={arc.kind} data-geometry-id={arc.id} d={arcPath(center, arc)} fill="none" /> : null
         })}
       </g>
       <g className="geometry-points">

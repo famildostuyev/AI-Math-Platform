@@ -685,8 +685,8 @@ export default function AdminQuestionEditor({
               }
               setSelectedDocumentNodeId(nodeId)
               const node = universalDocument.nodes.find((item) => item.id === nodeId)
-              if (node?.type !== 'paragraph') session.history.activate(null)
-              if (node?.type === 'geometry' && session.getActiveContext()?.id !== node.id) session.activateGeometry(node.id)
+              if (node?.type !== 'paragraph' && node?.type !== 'geometry') session.history.activate(null)
+              if (node?.type === 'geometry') session.activateGeometry(node.id)
             }}
             onEditingValueChange={setEditingValue}
             onEditingGeometryChange={setEditingGeometry}

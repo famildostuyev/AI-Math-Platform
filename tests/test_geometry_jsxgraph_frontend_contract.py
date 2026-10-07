@@ -34,12 +34,12 @@ class GeometryJSXGraphFrontendContractTest(unittest.TestCase):
         for runtime_value in ("board.id", "element.id", "event:"):
             self.assertNotIn(runtime_value, self.model)
 
-    def test_point_tool_creates_automatic_id_and_label(self) -> None:
+    def test_point_tool_creates_id_without_automatic_label(self) -> None:
         self.assertIn("tool !== 'point'", self.board)
         self.assertIn("addGeometryPoint(geometry, x", self.board)
         self.assertIn("nextId('point'", self.model)
-        self.assertIn("nextPointLabel(geometry)", self.model)
-        self.assertIn("String.fromCharCode(65 + (index % 26))", self.model)
+        self.assertIn("label: null", self.model)
+        self.assertNotIn("nextPointLabel", self.model)
 
     def test_dragging_updates_geometry_v1_coordinates(self) -> None:
         self.assertIn("element.on('up'", self.board)

@@ -12,6 +12,7 @@ import { commitMidpoint, findMidpoint, commitLinearConstruction, findLinearConst
 import { addGeometryPolygon, addGeometrySegment, deleteGeometrySelection, renameGeometryPoint, updateGeometryTextContent, type GeometrySelection, type GeometryTool } from './geometryAuthoringModel'
 import { commitAltitude, findAltitude } from './geometryConstructionModel'
 import { commitTriangleMedian } from './geometryConstructionModel'
+import { createGeometryHistory } from './geometryHistoryModel'
 
 type GeometryEditorProps = {
   frameSize?: { width: number; height: number }
@@ -37,11 +38,10 @@ const TOOL_LABELS: Record<GeometryTool, string> = {
   regular_pentagon: 'Düzgün 5-bucaqlı', regular_hexagon: 'Düzgün 6-bucaqlı', regular_polygon: 'Düzgün n-bucaqlı',
 }
 
-export default function GeometryEditor({ value, onChange, disabled, targetId, frameSize }: GeometryEditorProps) {
+export default function GeometryEditor({ value, onChange: publish, disabled, targetId, frameSize }: GeometryEditorProps) {
   const session = useContext(UniversalEditorSessionContext)
   const sessionRef = useRef(session)
   useEffect(() => { sessionRef.current = session }, [session])
-  useEffect(() => () => { if (targetId) sessionRef.current?.unregisterGeometry(targetId) }, [targetId])
   const [tool, setTool] = useState<GeometryTool>('select')
   const [selection, setSelection] = useState<GeometrySelection | null>(null)
   const [pendingPointIds, setPendingPointIds] = useState<string[]>([])
@@ -50,8 +50,29 @@ export default function GeometryEditor({ value, onChange, disabled, targetId, fr
   const [lineDraft, setLineDraft] = useState<GeometryVertex[]>([])
   const [regularSidesText, setRegularSidesText] = useState('7')
   const regularSides = parseRegularSides(regularSidesText)
+  const publishRef = useRef(publish)
+  useEffect(() => { publishRef.current = publish }, [publish])
+  const historyRef = useRef<ReturnType<typeof createGeometryHistory> | null>(null)
+  if (!historyRef.current) historyRef.current = createGeometryHistory(value, next => {
+    setSelection(null); setPendingPointIds([]); setLineDraft([]); setLinearSource(null); setMessage(null); setTool('select')
+    publishRef.current(next)
+    if (targetId) sessionRef.current?.activateGeometry(targetId)
+  })
+  const history = historyRef.current
+  useEffect(() => { history.setEnabled(!disabled) }, [history, disabled])
+  const onChange = useCallback((next: GeometrySourceDataV1, editGroup?: string) => {
+    if (!disabled && history.commit(next, editGroup)) publishRef.current(next)
+  }, [disabled, history])
+  useEffect(() => {
+    if (!targetId) return
+    // Setup must mirror cleanup: StrictMode replays both when entering Edit.
+    sessionRef.current?.registerGeometryHistory(targetId, history.provider)
+    sessionRef.current?.activateGeometry(targetId)
+    return () => sessionRef.current?.unregisterGeometry(targetId)
+  }, [targetId, history])
 
   const chooseTool = (nextTool: GeometryTool) => {
+    history.endGroup()
     setTool(nextTool); setSelection(null); setPendingPointIds([]); setMessage(null)
     setLinearSource(null)
     setLineDraft([])
@@ -351,7 +372,7 @@ export default function GeometryEditor({ value, onChange, disabled, targetId, fr
     {!session?.geometryToolbarHost && toolbar}
     {frameSize && <GeometryAuthoringBoard linearSource={linearSource} midpointSource={pendingPointIds[0]} geometry={value} tool={tool} disabled={disabled} onChange={onChange} onObjectClick={handleObjectClick} frameSize={frameSize} lineDraft={lineDraft} regularSides={regularSides ?? undefined} onLineClick={lineClick} onFinishLine={finishLine} onCancelLine={cancelLine} />}
     <div className={frameSize ? 'geometry-editor__frame-controls' : undefined} data-frame-chrome={frameSize ? '' : undefined}>
-    <label className="geometry-editor__description"><span>Əlçatan təsvir</span><textarea value={value.description} required disabled={disabled} onChange={(event) => onChange({ ...value, description: event.target.value })} /></label>
+    <label className="geometry-editor__description"><span>Əlçatan təsvir</span><textarea value={value.description} required disabled={disabled} onBlur={() => history.endGroup()} onChange={(event) => onChange({ ...value, description: event.target.value }, 'description')} /></label>
     {!isLineTool(tool) && !isTemplateTool(tool) && !isCircleTool(tool) && !isArcTool(tool) && <p className="geometry-editor__hint">{isLinearConstructionTool(tool) ? (linearSource ? 'Xəttin keçəcəyi mövcud nöqtəni seçin. Escape ilə ləğv edin.' : 'Mənbə xətt, parça və ya vektor seçin.') : tool === 'midpoint' ? 'İki mövcud nöqtə və ya bir parça seçin. Escape ilə ləğv edin.' : tool === 'point' ? 'Lövhədə boş yerə klikləyin.' : tool === 'text' ? 'Mətnin yerləşəcəyi boş yerə klikləyin.' : tool === 'segment' ? `İki nöqtə seçin (${pendingPointIds.length}/2).` : tool === 'polygon' ? `Nöqtələri sıra ilə seçin (${pendingPointIds.length} seçilib).` : 'Nöqtəni və ya mətni sürükləyin; silmək üçün obyekti seçin.'}</p>}
     {isArcTool(tool) && <div className="geometry-editor__line-actions">
       <p>Mərkəzi, sonra radius və başlanğıcı seçin. Son istiqaməti üçüncü kliklə təsdiqləyin. Qövs saat istiqamətində çəkilir. Escape ilə ləğv edin.</p>
@@ -371,8 +392,8 @@ export default function GeometryEditor({ value, onChange, disabled, targetId, fr
       <button type="button" className="secondary" disabled={disabled || pendingPointIds.length === 0} onClick={() => setPendingPointIds([])}>Seçimi təmizlə</button>
     </div>}
     {!frameSize && <GeometryAuthoringBoard linearSource={linearSource} midpointSource={pendingPointIds[0]} geometry={value} tool={tool} disabled={disabled} onChange={onChange} onObjectClick={handleObjectClick} lineDraft={lineDraft} regularSides={regularSides ?? undefined} onLineClick={lineClick} onFinishLine={finishLine} onCancelLine={cancelLine} />}
-    {selectedPoint && <label className="geometry-editor__label"><span>Seçilmiş nöqtənin nişanı</span><input value={selectedPoint.label ?? ''} maxLength={100} disabled={disabled} onChange={(event) => onChange(renameGeometryPoint(value, selectedPoint.id, event.target.value.trim() || null))} /></label>}
-    {selectedText && <label className="geometry-editor__annotation"><span>Mətn annotasiyası</span><input value={selectedText.content} required maxLength={500} disabled={disabled} onChange={(event) => onChange(updateGeometryTextContent(value, selectedText.id, event.target.value))} /></label>}
+    {selectedPoint && <label className="geometry-editor__label"><span>Seçilmiş nöqtənin nişanı</span><input value={selectedPoint.label ?? ''} maxLength={100} disabled={disabled} onBlur={() => history.endGroup()} onChange={(event) => onChange(renameGeometryPoint(value, selectedPoint.id, event.target.value.trim() || null), `label:${selectedPoint.id}`)} /></label>}
+    {selectedText && <label className="geometry-editor__annotation"><span>Mətn annotasiyası</span><input value={selectedText.content} required maxLength={500} disabled={disabled} onBlur={() => history.endGroup()} onChange={(event) => onChange(updateGeometryTextContent(value, selectedText.id, event.target.value), `text:${selectedText.id}`)} /></label>}
     {message && <p className="geometry-editor__message" role="status">{message}</p>}
     </div>
   </div>
