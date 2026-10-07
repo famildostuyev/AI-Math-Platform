@@ -1,5 +1,6 @@
 import type { GeometrySourceDataV1 } from '../api/questionEditor'
 import type { GeometryTemplateTool } from './geometryTemplateContract'
+import { canAllocateGeometry } from './geometryCapacityModel'
 import { constructionDeletionClosure, geometryObjectIds, isDerivedPoint, recomputeConstructions } from './geometryConstructionModel'
 
 export type GeometryTool = 'parallel' | 'perpendicular' | 'midpoint' | 'intersection' | 'angle_bisector' | 'altitude' | 'median' | 'select' | 'point' | 'segment' | 'polygon' | 'text' | 'line' | 'directed_line' | 'vector' | 'polyline' | 'circle' | 'disk' | 'arc' | 'sector' | GeometryTemplateTool
@@ -31,6 +32,7 @@ function geometryIds(geometry: GeometrySourceDataV1): Set<string> {
 }
 
 export function addGeometryPoint(geometry: GeometrySourceDataV1, x: number, y: number): GeometrySourceDataV1 {
+  if (!canAllocateGeometry(geometry, { points: 1 })) return geometry
   return { ...geometry, points: [...geometry.points, { id: nextId('point', geometryIds(geometry)), x, y, label: nextPointLabel(geometry) }] }
 }
 
@@ -50,6 +52,7 @@ export function renameGeometryPoint(geometry: GeometrySourceDataV1, pointId: str
 }
 
 export function addGeometryText(geometry: GeometrySourceDataV1, x: number, y: number): GeometrySourceDataV1 {
+  if (!canAllocateGeometry(geometry, { texts: 1 })) return geometry
   return { ...geometry, texts: [...geometry.texts, { id: nextId('text', geometryIds(geometry)), x, y, content: 'Mətn' }] }
 }
 
@@ -65,6 +68,7 @@ export function addGeometrySegment(geometry: GeometrySourceDataV1, startPointId:
   if (startPointId === endPointId) return geometry
   if (!geometry.points.some((point) => point.id === startPointId) || !geometry.points.some((point) => point.id === endPointId)) return geometry
   if (geometry.segments.some((segment) => (segment.start_point_id === startPointId && segment.end_point_id === endPointId) || (segment.start_point_id === endPointId && segment.end_point_id === startPointId))) return geometry
+  if (!canAllocateGeometry(geometry, { segments: 1 })) return geometry
   return { ...geometry, segments: [...geometry.segments, { id: nextId('segment', geometryIds(geometry)), start_point_id: startPointId, end_point_id: endPointId }] }
 }
 
@@ -72,6 +76,7 @@ export function addGeometryPolygon(geometry: GeometrySourceDataV1, pointIds: str
   if (pointIds.length < 3 || new Set(pointIds).size !== pointIds.length) return null
   const known = new Set(geometry.points.map((point) => point.id))
   if (pointIds.some((id) => !known.has(id))) return null
+  if (!canAllocateGeometry(geometry, { polygons: 1 })) return null
   return { ...geometry, polygons: [...geometry.polygons, { id: nextId('polygon', geometryIds(geometry)), point_ids: [...pointIds] }] }
 }
 

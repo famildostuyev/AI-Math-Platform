@@ -1,5 +1,6 @@
 import type { GeometryLineV1, GeometrySourceDataV1 } from '../api/questionEditor'
 import { addGeometryPoint, addGeometryPolygon } from './geometryAuthoringModel'
+import { canAllocateGeometry, GEOMETRY_COLLECTION_LIMITS } from './geometryCapacityModel'
 
 export type GeometryVertex = { x: number; y: number; pointId?: string }
 export type GeometryLineTool = GeometryLineV1['kind'] | 'polyline'
@@ -13,13 +14,27 @@ export function commitGeometryLine(geometry: GeometrySourceDataV1, tool: Geometr
   if (vertices.length < (closed ? 3 : 2) || vertices.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) return geometry
   if (tool !== 'polyline' && vertices.length !== 2) return geometry
   if (vertices.some((p, i) => i > 0 && p.x === vertices[i - 1].x && p.y === vertices[i - 1].y)) return geometry
+  if (tool === 'polyline' && !closed && vertices.length > GEOMETRY_COLLECTION_LIMITS.points) return geometry
+  const missing: GeometryVertex[] = []
+  for (const vertex of vertices) {
+    const existing = vertex.pointId ? geometry.points.find(p => p.id === vertex.pointId) : geometry.points.find(p => p.x === vertex.x && p.y === vertex.y)
+    if (vertex.pointId && !existing) return geometry
+    if (!existing && !missing.some(p => p.x === vertex.x && p.y === vertex.y)) missing.push(vertex)
+  }
+  if (!canAllocateGeometry(geometry, { points: missing.length,
+    ...(closed ? { polygons: 1 } : tool === 'polyline' ? { polylines: 1 } : { lines: 1 }),
+  })) return geometry
   let next = geometry
   const pointIds: string[] = []
   for (const vertex of vertices) {
     const existing = vertex.pointId ? next.points.find(p => p.id === vertex.pointId) : next.points.find(p => p.x === vertex.x && p.y === vertex.y)
     if (vertex.pointId && !existing) return geometry
     if (existing) pointIds.push(existing.id)
-    else { next = addGeometryPoint(next, vertex.x, vertex.y); pointIds.push(next.points.at(-1)!.id) }
+    else {
+      const added = addGeometryPoint(next, vertex.x, vertex.y)
+      if (added === next) return geometry
+      next = added; pointIds.push(next.points.at(-1)!.id)
+    }
   }
   if (new Set(pointIds).size !== pointIds.length) return geometry
   if (closed) return tool === 'polyline' ? addGeometryPolygon(next, pointIds) ?? geometry : geometry

@@ -1,6 +1,7 @@
 import type { GeometryArcV1, GeometrySourceDataV1 } from '../api/questionEditor'
 import type { GeometryVertex } from './geometryLineModel'
 import { circleRadius, circularCenter, validCircleRadius } from './geometryCircleModel'
+import { canAllocateGeometry } from './geometryCapacityModel'
 import limitsJson from '../../../backend/app/schemas/geometry_arc_limits.json?raw'
 
 // Geometry y points down: zero is right; positive radians run clockwise.
@@ -34,6 +35,7 @@ export function arcPath(center: GeometryVertex, arc: Pick<GeometryArcV1, 'radius
 export function commitGeometryArc(geometry: GeometrySourceDataV1, kind: GeometryArcV1['kind'], center: GeometryVertex, start: GeometryVertex, end: GeometryVertex): GeometrySourceDataV1 {
   const definition = arcFromPointers(center, start, end)
   if (!isArcTool(kind) || !definition || !validCircleRadius(definition.radius)) return geometry
+  if (!canAllocateGeometry(geometry, { arcs: 1 })) return geometry
   const shared = circularCenter(geometry, center)
   if (!shared) return geometry
   return { ...geometry, points: shared.points, arcs: [...(geometry.arcs ?? []), { id: shared.nextId(kind), kind, center_point_id: shared.centerId, ...definition }] }

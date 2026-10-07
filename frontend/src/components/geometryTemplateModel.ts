@@ -1,5 +1,6 @@
 import type { GeometryPolygonTemplate, GeometrySourceDataV1 } from '../api/questionEditor'
 import { addGeometryPolygon } from './geometryAuthoringModel'
+import { canAllocateGeometry } from './geometryCapacityModel'
 import type { GeometryVertex } from './geometryLineModel'
 import { isTemplateTool, MIN_TEMPLATE_CREATION_LENGTH, regularSidesForTool, validRegularSides, type GeometryTemplateTool } from './geometryTemplateContract'
 
@@ -33,6 +34,12 @@ export function templateVertices(tool: GeometryTemplateTool, a: GeometryVertex, 
 export function commitGeometryTemplate(geometry: GeometrySourceDataV1, tool: GeometryTemplateTool, a: GeometryVertex, b: GeometryVertex, n?: number): GeometrySourceDataV1 {
   const vertices = templateVertices(tool, a, b, n)
   if (!vertices) return geometry
+  const missing: GeometryVertex[] = []
+  for (const vertex of vertices) {
+    if (!geometry.points.some(p => p.x === vertex.x && p.y === vertex.y)
+      && !missing.some(p => p.x === vertex.x && p.y === vertex.y)) missing.push(vertex)
+  }
+  if (!canAllocateGeometry(geometry, { points: missing.length, polygons: 1 })) return geometry
   const points = [...geometry.points]
   const ids = new Set([...points, ...geometry.segments, ...geometry.polygons, ...geometry.texts, ...(geometry.lines ?? []), ...(geometry.polylines ?? []), ...(geometry.circles ?? []), ...(geometry.arcs ?? []), ...(geometry.constructions ?? [])].map(p => p.id))
   const pointIds = vertices.map(vertex => {

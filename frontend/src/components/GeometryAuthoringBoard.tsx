@@ -299,6 +299,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
         onChange(addGeometryPoint(geometry, x, geometryYFromBoard(geometry, boardY)))
       } else {
         const updated = addGeometryText(geometry, x, geometryYFromBoard(geometry, boardY))
+        if (updated === geometry) return
         onChange(updated)
         onObjectClick({ kind: 'text', id: updated.texts[updated.texts.length - 1].id })
       }

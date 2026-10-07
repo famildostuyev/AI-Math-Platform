@@ -4,6 +4,7 @@ import { validPolygonTemplate } from './geometryTemplateContract'
 import { validCircleRadius, isCircleTool } from './geometryCircleModel'
 import { validArcAngles, isArcTool } from './geometryArcModel'
 import { evaluateConstructions } from './geometryConstructionModel'
+import { GEOMETRY_COLLECTION_LIMITS } from './geometryCapacityModel'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -80,8 +81,8 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
     || !isFiniteNumber(value.viewport.height) || value.viewport.height <= 0) return null
   if (!Array.isArray(value.points) || !Array.isArray(value.segments)
     || !Array.isArray(value.polygons) || (hasTexts && !Array.isArray(value.texts))) return null
-  if (value.points.length > 500 || value.segments.length > 1000 || value.polygons.length > 200
-    || (hasTexts && (value.texts as unknown[]).length > 500)) return null
+  if (value.points.length > GEOMETRY_COLLECTION_LIMITS.points || value.segments.length > GEOMETRY_COLLECTION_LIMITS.segments || value.polygons.length > GEOMETRY_COLLECTION_LIMITS.polygons
+    || (hasTexts && (value.texts as unknown[]).length > GEOMETRY_COLLECTION_LIMITS.texts)) return null
 
   const ids = new Set<string>()
   const pointIds = new Set<string>()
@@ -121,7 +122,7 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
   const points = new Map((value.points as GeometrySourceDataV1['points']).map(point => [point.id, point]))
   const validId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(id) && !ids.has(id)
   if (Object.hasOwn(value, 'lines')) {
-    if (!Array.isArray(value.lines) || value.lines.length > 1000) return null
+    if (!Array.isArray(value.lines) || value.lines.length > GEOMETRY_COLLECTION_LIMITS.lines) return null
     for (const line of value.lines) {
       if (!isRecord(line) || !hasExactKeys(line, ['id', 'kind', 'start_point_id', 'end_point_id']) || !validId(line.id)
         || !['line', 'directed_line', 'vector'].includes(String(line.kind))
@@ -132,7 +133,7 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
     }
   }
   if (Object.hasOwn(value, 'polylines')) {
-    if (!Array.isArray(value.polylines) || value.polylines.length > 200) return null
+    if (!Array.isArray(value.polylines) || value.polylines.length > GEOMETRY_COLLECTION_LIMITS.polylines) return null
     for (const polyline of value.polylines) {
       if (!isRecord(polyline) || !hasExactKeys(polyline, ['id', 'point_ids']) || !validId(polyline.id)
         || !Array.isArray(polyline.point_ids) || polyline.point_ids.length < 2 || polyline.point_ids.length > 500
@@ -144,7 +145,7 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
     }
   }
   if (Object.hasOwn(value, 'circles')) {
-    if (!Array.isArray(value.circles) || value.circles.length > 200) return null
+    if (!Array.isArray(value.circles) || value.circles.length > GEOMETRY_COLLECTION_LIMITS.circles) return null
     for (const circle of value.circles) {
       if (!isRecord(circle) || !hasExactKeys(circle, ['id', 'center_point_id', 'radius', 'kind']) || !validId(circle.id)
         || typeof circle.kind !== 'string' || !isCircleTool(circle.kind) || !validCircleRadius(circle.radius)
@@ -153,7 +154,7 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
     }
   }
   if (Object.hasOwn(value, 'arcs')) {
-    if (!Array.isArray(value.arcs) || value.arcs.length > 200) return null
+    if (!Array.isArray(value.arcs) || value.arcs.length > GEOMETRY_COLLECTION_LIMITS.arcs) return null
     for (const arc of value.arcs) {
       if (!isRecord(arc) || !hasExactKeys(arc, ['id', 'center_point_id', 'radius', 'kind', 'start_angle', 'sweep_angle']) || !validId(arc.id)
         || typeof arc.kind !== 'string' || !isArcTool(arc.kind) || !validCircleRadius(arc.radius)
