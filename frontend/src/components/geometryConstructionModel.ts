@@ -2,6 +2,7 @@ import type { GeometrySourceDataV1, GeometryPointV1, GeometryConstructionV1, Geo
 import limitsJson from '../../../backend/app/schemas/geometry_construction_limits.json?raw'
 import type { GeometryAltitudeConstructionV1 } from '../api/questionEditor'
 import type { GeometryMedianConstructionV1 } from '../api/questionEditor'
+import { triangleContext } from './geometryTopologyModel'
 
 export const CONSTRUCTION_LIMITS = JSON.parse(limitsJson) as { coordinateTolerance: number; minimumSourceDistance: number; maxConstructions: number }
 export const midpointCoordinates = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: a.x / 2 + b.x / 2, y: a.y / 2 + b.y / 2 })
@@ -238,7 +239,7 @@ export function commitTriangleMedian(g: GeometrySourceDataV1, aId: string, verte
   const rejected = { geometry: g, status: 'rejected' as const }
   const sourceIds = [aId, vertexId, cId]
   if (new Set(sourceIds).size !== 3
-    || !g.polygons.some(p => p.point_ids.length === 3 && sourceIds.every(id => p.point_ids.includes(id)))) return rejected
+    || !triangleContext(g, sourceIds)) return rejected
   const [a, vertex, c] = sourceIds.map(id => g.points.find(p => p.id === id))
   if (!a || !vertex || !c || ![a.x, a.y, vertex.x, vertex.y, c.x, c.y].every(Number.isFinite)
     || !altitudeFootCoordinates(a, vertex, c)) return rejected
@@ -284,7 +285,7 @@ export function commitAltitude(g: GeometrySourceDataV1, aId: string, vertexId: s
   const sourceIds: [string, string, string] = [aId, vertexId, cId]
   if (new Set(sourceIds).size !== 3 || findAltitude(g, ...sourceIds) || g.points.length >= 500
     || g.segments.length >= 1000 || (g.constructions?.length ?? 0) >= CONSTRUCTION_LIMITS.maxConstructions
-    || !g.polygons.some(p => p.point_ids.length === 3 && sourceIds.every(id => p.point_ids.includes(id)))) return g
+    || !triangleContext(g, sourceIds)) return g
   const [a, vertex, c] = sourceIds.map(id => g.points.find(p => p.id === id))
   if (!a || !vertex || !c) return g
   const foot = altitudeFootCoordinates(a, vertex, c)
@@ -551,7 +552,7 @@ export function commitAngleBisector(
 
   const coordinates = angleBisectorSupportCoordinates(a, vertex, c)
   if (!coordinates) return g
-  const triangle = g.polygons.some(p => p.point_ids.length === 3 && [aId, vertexId, cId].every(id => p.point_ids.includes(id)))
+  const triangle = !!triangleContext(g, [aId, vertexId, cId])
   const intersection = triangle ? angleBisectorIntersectionCoordinates(a, vertex, c, coordinates) : null
   if (triangle && (!intersection || g.points.length > 498)) return g
 

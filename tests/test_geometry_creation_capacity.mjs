@@ -71,7 +71,7 @@ const reusedEnds = [{ x: 0, y: 0, pointId: 'a' }, { x: 10, y: 0, pointId: 'b' }]
 for (const kind of ['line', 'directed_line', 'vector']) test(`${kind}: endpoint demand and output capacity are atomic`, () => {
   const next = accepted(count(base, 'points', 498), g => commitGeometryLine(g, kind, newEnds), 'points', 500)
   const line = next.lines.at(-1)
-  assert.deepEqual(next.points.find(p => p.id === line.start_point_id), { id: line.start_point_id, x: 20, y: 20, label: next.points.at(-2).label })
+  assert.deepEqual(next.points.find(p => p.id === line.start_point_id), { id: line.start_point_id, x: 20, y: 20, label: null, role: 'implicit' })
   assert.equal(next.points.find(p => p.id === line.end_point_id).x, 30)
   rejected(count(base, 'points', 499), g => commitGeometryLine(g, kind, newEnds))
   rejected(count(base, 'points', 500), g => commitGeometryLine(g, kind, newEnds))

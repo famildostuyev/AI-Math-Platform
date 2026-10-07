@@ -38,8 +38,10 @@ export async function runGeometryLineAcceptance({ evaluate, until, textButton, c
     assert.equal(await evaluate('document.querySelectorAll("[data-geometry-preview]").length'), 0, kind + ' completion: ' + await evaluate('document.querySelector(".geometry-editor").innerText'))
     assert.ok(await evaluate(`document.querySelector('[data-geometry-kind="${kind}"]')`))
   }
-  // Existing segment uses the first two already committed points.
-  await tool('Parça'); await click(`${board} svg ellipse:nth-of-type(1)`); await click(`${board} svg ellipse:nth-of-type(2)`)
+  // Internal line anchors are hidden. Segment authoring uses explicit points.
+  await evaluate("[...document.querySelectorAll('.universal-editor-geometry-ribbon > button')].find(b=>b.textContent==='Nöqtə').click()"); await delay(100)
+  await at(60,220); await at(110,220)
+  await tool('Parça'); await click(`${board} [data-geometry-point-id="point-7"]`); await click(`${board} [data-geometry-point-id="point-8"]`)
   await tool('Sınıq xətt')
   for (const [x, y] of [[70, 270], [150, 290], [220, 260], [290, 300]]) {
     await at(x, y); await at(x + 20, y + 15, false)
@@ -71,7 +73,7 @@ export async function runGeometryLineAcceptance({ evaluate, until, textButton, c
   assert.deepEqual(source.lines.map(l => l.kind), ['line', 'directed_line', 'vector'])
   assert.equal(source.segments.length, 1); assert.equal(source.polylines.length, 1); assert.equal(source.polylines[0].point_ids.length, 4)
   assert.equal(source.polygons.length, 1); assert.equal(source.polygons[0].point_ids.length, 3)
-  assert.equal(new Set(source.polygons[0].point_ids).size, 3); assert.equal(source.points.length, 13)
+  assert.equal(new Set(source.polygons[0].point_ids).size, 3); assert.equal(source.points.length, 15)
   assert.equal(await evaluate('document.querySelectorAll("[data-geometry-transient]").length'), 0)
   const line = await box(`${frame} [data-geometry-kind=line]`), vector = await box(`${frame} [data-geometry-kind=vector]`)
   assert.ok(line.width > vector.width * 2)
@@ -115,7 +117,7 @@ export async function runGeometryLineAcceptance({ evaluate, until, textButton, c
   await click(`${frame} .visual-frame__actions button`)
   await until('!document.querySelector(".geometry-authoring-board")')
   const remaining = await evaluate('savedRevision.blocks.find(b=>b.id==="frame-1").payload.source_data')
-  assert.deepEqual(remaining.points, source.points); assert.deepEqual(remaining.segments, source.segments); assert.deepEqual(remaining.polygons, source.polygons)
+  assert.deepEqual(remaining.points, source.points.filter(p=>p.role!=='implicit')); assert.deepEqual(remaining.segments, source.segments); assert.deepEqual(remaining.polygons, source.polygons)
   assert.equal(await evaluate('savedRevision.blocks.find(b=>b.id==="frame-2").payload.source_data.lines.length'), 1)
   console.log('PASS: real Edge all line tools, free pointer previews, Enter open completion, tolerant polygon closure, Escape, transient print/save exclusion, SVG distinctions, frame scale/move/resize, two frames and mixed document')
   return source

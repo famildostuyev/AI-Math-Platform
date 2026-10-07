@@ -206,6 +206,15 @@ class GeometryPointV1(StrictEditorSchema):
     x: float
     y: float
     label: str | None = Field(default=None, min_length=1, max_length=100)
+    # Missing role preserves legacy visible points; ownership uses primitive references.
+    role: Literal["explicit", "implicit"] = "explicit"
+
+    @model_serializer(mode="wrap")
+    def serialize_optional_role(self, handler):
+        data = handler(self)
+        if "role" not in self.model_fields_set:
+            data.pop("role", None)
+        return data
 
 
 class GeometrySegmentV1(StrictEditorSchema):

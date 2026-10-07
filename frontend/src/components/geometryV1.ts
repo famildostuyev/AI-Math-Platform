@@ -87,7 +87,8 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
   const ids = new Set<string>()
   const pointIds = new Set<string>()
   for (const point of value.points) {
-    if (!isRecord(point) || !hasExactKeys(point, ['id', 'x', 'y', 'label'])
+    if (!isRecord(point) || !hasExactKeys(point, ['id', 'x', 'y', 'label', ...(Object.hasOwn(point, 'role') ? ['role'] : [])])
+      || (Object.hasOwn(point, 'role') && point.role !== 'explicit' && point.role !== 'implicit')
       || !geometryId(point.id) || ids.has(point.id)
       || !isFiniteNumber(point.x) || !isFiniteNumber(point.y)
       || !(point.label === null || boundedString(point.label, 100))) return null

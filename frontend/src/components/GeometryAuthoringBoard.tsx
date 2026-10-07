@@ -59,9 +59,18 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
     window.addEventListener('scroll', refreshScreenOrigin, true)
     container.addEventListener('pointerdown', refreshScreenOrigin, true)
     const pointElements = new Map<string, JXG.Point>()
+    const selectBoundary = (selection: GeometrySelection, event: unknown) => {
+      // Whole-shape selection must not replace a user's ordinary vertex edit.
+      if (tool === 'select') {
+        const hit = board.getAllObjectsUnderMouse(event)
+        if (geometry.points.some(p => p.role !== 'implicit' && hit.includes(pointElements.get(p.id)))) return
+      }
+      onObjectClick(selection)
+    }
     const { hiddenFootIds, extensions } = altitudePresentation(geometry)
     const hiddenSupportIds = new Set((geometry.constructions ?? []).filter(c => c.kind === 'angle_bisector').map(c => c.support_point_id))
     geometry.points.forEach((point) => {
+      if (point.role === 'implicit') hiddenSupportIds.add(point.id)
       if (hiddenFootIds.has(point.id)) hiddenSupportIds.add(point.id)
       const element = board.create('point', [point.x, boardYFromGeometry(geometry, point.y)], { ...POINT_ATTRIBUTES, visible: !hiddenSupportIds.has(point.id), name: point.label ?? '', label: { fontSize: framed ? GEOMETRY_FRAME_FONT : 12, offset: [10, 10] }, fixed: disabled || tool !== 'select' || isDerivedPoint(geometry, point.id) })
       let dragged = false
@@ -208,7 +217,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       const vertices = polygon.point_ids.map((id) => pointElements.get(id)).filter((point): point is JXG.Point => point !== undefined)
       if (vertices.length !== polygon.point_ids.length) return
       const element = board.create('polygon', vertices, { ...POLYGON_ATTRIBUTES, fixed: true })
-      element.on('down', () => onObjectClick({ kind: 'polygon', id: polygon.id }))
+      element.on('down', event => selectBoundary({ kind: 'polygon', id: polygon.id }, event))
     })
     const segmentElements = new Map<string, JXG.Line>()
     geometry.segments.forEach((segment) => {
@@ -218,7 +227,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       const element = board.create('segment', [start, end], { ...SEGMENT_ATTRIBUTES, fixed: true })
       segmentElements.set(segment.id, element)
       element.rendNode?.setAttribute('data-geometry-segment-id', segment.id)
-      element.on('down', () => onObjectClick({ kind: 'segment', id: segment.id }))
+      element.on('down', event => selectBoundary({ kind: 'segment', id: segment.id }, event))
     })
     for (const extension of extensions) {
       const element = board.create('segment', [[extension.start.x, boardYFromGeometry(geometry, extension.start.y)], [extension.end.x, boardYFromGeometry(geometry, extension.end.y)]], { ...SEGMENT_ATTRIBUTES, fixed: true, dash: 2, highlight: false })

@@ -96,7 +96,7 @@ export default function GeometryRenderer({ geometry, blockId, frameSize }: Geome
         })}
       </g>
       <g className="geometry-points">
-        {geometry.points.filter(point => !bisectorSupportPointIds.has(point.id) && !hiddenFootIds.has(point.id)).map((point) => <g key={point.id}>
+        {geometry.points.filter(point => point.role !== 'implicit' && !bisectorSupportPointIds.has(point.id) && !hiddenFootIds.has(point.id)).map((point) => <g key={point.id}>
           <circle cx={point.x} cy={point.y} r={frameSize ? 1 : '1.7'} />
           {point.label && <text style={frameSize ? { font: `${GEOMETRY_FRAME_FONT / GEOMETRY_FRAME_SCALE}px Arial` } : undefined} x={point.x + 2.5} y={point.y - 2.5}>{point.label}</text>}
         </g>)}

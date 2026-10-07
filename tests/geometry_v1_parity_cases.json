@@ -136,5 +136,10 @@
   {"name":"Unicode equivalent without scheme colon", "path":"texts.0.content", "value":"java\u017fcript", "valid":true},
   {"name":"ordinary Unicode case characters", "path":"texts.0.content", "value":"\u017f \u0130 \u0131", "valid":true},
   {"name":"markup long s remains non-ASCII", "path":"texts.0.content", "value":"<\u017f>", "valid":true},
-  {"name":"markup dotted I remains non-ASCII", "path":"texts.0.content", "value":"<\u0130>", "valid":true}
+  {"name":"markup dotted I remains non-ASCII", "path":"texts.0.content", "value":"<\u0130>", "valid":true},
+  {"name":"point_explicit_role","path":"points.0.role","value":"explicit","valid":true},
+  {"name":"point_implicit_role","path":"points.0.role","value":"implicit","valid":true},
+  {"name":"point_unknown_role","path":"points.0.role","value":"hidden","valid":false},
+  {"name":"point_null_role","path":"points.0.role","value":null,"valid":false},
+  {"name":"point_numeric_role","path":"points.0.role","value":1,"valid":false}
 ]

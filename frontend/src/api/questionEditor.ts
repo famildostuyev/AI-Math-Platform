@@ -130,6 +130,7 @@ export type GeometryPointV1 = {
   x: number
   y: number
   label: string | null
+  role?: 'explicit' | 'implicit'
 }
 
 export type GeometrySegmentV1 = {

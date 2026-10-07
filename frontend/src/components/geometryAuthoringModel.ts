@@ -2,9 +2,10 @@ import type { GeometrySourceDataV1 } from '../api/questionEditor'
 import type { GeometryTemplateTool } from './geometryTemplateContract'
 import { canAllocateGeometry } from './geometryCapacityModel'
 import { constructionDeletionClosure, geometryObjectIds, isDerivedPoint, recomputeConstructions } from './geometryConstructionModel'
+import { cleanupImplicitAnchors, promoteGeometryPoints } from './geometryReferenceModel'
 
 export type GeometryTool = 'parallel' | 'perpendicular' | 'midpoint' | 'intersection' | 'angle_bisector' | 'altitude' | 'median' | 'select' | 'point' | 'segment' | 'polygon' | 'text' | 'line' | 'directed_line' | 'vector' | 'polyline' | 'circle' | 'disk' | 'arc' | 'sector' | GeometryTemplateTool
-export type GeometrySelection = { kind: 'point' | 'segment' | 'polygon' | 'text' | 'line' | 'polyline' | 'circle' | 'arc'; id: string }
+export type GeometrySelection = { kind: 'point' | 'segment' | 'polygon' | 'text' | 'line' | 'polyline' | 'circle' | 'arc' | 'shape'; id: string }
 
 export const GEOMETRY_BOARD_VIEWPORT = Object.freeze({ min_x: 0, min_y: 0, width: 100, height: 100 })
 
@@ -64,16 +65,20 @@ export function addGeometryPolygon(geometry: GeometrySourceDataV1, pointIds: str
   const known = new Set(geometry.points.map((point) => point.id))
   if (pointIds.some((id) => !known.has(id))) return null
   if (!canAllocateGeometry(geometry, { polygons: 1 })) return null
-  return { ...geometry, polygons: [...geometry.polygons, { id: nextId('polygon', geometryIds(geometry)), point_ids: [...pointIds] }] }
+  return { ...promoteGeometryPoints(geometry, pointIds), polygons: [...geometry.polygons, { id: nextId('polygon', geometryIds(geometry)), point_ids: [...pointIds] }] }
 }
 
 export function deleteGeometrySelection(geometry: GeometrySourceDataV1, selection: GeometrySelection): GeometrySourceDataV1 {
+  return cleanupImplicitAnchors(deleteGeometrySelectionObjects(geometry, selection))
+}
+
+function deleteGeometrySelectionObjects(geometry: GeometrySourceDataV1, selection: GeometrySelection): GeometrySourceDataV1 {
   if (geometry.constructions && ['point','line','segment'].includes(selection.kind)) {
     const removed = constructionDeletionClosure(geometry, selection.id)
     let next = { ...geometry, constructions: geometry.constructions.filter(c => !removed.has(c.id)) }
     for (const id of removed) {
       const kind = geometry.points.some(p => p.id === id) ? 'point' : geometry.segments.some(s => s.id === id) ? 'segment' : geometry.lines?.some(l => l.id === id) ? 'line' : null
-      if (kind) next = { ...deleteGeometrySelection({ ...next, constructions: undefined }, { kind, id }), constructions: next.constructions }
+      if (kind) next = { ...deleteGeometrySelectionObjects({ ...next, constructions: undefined }, { kind, id }), constructions: next.constructions }
     }
     return next
   }

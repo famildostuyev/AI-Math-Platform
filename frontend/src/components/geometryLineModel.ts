@@ -1,6 +1,7 @@
 import type { GeometryLineV1, GeometrySourceDataV1 } from '../api/questionEditor'
 import { addGeometryPoint, addGeometryPolygon } from './geometryAuthoringModel'
 import { canAllocateGeometry, GEOMETRY_COLLECTION_LIMITS } from './geometryCapacityModel'
+import { promoteGeometryPoints } from './geometryReferenceModel'
 
 export type GeometryVertex = { x: number; y: number; pointId?: string }
 export type GeometryLineTool = GeometryLineV1['kind'] | 'polyline'
@@ -33,10 +34,12 @@ export function commitGeometryLine(geometry: GeometrySourceDataV1, tool: Geometr
     else {
       const added = addGeometryPoint(next, vertex.x, vertex.y)
       if (added === next) return geometry
-      next = added; pointIds.push(next.points.at(-1)!.id)
+      next = tool === 'polyline' ? added : { ...added, points: added.points.map((p, i) => i === added.points.length - 1 ? { ...p, role: 'implicit' as const } : p) }
+      pointIds.push(next.points.at(-1)!.id)
     }
   }
   if (new Set(pointIds).size !== pointIds.length) return geometry
+  if (tool === 'polyline') next = promoteGeometryPoints(next, pointIds)
   if (closed) return tool === 'polyline' ? addGeometryPolygon(next, pointIds) ?? geometry : geometry
   const ids = new Set([...next.points, ...next.segments, ...next.polygons, ...next.texts, ...(next.lines ?? []), ...(next.polylines ?? []), ...(next.circles ?? []), ...(next.arcs ?? []), ...(next.constructions ?? [])].map(p => p.id))
   let index = 1

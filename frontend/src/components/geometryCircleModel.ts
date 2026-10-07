@@ -1,6 +1,7 @@
 import type { GeometryCircleV1, GeometrySourceDataV1 } from '../api/questionEditor'
 import type { GeometryVertex } from './geometryLineModel'
 import { canAllocateGeometry } from './geometryCapacityModel'
+import { promoteGeometryPoints } from './geometryReferenceModel'
 import limitsJson from '../../../backend/app/schemas/geometry_circle_limits.json?raw'
 
 export const MIN_CIRCLE_RADIUS: number = JSON.parse(limitsJson).minimumRadius
@@ -21,7 +22,7 @@ export function circularCenter(geometry: GeometrySourceDataV1, center: GeometryV
   if (center.pointId && (!existing || existing.x !== center.x || existing.y !== center.y)) return null
   if (!canAllocateGeometry(geometry, { points: existing ? 0 : 1 })) return null
   const point = existing ?? { id: nextId('point'), x: center.x, y: center.y, label: null }
-  return { points: existing ? geometry.points : [...geometry.points, point], centerId: point.id, nextId }
+  return { points: existing ? promoteGeometryPoints(geometry, [point.id]).points : [...geometry.points, point], centerId: point.id, nextId }
 }
 export function commitGeometryCircle(geometry: GeometrySourceDataV1, kind: GeometryCircleV1['kind'], center: GeometryVertex, pointer: GeometryVertex): GeometrySourceDataV1 {
   const radius = circleRadius(center, pointer)
