@@ -11,6 +11,7 @@ import type { GeometryArcV1, GeometrySourceDataV1, GeometryLinearSourceV1 } from
 import { addGeometryPoint, addGeometryText, boardYFromGeometry, geometryYFromBoard, moveGeometryPoint, moveGeometryText, type GeometrySelection, type GeometryTool } from './geometryAuthoringModel'
 
 type GeometryAuthoringBoardProps = {
+  onAnnotationCreate?: (x:number,y:number)=>void
   midpointSource?: string
   linearSource?: GeometryLinearSourceV1 | null
   regularSides?: number
@@ -31,13 +32,13 @@ const SEGMENT_ATTRIBUTES = Object.freeze({ strokeColor: '#374151', strokeWidth: 
 const POLYGON_ATTRIBUTES: Readonly<JXG.PolygonAttributes> = Object.freeze({ fillColor: 'none', fillOpacity: 0, strokeColor: '#374151', highlightFillColor: 'none', highlightStrokeColor: '#1d4ed8', hasInnerPoints: true, borders: { strokeColor: '#374151', layer: 5 } })
 const TEXT_ATTRIBUTES = Object.freeze({ display: 'internal' as const, parse: false, useMathJax: false, fontSize: 16, color: '#111827', highlightColor: '#1d4ed8', dragArea: 'all' as const })
 
-export default function GeometryAuthoringBoard({ geometry, tool, disabled, onChange, onObjectClick, frameSize, lineDraft, regularSides, midpointSource, linearSource, onLineClick, onFinishLine, onCancelLine }: GeometryAuthoringBoardProps) {
+export default function GeometryAuthoringBoard({ geometry, tool, disabled, onChange, onObjectClick, frameSize, lineDraft, regularSides, midpointSource, linearSource, onLineClick, onFinishLine, onCancelLine, onAnnotationCreate }: GeometryAuthoringBoardProps) {
   const reactId = useId()
   const boardId = `geometry-board-${reactId.replace(/:/g, '')}`
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Selection updates parent callbacks; keep a live bridge without rebuilding an active drag.
-  const callbacks = useRef({ onChange, onObjectClick, onLineClick })
-  useEffect(() => { callbacks.current = { onChange, onObjectClick, onLineClick } }, [onChange, onObjectClick, onLineClick])
+  const callbacks = useRef({ onChange, onObjectClick, onLineClick, onAnnotationCreate })
+  useEffect(() => { callbacks.current = { onChange, onObjectClick, onLineClick, onAnnotationCreate } }, [onChange, onObjectClick, onLineClick, onAnnotationCreate])
 
   const frameWidth = frameSize?.width, frameHeight = frameSize?.height
   useEffect(() => {
@@ -234,6 +235,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       element.rendNode?.setAttribute('data-geometry-altitude-extension', extension.id)
     }
     geometry.texts.forEach((text) => {
+      if (text.runs || text.layout_width !== undefined || text.scale !== undefined || text.rotation !== undefined || text.attachment) return
       const element = board.create('text', [text.x, boardYFromGeometry(geometry, text.y), text.content], {
         ...TEXT_ATTRIBUTES, cssStyle: 'font-family:Arial', fixed: disabled || tool !== 'select',
       })
@@ -320,6 +322,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       if (tool === 'point') {
         onChange(addGeometryPoint(geometry, x, geometryYFromBoard(geometry, boardY)))
       } else {
+        if (callbacks.current.onAnnotationCreate) { callbacks.current.onAnnotationCreate(x,geometryYFromBoard(geometry,boardY)); return }
         const updated = addGeometryText(geometry, x, geometryYFromBoard(geometry, boardY))
         if (updated === geometry) return
         onChange(updated)

@@ -158,6 +158,20 @@ export type GeometryTextV1 = {
   x: number
   y: number
   content: string
+  runs?: InlineNode[]
+  layout_width?: number
+  scale?: number
+  rotation?: number
+  attachment?: GeometryAnnotationAttachment
+}
+
+export type GeometryAnnotationAttachment = {
+  target_kind: 'point' | 'segment' | 'circle' | 'arc' | 'shape'
+  target_id: string
+  anchor: 'point' | 'parameter' | 'center'
+  parameter?: number
+  offset: { x: number; y: number }
+  orientation: 'follow_target' | 'keep_page'
 }
 
 export type GeometryLinearSourceV1 = { kind: 'line' | 'directed_line' | 'segment' | 'vector'; id: string }

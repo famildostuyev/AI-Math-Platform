@@ -3,6 +3,7 @@ import type { GeometryTemplateTool } from './geometryTemplateContract'
 import { canAllocateGeometry } from './geometryCapacityModel'
 import { constructionDeletionClosure, geometryObjectIds, isDerivedPoint, recomputeConstructions } from './geometryConstructionModel'
 import { cleanupImplicitAnchors, promoteGeometryPoints } from './geometryReferenceModel'
+import { moveAnnotation, preserveAnnotationsOnDeletion, synchronizeAnnotationPositions } from './geometryAnnotationModel'
 
 export type GeometryTool = 'parallel' | 'perpendicular' | 'midpoint' | 'intersection' | 'angle_bisector' | 'altitude' | 'median' | 'select' | 'point' | 'segment' | 'polygon' | 'text' | 'line' | 'directed_line' | 'vector' | 'polyline' | 'circle' | 'disk' | 'arc' | 'sector' | GeometryTemplateTool
 export type GeometrySelection = { kind: 'point' | 'segment' | 'polygon' | 'text' | 'line' | 'polyline' | 'circle' | 'arc' | 'shape'; id: string }
@@ -32,7 +33,7 @@ export function moveGeometryPoint(geometry: GeometrySourceDataV1, pointId: strin
   const coincident = (a: string, b: string) => { const start = location(a), end = location(b); return start && end && start.x === end.x && start.y === end.y }
   if ((geometry.lines ?? []).some(line => coincident(line.start_point_id, line.end_point_id))
     || (geometry.polylines ?? []).some(polyline => polyline.point_ids.some((id, i) => i > 0 && coincident(polyline.point_ids[i - 1], id)))) return geometry
-  return next
+  return synchronizeAnnotationPositions(next)
 }
 
 export function renameGeometryPoint(geometry: GeometrySourceDataV1, pointId: string, label: string | null): GeometrySourceDataV1 {
@@ -45,7 +46,7 @@ export function addGeometryText(geometry: GeometrySourceDataV1, x: number, y: nu
 }
 
 export function moveGeometryText(geometry: GeometrySourceDataV1, textId: string, x: number, y: number): GeometrySourceDataV1 {
-  return { ...geometry, texts: geometry.texts.map((text) => text.id === textId ? { ...text, x, y } : text) }
+  return moveAnnotation(geometry, textId, x, y)
 }
 
 export function updateGeometryTextContent(geometry: GeometrySourceDataV1, textId: string, content: string): GeometrySourceDataV1 {
@@ -69,7 +70,7 @@ export function addGeometryPolygon(geometry: GeometrySourceDataV1, pointIds: str
 }
 
 export function deleteGeometrySelection(geometry: GeometrySourceDataV1, selection: GeometrySelection): GeometrySourceDataV1 {
-  return cleanupImplicitAnchors(deleteGeometrySelectionObjects(geometry, selection))
+  return preserveAnnotationsOnDeletion(geometry, cleanupImplicitAnchors(deleteGeometrySelectionObjects(geometry, selection)))
 }
 
 function deleteGeometrySelectionObjects(geometry: GeometrySourceDataV1, selection: GeometrySelection): GeometrySourceDataV1 {

@@ -4,6 +4,7 @@ import { isDerivedPoint, recomputeConstructions } from './geometryConstructionMo
 import { normalizeGeometrySourceDataV1 } from './geometryV1'
 import { deleteGeometrySelection } from './geometryAuthoringModel'
 import { referencedPointIds } from './geometryReferenceModel'
+import { preserveAnnotationsOnDeletion, synchronizeAnnotationPositions } from './geometryAnnotationModel'
 
 export type ShapeTransform = { kind:'translate'; dx:number; dy:number } | { kind:'rotate'; radians:number } | { kind:'scale'; factor:number }
 export function transformGeometryShape(g:GeometrySourceDataV1,shape:GeometryShape,operation:ShapeTransform):GeometrySourceDataV1 {
@@ -23,7 +24,7 @@ export function transformGeometryShape(g:GeometrySourceDataV1,shape:GeometryShap
   })}
   const next=recomputeConstructions(candidate)
   if(!next || !normalizeGeometrySourceDataV1(next) || !geometryShapes(next).some(s=>s.id===shape.id))return g
-  return next
+  return synchronizeAnnotationPositions(next)
 }
 
 export function deleteGeometryShape(g:GeometrySourceDataV1,shape:GeometryShape):GeometrySourceDataV1 {
@@ -35,5 +36,6 @@ export function deleteGeometryShape(g:GeometrySourceDataV1,shape:GeometryShape):
     const referenced=referencedPointIds(next)
     next={...next,points:next.points.filter(p=>!current.pointIds.includes(p.id)||referenced.has(p.id))}
   }
+  next=preserveAnnotationsOnDeletion(g,next)
   return normalizeGeometrySourceDataV1(next)?next:g
 }

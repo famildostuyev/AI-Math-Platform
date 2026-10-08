@@ -5,6 +5,8 @@ import './VisualFrame.css'
 import { clipInfiniteLine } from './geometryLineModel'
 import { arcPath } from './geometryArcModel'
 import { intersectionCoordinates, CONSTRUCTION_LIMITS, altitudePresentation } from './geometryConstructionModel'
+import { annotationPose, annotationLayout } from './geometryAnnotationModel'
+import GeometryAnnotationContent from './GeometryAnnotationContent'
 
 type GeometryRendererProps = { geometry: GeometrySourceDataV1; blockId: string; frameSize?: { width: number; height: number } }
 
@@ -102,7 +104,11 @@ export default function GeometryRenderer({ geometry, blockId, frameSize }: Geome
         </g>)}
       </g>
       <g className="geometry-annotations">
-        {geometry.texts.map((text) => <text key={text.id} x={text.x} y={text.y} dominantBaseline={frameSize ? 'central' : undefined} style={frameSize ? { font: `${GEOMETRY_FRAME_FONT / GEOMETRY_FRAME_SCALE}px Arial` } : undefined}>{text.content}</text>)}
+        {geometry.texts.map((text) => {
+          if (!text.runs && text.layout_width === undefined && text.scale === undefined && text.rotation === undefined && !text.attachment) return <text key={text.id} x={text.x} y={text.y} dominantBaseline={frameSize ? 'central' : undefined} style={frameSize ? { font: `${GEOMETRY_FRAME_FONT / GEOMETRY_FRAME_SCALE}px Arial` } : undefined}>{text.content}</text>
+          const pose=annotationPose(geometry,text),layout=annotationLayout(text)
+          return <g key={text.id} data-annotation-id={text.id} transform={`translate(${pose.x} ${pose.y}) rotate(${pose.rotation*180/Math.PI}) scale(${text.scale??1})`}><foreignObject width={layout.width} height={layout.height} style={{overflow:'visible'}}><GeometryAnnotationContent text={text}/></foreignObject></g>
+        })}
       </g>
     </svg>
     <figcaption>{geometry.description}</figcaption>

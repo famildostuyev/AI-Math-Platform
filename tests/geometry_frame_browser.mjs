@@ -19,6 +19,7 @@ import { runGeometryMedianAcceptance } from './geometry_median_browser.mjs'
 import { runGeometryCapacityAcceptance } from './geometry_capacity_browser.mjs'
 import { runGeometryReliabilityAcceptance } from './geometry_reliability_browser.mjs'
 import { runGeometryShapesAcceptance } from './geometry_shapes_browser.mjs'
+import { runGeometryAnnotationsAcceptance } from './geometry_annotations_browser.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'geometry-frame-edge-'))
@@ -105,7 +106,9 @@ try {
     await pointer('mouseReleased', x + dx, y + dy, { button: 'left', clickCount: 1 }); await delay(150)
   }
   await until('document.querySelector(".universal-question-canvas")')
-  if (process.argv.includes('--shapes')) {
+  if (process.argv.includes('--annotations')) {
+    await runGeometryAnnotationsAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--shapes')) {
     await runGeometryShapesAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--reliability')) {
     await runGeometryReliabilityAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})

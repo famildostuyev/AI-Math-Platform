@@ -19,7 +19,7 @@ from app.core.enums import (
 )
 from app.schemas.question_answer import AcceptedAnswerRead, AnswerOptionRead
 from app.schemas.question_solution import SolutionRead
-from app.schemas.structured_text import StructuredTextDocument
+from app.schemas.structured_text import StructuredTextDocument, InlineNode
 
 
 class StrictEditorSchema(BaseModel):
@@ -283,6 +283,37 @@ class GeometryPolylineV1(StrictEditorSchema):
         return values
 
 
+class GeometryAnnotationOffset(StrictEditorSchema):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    x: float
+    y: float
+
+
+class GeometryAnnotationAttachment(StrictEditorSchema):
+    target_kind: Literal["point", "segment", "circle", "arc", "shape"]
+    target_id: str = Field(min_length=1, max_length=4096)
+    anchor: Literal["point", "parameter", "center"]
+    parameter: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+    offset: GeometryAnnotationOffset
+    orientation: Literal["follow_target", "keep_page"]
+
+    @model_validator(mode="after")
+    def validate_anchor(self):
+        expected = "point" if self.target_kind == "point" else "parameter" if self.target_kind == "segment" else "center"
+        if self.anchor != expected or (self.target_kind == "segment") != (self.parameter is not None):
+            raise ValueError("Annotation anchor does not match its target kind.")
+        if "parameter" in self.model_fields_set and self.parameter is None:
+            raise ValueError("Explicit null parameter is unsupported.")
+        return self
+
+    @model_serializer(mode="wrap")
+    def serialize_parameter(self, handler):
+        data = handler(self)
+        if self.parameter is None:
+            data.pop("parameter", None)
+        return data
+
+
 class GeometryTextV1(StrictEditorSchema):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
@@ -290,6 +321,42 @@ class GeometryTextV1(StrictEditorSchema):
     x: float
     y: float
     content: str = Field(min_length=1, max_length=500)
+    runs: list[InlineNode] | None = Field(default=None, min_length=1, max_length=64)
+    layout_width: float | None = Field(default=None, ge=0.1, le=10000)
+    scale: float | None = Field(default=None, ge=0.01, le=100)
+    rotation: float | None = None
+    attachment: GeometryAnnotationAttachment | None = None
+
+    @model_validator(mode="after")
+    def validate_annotation(self):
+        for name in ("runs", "layout_width", "scale", "rotation", "attachment"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"Explicit null {name} is unsupported.")
+        if self.runs is not None:
+            projected = ""
+            for run in self.runs:
+                if run.type == "text":
+                    if run.marks:
+                        raise ValueError("Annotation run styling is not supported.")
+                    self.validate_plain_text(run.text) if run.text.strip() else None
+                    projected += run.text
+                elif run.type == "inline_math":
+                    if not run.latex.strip():
+                        raise ValueError("Annotation math must not be blank.")
+                    projected += run.latex
+                else:
+                    projected += "\n"
+            if projected != self.content:
+                raise ValueError("Annotation content must equal its structured source projection.")
+        return self
+
+    @model_serializer(mode="wrap")
+    def serialize_annotation(self, handler):
+        data = handler(self)
+        for name in ("runs", "layout_width", "scale", "rotation", "attachment"):
+            if name not in self.model_fields_set:
+                data.pop(name, None)
+        return data
 
     @field_validator("content")
     @classmethod

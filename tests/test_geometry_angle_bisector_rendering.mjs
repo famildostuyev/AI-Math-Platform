@@ -1,3 +1,4 @@
+import {loadGeometryComponent} from './geometry_component_test_modules.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import {createRequire} from 'node:module'
@@ -9,11 +10,12 @@ const require = createRequire(new URL('../frontend/package.json', import.meta.ur
 const {createElement} = require('react')
 const {renderToStaticMarkup} = require('react-dom/server')
 const dependencies = Object.fromEntries(await Promise.all(
-  ['geometryFrameModel', 'geometryLineModel', 'geometryArcModel', 'geometryConstructionModel'].map(async name => [
+  ['geometryFrameModel', 'geometryLineModel', 'geometryArcModel', 'geometryConstructionModel', 'geometryAnnotationModel'].map(async name => [
     `./${name}`, await loadGeometryModule(name),
   ]),
 ))
 const file = new URL('../frontend/src/components/GeometryRenderer.tsx', import.meta.url)
+dependencies['./GeometryAnnotationContent']={default:await loadGeometryComponent('GeometryAnnotationContent')}
 const code = ts.transpileModule(await fs.readFile(file, 'utf8'), {
   compilerOptions: {module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX},
 }).outputText

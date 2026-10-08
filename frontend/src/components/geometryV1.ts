@@ -113,12 +113,50 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
   }
   const texts: GeometryTextV1[] = []
   for (const text of hasTexts ? value.texts as JsonObject[] : []) {
-    if (!isRecord(text) || !hasExactKeys(text, ['id', 'x', 'y', 'content'])
+    if (!isRecord(text)) return null
+    const optional = ['runs', 'layout_width', 'scale', 'rotation', 'attachment'].filter(key => Object.hasOwn(text, key))
+    if (!isRecord(text) || !hasExactKeys(text, ['id', 'x', 'y', 'content', ...optional])
       || !geometryId(text.id) || ids.has(text.id)
       || !isFiniteNumber(text.x) || !isFiniteNumber(text.y)
       || !boundedString(text.content, 500) || !isPlainText(text.content)) return null
     ids.add(text.id)
-    texts.push({ id: text.id, x: text.x, y: text.y, content: text.content })
+    const normalized: GeometryTextV1 = { id: text.id, x: text.x, y: text.y, content: text.content }
+    for (const key of ['layout_width', 'scale', 'rotation'] as const) if (Object.hasOwn(text, key)) {
+      const number = baseNumber(text[key])
+      if (!isFiniteNumber(number) || (key === 'layout_width' && (number < .1 || number > 10000)) || (key === 'scale' && (number < .01 || number > 100))) return null
+      normalized[key] = number
+    }
+    if (Object.hasOwn(text, 'runs')) {
+      if (!Array.isArray(text.runs) || !text.runs.length || text.runs.length > 64) return null
+      const runs: NonNullable<GeometryTextV1['runs']> = []
+      for (const run of text.runs) {
+        if (!isRecord(run)) return null
+        if (run.type === 'text') {
+          if (!hasExactKeys(run, ['type', 'text', ...(Object.hasOwn(run, 'marks') ? ['marks'] : [])]) || typeof run.text !== 'string'
+            || (!isBlank(run.text) && !isPlainText(run.text)) || (Object.hasOwn(run, 'marks') && (!Array.isArray(run.marks) || run.marks.length))) return null
+          runs.push({ type: 'text', text: run.text, marks: [] })
+        } else if (run.type === 'inline_math') {
+          if (!hasExactKeys(run, ['type', 'latex']) || typeof run.latex !== 'string' || isBlank(run.latex)) return null
+          runs.push({ type: 'inline_math', latex: run.latex })
+        } else if (run.type === 'hard_break' && hasExactKeys(run, ['type'])) runs.push({ type: 'hard_break' })
+        else return null
+      }
+      if (runs.map(run => run.type === 'text' ? run.text : run.type === 'inline_math' ? run.latex : '\n').join('') !== text.content) return null
+      normalized.runs = runs
+    }
+    if (Object.hasOwn(text, 'attachment')) {
+      const a = text.attachment
+      if (!isRecord(a) || !hasExactKeys(a, ['target_kind','target_id','anchor','offset','orientation', ...(Object.hasOwn(a,'parameter') ? ['parameter'] : [])])
+        || typeof a.target_kind !== 'string' || !['point','segment','circle','arc','shape'].includes(a.target_kind) || typeof a.target_id !== 'string' || !a.target_id.length || Array.from(a.target_id).length > 4096
+        || typeof a.orientation !== 'string' || !['follow_target','keep_page'].includes(a.orientation) || !isRecord(a.offset) || !hasExactKeys(a.offset,['x','y'])) return null
+      const x=baseNumber(a.offset.x), y=baseNumber(a.offset.y), parameter=baseNumber(a.parameter)
+      const anchor=a.target_kind==='point'?'point':a.target_kind==='segment'?'parameter':'center'
+      if (a.anchor!==anchor || !isFiniteNumber(x) || !isFiniteNumber(y)
+        || (a.target_kind==='segment' ? !isFiniteNumber(parameter) || parameter<0 || parameter>1 : Object.hasOwn(a,'parameter'))) return null
+      normalized.attachment = { target_kind: a.target_kind as NonNullable<GeometryTextV1['attachment']>['target_kind'], target_id:a.target_id, anchor,
+        offset:{x,y}, orientation:a.orientation as NonNullable<GeometryTextV1['attachment']>['orientation'], ...(a.target_kind==='segment'?{parameter:parameter as number}:{}) }
+    }
+    texts.push(normalized)
   }
   const points = new Map((value.points as GeometrySourceDataV1['points']).map(point => [point.id, point]))
   const validId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(id) && !ids.has(id)

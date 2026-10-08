@@ -1,3 +1,4 @@
+import {loadGeometryComponent} from './geometry_component_test_modules.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import {createRequire} from 'node:module'
@@ -7,7 +8,8 @@ import {loadGeometryModule} from './geometry_test_modules.mjs'
 import {g,independent} from './test_geometry_median_construction_model.mjs'
 const require=createRequire(new URL('../frontend/package.json',import.meta.url))
 const {createElement}=require('react'),{renderToStaticMarkup}=require('react-dom/server')
-const dependencies=Object.fromEntries(await Promise.all(['geometryFrameModel','geometryLineModel','geometryArcModel','geometryConstructionModel'].map(async name=>[`./${name}`,await loadGeometryModule(name)])))
+const dependencies=Object.fromEntries(await Promise.all(['geometryFrameModel','geometryLineModel','geometryArcModel','geometryConstructionModel', 'geometryAnnotationModel'].map(async name=>[`./${name}`,await loadGeometryModule(name)])))
+dependencies['./GeometryAnnotationContent']={default:await loadGeometryComponent('GeometryAnnotationContent')}
 const code=ts.transpileModule(await fs.readFile(new URL('../frontend/src/components/GeometryRenderer.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText
 const exports={};vm.runInNewContext(code,{exports,require:name=>name.endsWith('.css')?{}:dependencies[name]??require(name),Set})
 for(const frameSize of [undefined,{width:480,height:360}])for(const geometry of [g,independent]){

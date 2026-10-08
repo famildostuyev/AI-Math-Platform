@@ -1,6 +1,7 @@
 import type { GeometrySourceDataV1 } from '../api/questionEditor'
 import { circleBounds } from './geometryCircleModel'
 import { arcBounds } from './geometryArcModel'
+import { annotationPose, annotationLayout } from './geometryAnnotationModel'
 import { FRAME_MINIMUM, FRAME_PADDING, type PersistedVisualPlacement } from './visualPlacement'
 
 // Local units have one fixed document scale, independent of frame dimensions.
@@ -44,6 +45,11 @@ const contributors: readonly GeometryBoundsContributor[] = [
     return bounds
   }),
   geometry => geometry.texts.map(text => {
+    if(text.runs||text.layout_width!==undefined||text.scale!==undefined||text.rotation!==undefined||text.attachment){
+      const p=annotationPose(geometry,text),layout=annotationLayout(text),scale=text.scale??1,c=Math.cos(p.rotation),s=Math.sin(p.rotation)
+      const corners=[[0,0],[layout.width,0],[0,layout.height],[layout.width,layout.height]].map(([x,y])=>({x:(p.x+scale*(x*c-y*s))*GEOMETRY_FRAME_SCALE,y:(p.y+scale*(x*s+y*c))*GEOMETRY_FRAME_SCALE}))
+      return {left:Math.min(...corners.map(p=>p.x))-4,right:Math.max(...corners.map(p=>p.x))+4,top:Math.min(...corners.map(p=>p.y))-4,bottom:Math.max(...corners.map(p=>p.y))+4}
+    }
     const x = text.x * GEOMETRY_FRAME_SCALE, y = text.y * GEOMETRY_FRAME_SCALE
     return { left: x - 4, top: y - 20, right: x + textWidth(text.content), bottom: y + 20 }
   }),
