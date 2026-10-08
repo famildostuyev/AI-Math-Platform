@@ -20,6 +20,7 @@ import { runGeometryCapacityAcceptance } from './geometry_capacity_browser.mjs'
 import { runGeometryReliabilityAcceptance } from './geometry_reliability_browser.mjs'
 import { runGeometryShapesAcceptance } from './geometry_shapes_browser.mjs'
 import { runGeometryAnnotationsAcceptance } from './geometry_annotations_browser.mjs'
+import { runPointOnSegmentAcceptance, runFinalPointOnSegmentAcceptance } from './geometry_point_on_segment_browser.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'geometry-frame-edge-'))
@@ -29,6 +30,7 @@ import {createRoot} from 'react-dom/client';
 import {MathfieldElement} from 'mathlive';
 MathfieldElement.fontsDirectory='/node_modules/mathlive/fonts';
 import AdminQuestionEditor from '/src/components/AdminQuestionEditor.tsx';
+import GeometryEditor from '/src/components/GeometryEditor.tsx';
 import '/src/index.css'; import '/src/App.css';
 import '/src/components/UniversalEditor.css';
 const root=createRoot(document.getElementById('root'));
@@ -58,6 +60,11 @@ window.fetch=async(url,init={})=>{
 };
 window.reloadEditor=()=>root.render(${process.argv.includes('--reliability') ? 'React.createElement(React.StrictMode,null,' : ''}React.createElement(AdminQuestionEditor,{key:++mount,initialRevisionId:'revision',authenticatedRequest:fn=>fn('fixture'),onBack:()=>{}})${process.argv.includes('--reliability') ? ')' : ''});
 window.reloadEditor();
+${process.argv.includes('--point-on-segment-final') ? `
+window.openUnframedGeometry=source=>{
+ function Unframed(){const [geometry,setGeometry]=React.useState(source);window.unframedGeometry=geometry;return React.createElement(GeometryEditor,{value:geometry,disabled:false,onChange:setGeometry})}
+ root.render(React.createElement(Unframed,{key:++mount}));
+};` : ''}
 `
 const server = await createServer({ root: path.join(root, 'frontend'), server: { host: '127.0.0.1', port: 0 }, plugins: [{
   name: 'geometry-frame-fixture', resolveId(id) { if (id === '/__frame.jsx') return id },
@@ -106,7 +113,11 @@ try {
     await pointer('mouseReleased', x + dx, y + dy, { button: 'left', clickCount: 1 }); await delay(150)
   }
   await until('document.querySelector(".universal-question-canvas")')
-  if (process.argv.includes('--annotations')) {
+  if (process.argv.includes('--point-on-segment-final')) {
+    await runFinalPointOnSegmentAcceptance({evaluate,until,textButton,click,box,pointer,delay,send})
+  } else if (process.argv.includes('--point-on-segment')) {
+    await runPointOnSegmentAcceptance({evaluate,until,textButton,click,box,pointer,delay,send})
+  } else if (process.argv.includes('--annotations')) {
     await runGeometryAnnotationsAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--shapes')) {
     await runGeometryShapesAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})

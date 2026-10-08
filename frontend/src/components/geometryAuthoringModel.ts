@@ -1,7 +1,7 @@
 import type { GeometrySourceDataV1 } from '../api/questionEditor'
 import type { GeometryTemplateTool } from './geometryTemplateContract'
 import { canAllocateGeometry } from './geometryCapacityModel'
-import { constructionDeletionClosure, geometryObjectIds, isDerivedPoint, recomputeConstructions } from './geometryConstructionModel'
+import { constructionDeletionClosure, geometryObjectIds, isDerivedPoint, recomputeConstructions, pointConstraint, retargetPointConstraint, detachInvalidPointParents } from './geometryConstructionModel'
 import { cleanupImplicitAnchors, promoteGeometryPoints } from './geometryReferenceModel'
 import { moveAnnotation, preserveAnnotationsOnDeletion, synchronizeAnnotationPositions } from './geometryAnnotationModel'
 
@@ -26,6 +26,8 @@ export function addGeometryPoint(geometry: GeometrySourceDataV1, x: number, y: n
 }
 
 export function moveGeometryPoint(geometry: GeometrySourceDataV1, pointId: string, x: number, y: number): GeometrySourceDataV1 {
+  const constraint=pointConstraint(geometry,pointId)
+  if(constraint){const next=retargetPointConstraint(geometry,pointId,constraint.parent,x,y);return next===geometry?geometry:synchronizeAnnotationPositions(next)}
   if (!Number.isFinite(x) || !Number.isFinite(y) || isDerivedPoint(geometry, pointId)) return geometry
   const next = recomputeConstructions({ ...geometry, points: geometry.points.map(point => point.id === pointId ? { ...point, x, y } : point) })
   if (!next) return geometry
@@ -70,7 +72,7 @@ export function addGeometryPolygon(geometry: GeometrySourceDataV1, pointIds: str
 }
 
 export function deleteGeometrySelection(geometry: GeometrySourceDataV1, selection: GeometrySelection): GeometrySourceDataV1 {
-  return preserveAnnotationsOnDeletion(geometry, cleanupImplicitAnchors(deleteGeometrySelectionObjects(geometry, selection)))
+  return preserveAnnotationsOnDeletion(geometry, cleanupImplicitAnchors(detachInvalidPointParents(deleteGeometrySelectionObjects(geometry, selection))))
 }
 
 function deleteGeometrySelectionObjects(geometry: GeometrySourceDataV1, selection: GeometrySelection): GeometrySourceDataV1 {

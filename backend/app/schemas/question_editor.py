@@ -492,6 +492,26 @@ class GeometryMedianConstructionV1(StrictEditorSchema):
     output_segment_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
 
 
+class GeometrySegmentPointParent(StrictEditorSchema):
+    kind: Literal['segment']
+    segment_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+
+
+class GeometryPolygonEdgePointParent(StrictEditorSchema):
+    kind: Literal['polygon_edge']
+    polygon_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+    start_point_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+    end_point_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+
+
+class GeometryPointOnSegmentConstructionV1(StrictEditorSchema):
+    id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+    kind: Literal['point_on_segment']
+    parent: Annotated[Union[GeometrySegmentPointParent, GeometryPolygonEdgePointParent], Field(discriminator='kind')]
+    t: float = Field(strict=True, ge=0, le=1, allow_inf_nan=False)
+    output_point_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+
+
 class GeometrySourceDataV1(StrictEditorSchema):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
@@ -506,7 +526,7 @@ class GeometrySourceDataV1(StrictEditorSchema):
     polylines: list[GeometryPolylineV1] = Field(default_factory=list, max_length=200)
     circles: list[GeometryCircleV1] = Field(default_factory=list, max_length=200)
     arcs: list[GeometryArcV1] = Field(default_factory=list, max_length=200)
-    constructions: list[GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1 | GeometryAngleBisectorConstructionV1 | GeometryAltitudeConstructionV1 | GeometryMedianConstructionV1] = Field(default_factory=list, max_length=200)
+    constructions: list[GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1 | GeometryAngleBisectorConstructionV1 | GeometryAltitudeConstructionV1 | GeometryMedianConstructionV1 | GeometryPointOnSegmentConstructionV1] = Field(default_factory=list, max_length=200)
 
     @model_serializer(mode="wrap")
     def serialize_additive_collections(self, handler):
@@ -564,7 +584,7 @@ class GeometrySourceDataV1(StrictEditorSchema):
             if any(a.x == b.x and a.y == b.y for a, b in zip(vertices, vertices[1:])):
                 raise ValueError("Geometry polyline consecutive locations must be distinct.")
         from app.schemas.geometry_constructions import validate_constructions
-        validate_constructions(self.points, self.constructions, self.segments, self.lines)
+        validate_constructions(self.points, self.constructions, self.segments, self.lines, self.polygons)
         return self
 
 

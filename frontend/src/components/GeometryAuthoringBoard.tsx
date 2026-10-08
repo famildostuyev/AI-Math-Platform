@@ -7,10 +7,13 @@ import { circleRadius, isCircleTool } from './geometryCircleModel'
 import { arcFromPointers, isArcTool } from './geometryArcModel'
 import { CONSTRUCTION_LIMITS, isDerivedPoint, midpointCoordinates, isLinearConstructionTool, linearSourceObject, linearSupportCoordinates, altitudePresentation } from './geometryConstructionModel'
 import { geometryFrameMetrics, GEOMETRY_FRAME_SCALE, GEOMETRY_FRAME_FONT } from './geometryFrameModel'
-import type { GeometryArcV1, GeometrySourceDataV1, GeometryLinearSourceV1 } from '../api/questionEditor'
+import type { GeometryArcV1, GeometrySourceDataV1, GeometryLinearSourceV1, GeometryPointParent } from '../api/questionEditor'
+import { pointConstraint } from './geometryConstructionModel'
 import { addGeometryPoint, addGeometryText, boardYFromGeometry, geometryYFromBoard, moveGeometryPoint, moveGeometryText, type GeometrySelection, type GeometryTool } from './geometryAuthoringModel'
 
 type GeometryAuthoringBoardProps = {
+  onPointTargets?: (parents:GeometryPointParent[],x:number,y:number)=>void
+  retargetPointId?: string
   onAnnotationCreate?: (x:number,y:number)=>void
   midpointSource?: string
   linearSource?: GeometryLinearSourceV1 | null
@@ -32,20 +35,20 @@ const SEGMENT_ATTRIBUTES = Object.freeze({ strokeColor: '#374151', strokeWidth: 
 const POLYGON_ATTRIBUTES: Readonly<JXG.PolygonAttributes> = Object.freeze({ fillColor: 'none', fillOpacity: 0, strokeColor: '#374151', highlightFillColor: 'none', highlightStrokeColor: '#1d4ed8', hasInnerPoints: true, borders: { strokeColor: '#374151', layer: 5 } })
 const TEXT_ATTRIBUTES = Object.freeze({ display: 'internal' as const, parse: false, useMathJax: false, fontSize: 16, color: '#111827', highlightColor: '#1d4ed8', dragArea: 'all' as const })
 
-export default function GeometryAuthoringBoard({ geometry, tool, disabled, onChange, onObjectClick, frameSize, lineDraft, regularSides, midpointSource, linearSource, onLineClick, onFinishLine, onCancelLine, onAnnotationCreate }: GeometryAuthoringBoardProps) {
+export default function GeometryAuthoringBoard({ geometry, tool, disabled, onChange, onObjectClick, frameSize, lineDraft, regularSides, midpointSource, linearSource, onLineClick, onFinishLine, onCancelLine, onAnnotationCreate, onPointTargets, retargetPointId }: GeometryAuthoringBoardProps) {
   const reactId = useId()
   const boardId = `geometry-board-${reactId.replace(/:/g, '')}`
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Selection updates parent callbacks; keep a live bridge without rebuilding an active drag.
-  const callbacks = useRef({ onChange, onObjectClick, onLineClick, onAnnotationCreate })
-  useEffect(() => { callbacks.current = { onChange, onObjectClick, onLineClick, onAnnotationCreate } }, [onChange, onObjectClick, onLineClick, onAnnotationCreate])
+  const callbacks = useRef({ onChange, onObjectClick, onLineClick, onAnnotationCreate, onPointTargets })
+  useEffect(() => { callbacks.current = { onChange, onObjectClick, onLineClick, onAnnotationCreate, onPointTargets } }, [onChange, onObjectClick, onLineClick, onAnnotationCreate, onPointTargets])
 
   const frameWidth = frameSize?.width, frameHeight = frameSize?.height
   useEffect(() => {
     const container = containerRef.current
     if (container === null) return
     const onChange = (next: GeometrySourceDataV1) => callbacks.current.onChange(next)
-    const onObjectClick = (selection: GeometrySelection) => { if (tool !== 'midpoint' && !isLinearConstructionTool(tool)) callbacks.current.onObjectClick(selection) }
+    const onObjectClick = (selection: GeometrySelection) => { if (!retargetPointId && tool !== 'midpoint' && !isLinearConstructionTool(tool)) callbacks.current.onObjectClick(selection) }
     const { min_x: minX, min_y: minY, width, height } = geometry.viewport
     const metrics = geometryFrameMetrics(geometry)
     const framed = frameWidth !== undefined && frameHeight !== undefined
@@ -60,6 +63,11 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
     window.addEventListener('scroll', refreshScreenOrigin, true)
     container.addEventListener('pointerdown', refreshScreenOrigin, true)
     const pointElements = new Map<string, JXG.Point>()
+    let activeConstraintDrag:string|null=null
+    const restorePoints=()=>{for(const p of geometry.points)pointElements.get(p.id)?.setPosition(JXG.COORDS_BY_USER,[p.x,boardYFromGeometry(geometry,p.y)]);board.update()}
+    const cancelConstraintDrag=(event:Event)=>{if(activeConstraintDrag&&(event.type==='pointercancel'||event instanceof KeyboardEvent&&event.key==='Escape')){activeConstraintDrag=null;restorePoints()}}
+    container.addEventListener('pointercancel',cancelConstraintDrag,true)
+    window.addEventListener('keydown',cancelConstraintDrag,true)
     const selectBoundary = (selection: GeometrySelection, event: unknown) => {
       // Whole-shape selection must not replace a user's ordinary vertex edit.
       if (tool === 'select') {
@@ -73,18 +81,29 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
     geometry.points.forEach((point) => {
       if (point.role === 'implicit') hiddenSupportIds.add(point.id)
       if (hiddenFootIds.has(point.id)) hiddenSupportIds.add(point.id)
-      const element = board.create('point', [point.x, boardYFromGeometry(geometry, point.y)], { ...POINT_ATTRIBUTES, visible: !hiddenSupportIds.has(point.id), name: point.label ?? '', label: { fontSize: framed ? GEOMETRY_FRAME_FONT : 12, offset: [10, 10] }, fixed: disabled || tool !== 'select' || isDerivedPoint(geometry, point.id) })
+      const constrained=pointConstraint(geometry,point.id)
+      const element = board.create('point', [point.x, boardYFromGeometry(geometry, point.y)], { ...POINT_ATTRIBUTES, visible: !hiddenSupportIds.has(point.id), name: point.label ?? '', label: { fontSize: framed ? GEOMETRY_FRAME_FONT : 12, offset: [10, 10] }, fixed: disabled || !!retargetPointId || tool !== 'select' || (isDerivedPoint(geometry, point.id)&&!constrained) })
       let dragged = false
       element.rendNode?.setAttribute('data-geometry-point-id', point.id)
       element.on('down', () => {
         dragged = false
-        if (tool === 'median' || !isDerivedPoint(geometry, point.id) || (geometry.constructions ?? []).some(c => (c.kind === 'angle_bisector' && c.intersection_point_id === point.id) || (c.kind === 'altitude' && c.foot_point_id === point.id) || (c.kind === 'median' && c.midpoint_point_id === point.id))) {
+        if(constrained)activeConstraintDrag=point.id
+        if (constrained || tool === 'median' || !isDerivedPoint(geometry, point.id) || (geometry.constructions ?? []).some(c => (c.kind === 'angle_bisector' && c.intersection_point_id === point.id) || (c.kind === 'altitude' && c.foot_point_id === point.id) || (c.kind === 'median' && c.midpoint_point_id === point.id))) {
           onObjectClick({ kind: 'point', id: point.id })
         }
       })
-      element.on('drag', () => { dragged = true })
+      element.on('drag', () => {
+        dragged = true
+        if(constrained&&activeConstraintDrag===point.id){
+          const next=moveGeometryPoint(geometry,point.id,element.X(),geometryYFromBoard(geometry,element.Y()))
+          for(const p of next.points)pointElements.get(p.id)?.setPosition(JXG.COORDS_BY_USER,[p.x,boardYFromGeometry(geometry,p.y)])
+          board.update()
+        }
+      })
       element.on('up', () => {
-        if (dragged && !disabled && tool === 'select' && !isDerivedPoint(geometry, point.id)) {
+        if(constrained&&activeConstraintDrag!==point.id){restorePoints();return}
+        activeConstraintDrag=null
+        if (dragged && !disabled && tool === 'select' && (!isDerivedPoint(geometry, point.id)||constrained)) {
           const next = moveGeometryPoint(geometry, point.id, element.X(), geometryYFromBoard(geometry, element.Y()))
           if (next === geometry) { element.setPosition(JXG.COORDS_BY_USER, [point.x, boardYFromGeometry(geometry, point.y)]); board.update() }
           else onChange(next)
@@ -214,10 +233,13 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       preview = drawLine(draft[draft.length - 1], closing ? draft[0] : pointer, tool, true)
       preview?.rendNode?.setAttribute('data-geometry-preview', '')
     })
+    const edgeElements: {parent:GeometryPointParent;element:JXG.Line}[]=[]
     geometry.polygons.forEach((polygon) => {
       const vertices = polygon.point_ids.map((id) => pointElements.get(id)).filter((point): point is JXG.Point => point !== undefined)
       if (vertices.length !== polygon.point_ids.length) return
       const element = board.create('polygon', vertices, { ...POLYGON_ATTRIBUTES, fixed: true })
+      const borders=(element as JXG.Polygon & {borders:JXG.Line[]}).borders
+      borders.forEach((edge,i)=>edgeElements.push({element:edge,parent:{kind:'polygon_edge',polygon_id:polygon.id,start_point_id:polygon.point_ids[i],end_point_id:polygon.point_ids[(i+1)%polygon.point_ids.length]}}))
       element.on('down', event => selectBoundary({ kind: 'polygon', id: polygon.id }, event))
     })
     const segmentElements = new Map<string, JXG.Line>()
@@ -227,6 +249,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       if (!start || !end) return
       const element = board.create('segment', [start, end], { ...SEGMENT_ATTRIBUTES, fixed: true })
       segmentElements.set(segment.id, element)
+      edgeElements.push({element,parent:{kind:'segment',segment_id:segment.id}})
       element.rendNode?.setAttribute('data-geometry-segment-id', segment.id)
       element.on('down', event => selectBoundary({ kind: 'segment', id: segment.id }, event))
     })
@@ -282,6 +305,13 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       midpointPreview.rendNode?.setAttribute('data-geometry-midpoint-preview', '')
     })
     board.on('down', (event) => {
+      if(!disabled&&(tool==='point'||retargetPointId)) {
+        const hit=board.getAllObjectsUnderMouse(event)
+        if(geometry.points.some(p=>hit.includes(pointElements.get(p.id)!)))return
+        const parents=edgeElements.filter(e=>hit.includes(e.element)).map(e=>e.parent)
+        const [x,y]=board.getUsrCoordsOfMouse(event)
+        if(parents.length||retargetPointId){callbacks.current.onPointTargets?.(parents,x,geometryYFromBoard(geometry,y));return}
+      }
       if(isLinearConstructionTool(tool)){
         if(disabled)return
         container.focus({preventScroll:true})
@@ -333,9 +363,11 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
     return () => {
       window.removeEventListener('scroll', refreshScreenOrigin, true)
       container.removeEventListener('pointerdown', refreshScreenOrigin, true)
+      container.removeEventListener('pointercancel',cancelConstraintDrag,true)
+      window.removeEventListener('keydown',cancelConstraintDrag,true)
       JXG.JSXGraph.freeBoard(board)
     }
-  }, [disabled, geometry, tool, frameWidth, frameHeight, lineDraft, regularSides, midpointSource, linearSource])
+  }, [disabled, geometry, tool, frameWidth, frameHeight, lineDraft, regularSides, midpointSource, linearSource, retargetPointId])
 
   return <div id={boardId} ref={containerRef} tabIndex={0} onKeyDown={event => {
     if ((tool !== 'midpoint' && tool !== 'altitude' && tool !== 'median' && !isLinearConstructionTool(tool) && !isLineTool(tool) && !isTemplateTool(tool) && !isCircleTool(tool) && !isArcTool(tool)) || disabled) return
