@@ -290,8 +290,11 @@ class GeometryAnnotationOffset(StrictEditorSchema):
 
 
 class GeometryAnnotationAttachment(StrictEditorSchema):
-    target_kind: Literal["point", "segment", "circle", "arc", "shape"]
+    target_kind: Literal["point", "segment", "polygon_edge", "circle", "arc", "shape"]
     target_id: str = Field(min_length=1, max_length=4096)
+    start_point_id: str | None = Field(default=None, pattern=r'^[A-Za-z][A-Za-z0-9_-]{0,63}$')
+    end_point_id: str | None = Field(default=None, pattern=r'^[A-Za-z][A-Za-z0-9_-]{0,63}$')
+    auto_upright: bool | None = Field(default=None, strict=True)
     anchor: Literal["point", "parameter", "center"]
     parameter: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     offset: GeometryAnnotationOffset
@@ -299,11 +302,19 @@ class GeometryAnnotationAttachment(StrictEditorSchema):
 
     @model_validator(mode="after")
     def validate_anchor(self):
-        expected = "point" if self.target_kind == "point" else "parameter" if self.target_kind == "segment" else "center"
-        if self.anchor != expected or (self.target_kind == "segment") != (self.parameter is not None):
+        parameter_target = self.target_kind in ("segment", "polygon_edge")
+        expected = "point" if self.target_kind == "point" else "parameter" if parameter_target else "center"
+        if self.anchor != expected or parameter_target != (self.parameter is not None):
             raise ValueError("Annotation anchor does not match its target kind.")
         if "parameter" in self.model_fields_set and self.parameter is None:
             raise ValueError("Explicit null parameter is unsupported.")
+        if self.target_kind == "polygon_edge":
+            if self.start_point_id is None or self.end_point_id is None or self.start_point_id == self.end_point_id:
+                raise ValueError("Polygon edge requires distinct endpoint IDs.")
+        elif {"start_point_id", "end_point_id"} & self.model_fields_set:
+            raise ValueError("Endpoint IDs are only supported for polygon edges.")
+        if "auto_upright" in self.model_fields_set and self.auto_upright is None:
+            raise ValueError("Explicit null auto_upright is unsupported.")
         return self
 
     @model_serializer(mode="wrap")
@@ -311,6 +322,9 @@ class GeometryAnnotationAttachment(StrictEditorSchema):
         data = handler(self)
         if self.parameter is None:
             data.pop("parameter", None)
+        for name in ("start_point_id", "end_point_id", "auto_upright"):
+            if name not in self.model_fields_set:
+                data.pop(name, None)
         return data
 
 
@@ -558,6 +572,15 @@ class GeometrySourceDataV1(StrictEditorSchema):
             raise ValueError("Geometry object IDs must be unique.")
 
         point_ids = {point.id for point in self.points}
+        for text in self.texts:
+            a = text.attachment
+            if a is not None and a.target_kind == "polygon_edge":
+                polygon = next((p for p in self.polygons if p.id == a.target_id), None)
+                # Missing targets retain the existing non-destructive fallback.
+                if polygon is not None:
+                    pairs = {(polygon.point_ids[i], polygon.point_ids[(i + 1) % len(polygon.point_ids)]) for i in range(len(polygon.point_ids))}
+                    if (a.start_point_id, a.end_point_id) not in pairs and (a.end_point_id, a.start_point_id) not in pairs:
+                        raise ValueError("Annotation references a nonadjacent polygon edge.")
         for arc in self.arcs:
             if arc.center_point_id not in point_ids:
                 raise ValueError("Geometry arc references an unknown center point.")

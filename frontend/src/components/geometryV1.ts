@@ -146,15 +146,23 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
     }
     if (Object.hasOwn(text, 'attachment')) {
       const a = text.attachment
-      if (!isRecord(a) || !hasExactKeys(a, ['target_kind','target_id','anchor','offset','orientation', ...(Object.hasOwn(a,'parameter') ? ['parameter'] : [])])
-        || typeof a.target_kind !== 'string' || !['point','segment','circle','arc','shape'].includes(a.target_kind) || typeof a.target_id !== 'string' || !a.target_id.length || Array.from(a.target_id).length > 4096
+      if (!isRecord(a) || !hasExactKeys(a, ['target_kind','target_id','anchor','offset','orientation', ...['parameter','start_point_id','end_point_id','auto_upright'].filter(key=>Object.hasOwn(a,key))])
+        || typeof a.target_kind !== 'string' || !['point','segment','polygon_edge','circle','arc','shape'].includes(a.target_kind) || typeof a.target_id !== 'string' || !a.target_id.length || Array.from(a.target_id).length > 4096
         || typeof a.orientation !== 'string' || !['follow_target','keep_page'].includes(a.orientation) || !isRecord(a.offset) || !hasExactKeys(a.offset,['x','y'])) return null
       const x=baseNumber(a.offset.x), y=baseNumber(a.offset.y), parameter=baseNumber(a.parameter)
-      const anchor=a.target_kind==='point'?'point':a.target_kind==='segment'?'parameter':'center'
+      const parameterTarget=a.target_kind==='segment'||a.target_kind==='polygon_edge'
+      const anchor=a.target_kind==='point'?'point':parameterTarget?'parameter':'center'
       if (a.anchor!==anchor || !isFiniteNumber(x) || !isFiniteNumber(y)
-        || (a.target_kind==='segment' ? !isFiniteNumber(parameter) || parameter<0 || parameter>1 : Object.hasOwn(a,'parameter'))) return null
+        || (parameterTarget ? !isFiniteNumber(parameter) || parameter<0 || parameter>1 : Object.hasOwn(a,'parameter'))
+        || (Object.hasOwn(a,'auto_upright')&&typeof a.auto_upright!=='boolean')) return null
+      if(a.target_kind==='polygon_edge') {
+        if(typeof a.start_point_id!=='string'||typeof a.end_point_id!=='string'||a.start_point_id===a.end_point_id
+          || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(a.start_point_id)||!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(a.end_point_id))return null
+      }else if(Object.hasOwn(a,'start_point_id')||Object.hasOwn(a,'end_point_id'))return null
       normalized.attachment = { target_kind: a.target_kind as NonNullable<GeometryTextV1['attachment']>['target_kind'], target_id:a.target_id, anchor,
-        offset:{x,y}, orientation:a.orientation as NonNullable<GeometryTextV1['attachment']>['orientation'], ...(a.target_kind==='segment'?{parameter:parameter as number}:{}) }
+        offset:{x,y}, orientation:a.orientation as NonNullable<GeometryTextV1['attachment']>['orientation'], ...(parameterTarget?{parameter:parameter as number}:{}),
+        ...(a.target_kind==='polygon_edge'?{start_point_id:a.start_point_id as string,end_point_id:a.end_point_id as string}:{}),
+        ...(typeof a.auto_upright==='boolean'?{auto_upright:a.auto_upright}:{}) }
     }
     texts.push(normalized)
   }
@@ -201,6 +209,12 @@ export function normalizeGeometrySourceDataV1(value: JsonObject): GeometrySource
         || typeof arc.center_point_id !== 'string' || !points.has(arc.center_point_id)) return null
       ids.add(arc.id)
     }
+  }
+  for(const text of texts) {
+    const a=text.attachment
+    if(a?.target_kind!=='polygon_edge')continue
+    const polygon=(value.polygons as GeometrySourceDataV1['polygons']).find(p=>p.id===a.target_id)
+    if(polygon&&!polygon.point_ids.some((id,i)=>id===a.start_point_id&&polygon.point_ids[(i+1)%polygon.point_ids.length]===a.end_point_id||id===a.end_point_id&&polygon.point_ids[(i+1)%polygon.point_ids.length]===a.start_point_id))return null
   }
   if (Object.hasOwn(value, 'constructions') && !evaluateConstructions(value.points as GeometrySourceDataV1['points'], value.constructions, ids, true, value as GeometrySourceDataV1)) return null
   return {

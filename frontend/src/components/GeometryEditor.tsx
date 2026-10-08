@@ -18,7 +18,7 @@ import { deleteGeometryShape } from './geometryShapeModel'
 import GeometryShapeControls from './GeometryShapeControls'
 import GeometryAnnotationLayer from './GeometryAnnotationLayer'
 import GeometryAnnotationEditor from './GeometryAnnotationEditor'
-import { detachAnnotation } from './geometryAnnotationModel'
+import { detachAnnotation, attachAnnotation, annotationTargetLabel, setAnnotationOrientation, type AnnotationTarget } from './geometryAnnotationModel'
 import { normalizeGeometrySourceDataV1 } from './geometryV1'
 import { commitPointOnSegment, pointConstraint, detachPointConstraint, retargetPointConstraint } from './geometryConstructionModel'
 import { pointParentEndpoints } from './geometryPointConstraintModel'
@@ -56,6 +56,8 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
   const [retargetPointId,setRetargetPointId]=useState<string|null>(null)
   const [pointTargets,setPointTargets]=useState<{parents:GeometryPointParent[];x:number;y:number}|null>(null)
   const [editingAnnotation,setEditingAnnotation]=useState<GeometryTextV1|null>(null)
+  const [attachmentPicking,setAttachmentPicking]=useState<string|null>(null)
+  const [attachmentTargets,setAttachmentTargets]=useState<AnnotationTarget[]>([])
   const [pendingPointIds, setPendingPointIds] = useState<string[]>([])
   const [linearSource, setLinearSource] = useState<GeometryLinearSourceV1 | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -67,6 +69,7 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
   const historyRef = useRef<ReturnType<typeof createGeometryHistory> | null>(null)
   if (!historyRef.current) historyRef.current = createGeometryHistory(value, next => {
     setEditingAnnotation(null)
+    setAttachmentPicking(null);setAttachmentTargets([])
     setRetargetPointId(null);setPointTargets(null)
     setSelection(null); setPendingPointIds([]); setLineDraft([]); setLinearSource(null); setMessage(null); setTool('select')
     publishRef.current(next)
@@ -86,6 +89,7 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
   }, [targetId, history])
 
   const chooseTool = (nextTool: GeometryTool) => {
+    setAttachmentPicking(null);setAttachmentTargets([])
     setRetargetPointId(null);setPointTargets(null)
     history.endGroup()
     setTool(nextTool); setSelection(null); setPendingPointIds([]); setMessage(null)
@@ -384,13 +388,27 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
     else setMessage('Parça və ya çoxbucaqlının tərəfini seçin.')
   }
   const selectedText = selection?.kind === 'text' ? value.texts.find((text) => text.id === selection.id) ?? null : null
+  const cancelAttachmentPicking=()=>{setAttachmentPicking(null);setAttachmentTargets([]);setMessage(null)}
+  const acceptAttachmentTarget=(target:AnnotationTarget)=>{
+    if(!attachmentPicking)return
+    const next=attachAnnotation(value,attachmentPicking,target)
+    const old=value.texts.find(t=>t.id===attachmentPicking)?.attachment
+    if(next===value&&!(old?.target_kind===target.target_kind&&old.target_id===target.target_id&&old.start_point_id===target.start_point_id&&old.end_point_id===target.end_point_id)){setMessage('Etibarlı həndəsə obyekti seçin.');return}
+    onChange(next);cancelAttachmentPicking()
+  }
+  const onAnnotationTargets=(targets:AnnotationTarget[])=>{
+    if(targets.length===1)acceptAttachmentTarget(targets[0])
+    else if(targets.length>1)setAttachmentTargets(targets)
+    else {setAttachmentTargets([]);setMessage('Uyğun həndəsə obyekti seçin.')}
+  }
+  const attachmentBoardProps={annotationPicking:attachmentPicking!==null,annotationTarget:selectedText?.attachment,onAnnotationTargets}
   const createAnnotation=(x:number,y:number)=>{
     const candidate=addGeometryText(value,x,y)
     if(candidate===value)return
     const text=candidate.texts.at(-1)!
     setEditingAnnotation({...text,content:'',runs:[{type:'text',text:'',marks:[]}]});setSelection(null);setTool('select')
   }
-  const annotationLayer=(size?:{width:number;height:number})=><GeometryAnnotationLayer geometry={value} frameSize={size} selectedId={selectedText?.id} disabled={disabled||tool!=='select'||editingAnnotation!==null}
+  const annotationLayer=(size?:{width:number;height:number})=><GeometryAnnotationLayer geometry={value} frameSize={size} selectedId={selectedText?.id} pickingTarget={attachmentPicking!==null} disabled={disabled||tool!=='select'||editingAnnotation!==null||attachmentPicking!==null}
     onSelect={id=>handleObjectClick({kind:'text',id})} onEdit={id=>{const text=value.texts.find(t=>t.id===id);if(text)setEditingAnnotation(text)}} onChange={onChange}/>
   const selectedShape = selection?.kind === 'shape' ? geometryShapes(value).find(s=>s.id===selection.id)
     : selection?.kind === 'polygon' ? geometryShapes(value).find(s=>s.boundary.some(e=>e.kind==='polygon'&&e.id===selection.id)) : null
@@ -415,7 +433,8 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
       {(Object.keys(TOOL_LABELS) as GeometryTool[]).map((item) => <button key={item} type="button" className={tool === item ? 'active' : undefined} aria-pressed={tool === item} disabled={disabled} onClick={() => chooseTool(item)}>{TOOL_LABELS[item]}</button>)}
       <button type="button" className="danger" disabled={disabled || selection === null} onClick={deleteSelected}>Seçiləni sil</button>
     </div>
-  return <div className={`geometry-editor${frameSize ? ' geometry-editor--framed' : ''}`} onKeyDown={e=>{if(e.key==='Escape'&&(retargetPointId||pointTargets)){e.preventDefault();setRetargetPointId(null);setPointTargets(null);setMessage(null)}}}>
+  return <div className={`geometry-editor${frameSize ? ' geometry-editor--framed' : ''}`} onKeyDown={e=>{if(e.key==='Escape'&&attachmentPicking){e.preventDefault();cancelAttachmentPicking()}else if(e.key==='Escape'&&(retargetPointId||pointTargets)){e.preventDefault();setRetargetPointId(null);setPointTargets(null);setMessage(null)}}}>
+    {attachmentPicking&&<div data-frame-chrome="" role="group" aria-label="Bağlantı hədəfi">{attachmentTargets.map((target,i)=><button type="button" key={i} data-attachment-target-kind={target.target_kind} data-attachment-target-id={target.target_id} disabled={disabled} onClick={()=>acceptAttachmentTarget(target)}>{annotationTargetLabel(value,target)} ({i+1})</button>)}<button type="button" onClick={cancelAttachmentPicking}>Bağlamanı ləğv et</button></div>}
     {pointTargets&&<div data-frame-chrome="" role="group" aria-label="Tərəfi seçin">{pointTargets.parents.map((parent,i)=><button key={i} type="button" disabled={disabled} onClick={()=>acceptPointTarget(parent,pointTargets.x,pointTargets.y)}>{parent.kind==='segment'?'Parça':'Çoxbucaqlı tərəfi'}: {parentLabel(parent)} ({i+1})</button>)}<button type="button" onClick={()=>setPointTargets(null)}>Ləğv et</button></div>}
     {selectedConstraint&&<div data-frame-chrome=""><span>Yerləşmə: {parentLabel(selectedConstraint.parent)} üzərində</span><button type="button" disabled={disabled} onClick={()=>onChange(detachPointConstraint(value,selectedConstraint.output_point_id))}>Sərbəst et</button><button type="button" disabled={disabled} onClick={()=>{setRetargetPointId(selectedConstraint.output_point_id);setPointTargets(null);setMessage('Yeni parça və ya çoxbucaqlı tərəfini seçin.')}}>Başqa tərəfə bağla</button></div>}
     {retargetPointId&&<button type="button" onClick={()=>{setRetargetPointId(null);setPointTargets(null);setMessage(null)}}>Bağlamanı ləğv et</button>}
@@ -424,7 +443,7 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
       {regularSides === null && <div role="status">{REGULAR_POLYGON_LIMITS.minSides}–{REGULAR_POLYGON_LIMITS.maxSides} arası tam ədəd daxil edin.</div>}
     </div>}
     {!session?.geometryToolbarHost && toolbar}
-    {frameSize && <div style={{position:'relative'}}><GeometryAuthoringBoard onPointTargets={onPointTargets} retargetPointId={retargetPointId??undefined} onAnnotationCreate={createAnnotation} linearSource={linearSource} midpointSource={pendingPointIds[0]} geometry={value} tool={tool} disabled={disabled||editingAnnotation!==null} onChange={onChange} onObjectClick={handleObjectClick} frameSize={frameSize} lineDraft={lineDraft} regularSides={regularSides ?? undefined} onLineClick={lineClick} onFinishLine={finishLine} onCancelLine={cancelLine} />{selectedShape && <GeometryShapeControls geometry={value} shape={selectedShape} frameSize={frameSize} disabled={disabled} onChange={onChange} />}{annotationLayer(frameSize)}</div>}
+    {frameSize && <div style={{position:'relative'}}><GeometryAuthoringBoard {...attachmentBoardProps} onPointTargets={onPointTargets} retargetPointId={retargetPointId??undefined} onAnnotationCreate={createAnnotation} linearSource={linearSource} midpointSource={pendingPointIds[0]} geometry={value} tool={tool} disabled={disabled||editingAnnotation!==null} onChange={onChange} onObjectClick={handleObjectClick} frameSize={frameSize} lineDraft={lineDraft} regularSides={regularSides ?? undefined} onLineClick={lineClick} onFinishLine={finishLine} onCancelLine={cancelLine} />{selectedShape && <GeometryShapeControls geometry={value} shape={selectedShape} frameSize={frameSize} disabled={disabled} onChange={onChange} />}{annotationLayer(frameSize)}</div>}
     <div className={frameSize ? 'geometry-editor__frame-controls' : undefined} data-frame-chrome={frameSize ? '' : undefined}>
     <label className="geometry-editor__description"><span>Əlçatan təsvir</span><textarea value={value.description} required disabled={disabled} onBlur={() => history.endGroup()} onChange={(event) => onChange({ ...value, description: event.target.value }, 'description')} /></label>
     {!isLineTool(tool) && !isTemplateTool(tool) && !isCircleTool(tool) && !isArcTool(tool) && <p className="geometry-editor__hint">{isLinearConstructionTool(tool) ? (linearSource ? 'Xəttin keçəcəyi mövcud nöqtəni seçin. Escape ilə ləğv edin.' : 'Mənbə xətt, parça və ya vektor seçin.') : tool === 'midpoint' ? 'İki mövcud nöqtə və ya bir parça seçin. Escape ilə ləğv edin.' : tool === 'point' ? 'Lövhədə boş yerə klikləyin.' : tool === 'text' ? 'Mətnin yerləşəcəyi boş yerə klikləyin.' : tool === 'segment' ? `İki nöqtə seçin (${pendingPointIds.length}/2).` : tool === 'polygon' ? `Nöqtələri sıra ilə seçin (${pendingPointIds.length} seçilib).` : 'Nöqtəni və ya mətni sürükləyin; silmək üçün obyekti seçin.'}</p>}
@@ -445,9 +464,12 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
       <button type="button" disabled={disabled || pendingPointIds.length < 3} onClick={finishPolygon}>Çoxbucaqlını tamamla</button>
       <button type="button" className="secondary" disabled={disabled || pendingPointIds.length === 0} onClick={() => setPendingPointIds([])}>Seçimi təmizlə</button>
     </div>}
-    {!frameSize && <div style={{position:'relative'}}><GeometryAuthoringBoard onPointTargets={onPointTargets} retargetPointId={retargetPointId??undefined} onAnnotationCreate={createAnnotation} linearSource={linearSource} midpointSource={pendingPointIds[0]} geometry={value} tool={tool} disabled={disabled||editingAnnotation!==null} onChange={onChange} onObjectClick={handleObjectClick} lineDraft={lineDraft} regularSides={regularSides ?? undefined} onLineClick={lineClick} onFinishLine={finishLine} onCancelLine={cancelLine} />{selectedShape && <GeometryShapeControls geometry={value} shape={selectedShape} disabled={disabled} onChange={onChange} />}{annotationLayer()}</div>}
+    {!frameSize && <div style={{position:'relative'}}><GeometryAuthoringBoard {...attachmentBoardProps} onPointTargets={onPointTargets} retargetPointId={retargetPointId??undefined} onAnnotationCreate={createAnnotation} linearSource={linearSource} midpointSource={pendingPointIds[0]} geometry={value} tool={tool} disabled={disabled||editingAnnotation!==null} onChange={onChange} onObjectClick={handleObjectClick} lineDraft={lineDraft} regularSides={regularSides ?? undefined} onLineClick={lineClick} onFinishLine={finishLine} onCancelLine={cancelLine} />{selectedShape && <GeometryShapeControls geometry={value} shape={selectedShape} disabled={disabled} onChange={onChange} />}{annotationLayer()}</div>}
     {selectedPoint && <label className="geometry-editor__label"><span>Seçilmiş nöqtənin nişanı</span><input value={selectedPoint.label ?? ''} maxLength={100} disabled={disabled} onBlur={() => history.endGroup()} onChange={(event) => onChange(renameGeometryPoint(value, selectedPoint.id, event.target.value.trim() || null), `label:${selectedPoint.id}`)} /></label>}
-    {selectedText && !editingAnnotation && <div data-frame-chrome=""><button type="button" disabled={disabled} onClick={()=>setEditingAnnotation(selectedText)}>Edit annotation</button>{selectedText.attachment&&<button type="button" disabled={disabled} onClick={()=>onChange(detachAnnotation(value,selectedText.id))}>Detach annotation</button>}</div>}
+    {selectedText && !editingAnnotation && <div data-frame-chrome=""><button type="button" disabled={disabled||attachmentPicking!==null} onClick={()=>setEditingAnnotation(selectedText)}>Edit annotation</button>
+      <button type="button" disabled={disabled||attachmentPicking!==null} onClick={()=>{history.endGroup();setRetargetPointId(null);setPointTargets(null);setAttachmentPicking(selectedText.id);setAttachmentTargets([])}}>{selectedText.attachment?'Dəyiş':'Bağla'}</button>
+      {selectedText.attachment&&<><span>Bağlantı: {annotationTargetLabel(value,selectedText.attachment)}</span><button type="button" disabled={disabled||attachmentPicking!==null} onClick={()=>onChange(detachAnnotation(value,selectedText.id))}>Ayır</button><label>İstiqamət <select aria-label="Bağlantı istiqaməti" disabled={disabled||attachmentPicking!==null} value={selectedText.attachment.orientation} onChange={e=>onChange(setAnnotationOrientation(value,selectedText.id,e.target.value==='follow_target'?'follow_target':'keep_page'))}><option value="keep_page">Səhifəyə görə</option><option value="follow_target">Obyekti izlə</option></select></label></>}
+    </div>}
     {editingAnnotation && <GeometryAnnotationEditor key={editingAnnotation.id} text={editingAnnotation} disabled={disabled} onCancel={()=>{setEditingAnnotation(null);if(targetId)sessionRef.current?.activateGeometry(targetId)}} onSave={text=>{
       const existing=value.texts.some(t=>t.id===text.id)
       const candidate={...value,texts:existing?value.texts.map(t=>t.id===text.id?text:t):[...value.texts,text]}

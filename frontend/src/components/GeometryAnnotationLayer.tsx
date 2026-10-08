@@ -5,8 +5,8 @@ import { geometryFrameMetrics, GEOMETRY_FRAME_SCALE } from './geometryFrameModel
 import { normalizeGeometrySourceDataV1 } from './geometryV1'
 import GeometryAnnotationContent from './GeometryAnnotationContent'
 
-type Props={geometry:GeometrySourceDataV1;frameSize?:{width:number;height:number};selectedId?:string;disabled:boolean;onSelect:(id:string)=>void;onEdit:(id:string)=>void;onChange:(g:GeometrySourceDataV1)=>void}
-export default function GeometryAnnotationLayer({geometry,frameSize,selectedId,disabled,onSelect,onEdit,onChange}:Props){
+type Props={geometry:GeometrySourceDataV1;frameSize?:{width:number;height:number};selectedId?:string;pickingTarget?:boolean;disabled:boolean;onSelect:(id:string)=>void;onEdit:(id:string)=>void;onChange:(g:GeometrySourceDataV1)=>void}
+export default function GeometryAnnotationLayer({geometry,frameSize,selectedId,pickingTarget,disabled,onSelect,onEdit,onChange}:Props){
   const [preview,setPreview]=useState<GeometrySourceDataV1|null>(null)
   const gesture=useRef<{pointer:number;id:string;kind:string;x:number;y:number;base:GeometrySourceDataV1;last:GeometrySourceDataV1}|null>(null)
   const metrics=geometryFrameMetrics(geometry),origin=frameSize?{x:metrics.originX,y:metrics.originY}:{x:geometry.viewport.min_x,y:geometry.viewport.min_y}
@@ -43,7 +43,7 @@ export default function GeometryAnnotationLayer({geometry,frameSize,selectedId,d
     {current.texts.filter(t=>t.runs||t.layout_width!==undefined||t.scale!==undefined||t.rotation!==undefined||t.attachment).map(t=>{
       const pose=annotationPose(current,t),layout=annotationLayout(t),selected=t.id===selectedId
       return <g key={t.id} data-annotation-id={t.id} transform={`translate(${pose.x} ${pose.y}) rotate(${pose.rotation*180/Math.PI}) scale(${t.scale??1})`}>
-        <foreignObject width={layout.width} height={layout.height} style={{pointerEvents:'all',cursor:'move',overflow:'visible'}}><GeometryAnnotationContent text={t}/></foreignObject>
+        <foreignObject width={layout.width} height={layout.height} style={{pointerEvents:pickingTarget?'none':'all',cursor:'move',overflow:'visible'}}><GeometryAnnotationContent text={t}/></foreignObject>
         {selected&&!disabled&&<g data-frame-chrome="">
           <rect width={layout.width} height={layout.height} fill="none" stroke="#6d4bd1" strokeWidth=".3"/>
           <rect x={layout.width-1} y={layout.height/2-1} width="2" height="2" fill="white" stroke="#6d4bd1" strokeWidth=".3" data-annotation-transform="resize" style={{pointerEvents:'all',cursor:'ew-resize'}}/>

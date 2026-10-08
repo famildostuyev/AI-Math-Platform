@@ -166,12 +166,15 @@ export type GeometryTextV1 = {
 }
 
 export type GeometryAnnotationAttachment = {
-  target_kind: 'point' | 'segment' | 'circle' | 'arc' | 'shape'
+  target_kind: 'point' | 'segment' | 'polygon_edge' | 'circle' | 'arc' | 'shape'
   target_id: string
+  start_point_id?: string
+  end_point_id?: string
   anchor: 'point' | 'parameter' | 'center'
   parameter?: number
   offset: { x: number; y: number }
   orientation: 'follow_target' | 'keep_page'
+  auto_upright?: boolean
 }
 
 export type GeometryLinearSourceV1 = { kind: 'line' | 'directed_line' | 'segment' | 'vector'; id: string }
