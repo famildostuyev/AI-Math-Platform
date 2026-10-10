@@ -44,13 +44,20 @@ def main():
     parser.add_argument('--family', action='store_true', help='G2-E3 complete circular integration (with --arcs)')
     parser.add_argument('--midpoint', action='store_true', help='G2-F1 dependent midpoint fixture')
     parser.add_argument('--linear-constructions', action='store_true', help='G2-F2 parallel/perpendicular dependent chains')
+    parser.add_argument('--point-on-line', action='store_true', help='Semantic infinite-line point authored in Edge')
     args = parser.parse_args()
     source = json.loads(args.source.read_text(encoding='utf-8'))
-    assert sum([args.triangles, args.quadrilaterals, args.regular, args.complete, args.circles, args.arcs, args.midpoint, args.linear_constructions]) <= 1
+    assert sum([args.triangles, args.quadrilaterals, args.regular, args.complete, args.circles, args.arcs, args.midpoint, args.linear_constructions, args.point_on_line]) <= 1
     source_b = None
     assert not args.family or args.arcs
     acceptance = 'G2-F2' if args.linear_constructions else 'G2-F1' if args.midpoint else 'G2-E3' if args.family else 'G2-E2' if args.arcs else 'G2-E1' if args.circles else 'G2-D4' if args.complete else 'G2-D3' if args.regular else 'G2-D2' if args.quadrilaterals else 'G2-D1' if args.triangles else 'G2-C'
-    if args.linear_constructions:
+    if args.point_on_line:
+        acceptance = 'Point-on-line'
+        constraint = next(c for c in source['constructions'] if c['kind'] == 'point_on_line')
+        assert constraint['t'] > 1 or constraint['t'] < 0
+        assert any(s['end_point_id'] == constraint['output_point_id'] for s in source['segments'])
+        assert any(t.get('attachment', {}).get('target_id') == constraint['output_point_id'] for t in source['texts'])
+    elif args.linear_constructions:
         source, source_b = source['a'], source['b']
         assert {c['kind'] for c in source['constructions']} == {'midpoint','parallel','perpendicular'}
         midpoint = next(c for c in source['constructions'] if c['kind']=='midpoint')
@@ -164,7 +171,25 @@ def main():
         assert loaded[b['id']] == b
         for block in blocks:
             assert loaded[block['id']]['payload']['source_data'] == block['payload']['source_data']
-        if args.midpoint or args.linear_constructions:
+        if args.point_on_line:
+            fresh = loaded[a['id']]['payload']['source_data']
+            edits = json.loads(subprocess.run(['node', 'tests/geometry_point_on_line_reload_edit.mjs'], cwd=ROOT,
+                               input=json.dumps(fresh), capture_output=True, text=True, check=True).stdout)
+            for edited in [edits['moved'], edits['detached']]:
+                GeometrySourceDataV1.model_validate(edited)
+                api('PATCH', path + f"/blocks/{a['id']}/geometry", {'source_data': edited,
+                    'format_version': 1, 'expected_revision_updated_at': reload()['updated_at']})
+                loaded = {block['id']: block for block in reload()['blocks']}
+                assert loaded[a['id']]['payload']['source_data'] == edited
+                assert loaded[b['id']] == b and loaded[a['id']]['visual_placement'] == moved
+            for patch in [dict(t='1.5'), dict(t=True), dict(t=1e308), dict(parent={'kind':'line','line_id':'missing'})]:
+                bad = copy.deepcopy(fresh)
+                next(c for c in bad['constructions'] if c['kind']=='point_on_line').update(patch)
+                api('PATCH', path + f"/blocks/{a['id']}/geometry", {'source_data': bad,
+                    'format_version': 1, 'expected_revision_updated_at': reload()['updated_at']}, 422)
+            assert {block['id']:block for block in reload()['blocks']} == loaded
+            print('PASS: real API post-reload unbounded drag, parent deletion/D+CD+annotation preservation; invalid updates rejected atomically')
+        elif args.midpoint or args.linear_constructions:
             fresh = loaded[a['id']]['payload']['source_data']
             edited = json.loads(subprocess.run(['node', 'tests/geometry_midpoint_reload_edit.mjs'], cwd=ROOT,
                                input=json.dumps(fresh), capture_output=True, text=True, check=True).stdout)

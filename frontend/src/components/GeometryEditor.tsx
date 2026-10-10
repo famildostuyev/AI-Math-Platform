@@ -20,7 +20,7 @@ import GeometryAnnotationLayer from './GeometryAnnotationLayer'
 import GeometryAnnotationEditor from './GeometryAnnotationEditor'
 import { detachAnnotation, attachAnnotation, annotationTargetLabel, setAnnotationOrientation, type AnnotationTarget } from './geometryAnnotationModel'
 import { normalizeGeometrySourceDataV1 } from './geometryV1'
-import { commitPointOnSegment, pointConstraint, detachPointConstraint, retargetPointConstraint } from './geometryConstructionModel'
+import { commitPointOnSegment, commitPointOnLine, pointConstraint, detachPointConstraint, retargetPointConstraint } from './geometryConstructionModel'
 import { pointParentEndpoints } from './geometryPointConstraintModel'
 
 type GeometryEditorProps = {
@@ -370,13 +370,14 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
   const selectedConstraint=selectedPoint&&pointConstraint(value,selectedPoint.id)
   const parentLabel=(parent:GeometryPointParent)=>{
     const ends=pointParentEndpoints(value,parent),names=ends?.map(id=>value.points.find(p=>p.id===id)?.label)
-    return names?.every(Boolean)?names.join(''):parent.kind==='segment'?'parça':'çoxbucaqlının tərəfi'
+    const label=names?.every(Boolean)?names.join(''):null
+    return parent.kind==='line'?`${label??''}${label?' ':''}düz xətti`:label??(parent.kind==='segment'?'parça':'çoxbucaqlının tərəfi')
   }
   const acceptPointTarget=(parent:GeometryPointParent,x:number,y:number)=>{
-    const next=retargetPointId?retargetPointConstraint(value,retargetPointId,parent):commitPointOnSegment(value,parent,x,y)
+    const next=retargetPointId?retargetPointConstraint(value,retargetPointId,parent):parent.kind==='line'?commitPointOnLine(value,parent,x,y):commitPointOnSegment(value,parent,x,y)
     if(next===value){
       if(retargetPointId&&JSON.stringify(pointConstraint(value,retargetPointId)?.parent)===JSON.stringify(parent)){setPointTargets(null);setRetargetPointId(null);setMessage(null);return}
-      setMessage('Etibarlı, sıfır uzunluqlu olmayan tərəf seçin.');return
+      setMessage('Etibarlı, sıfır uzunluqlu olmayan xətt və ya tərəf seçin.');return
     }
     onChange(next);setPointTargets(null);setRetargetPointId(null);setTool('select');setMessage(null)
     const id=retargetPointId??next.points.at(-1)!.id
@@ -385,7 +386,7 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
   const onPointTargets=(parents:GeometryPointParent[],x:number,y:number)=>{
     if(parents.length===1)acceptPointTarget(parents[0],x,y)
     else if(parents.length>1)setPointTargets({parents,x,y})
-    else setMessage('Parça və ya çoxbucaqlının tərəfini seçin.')
+    else setMessage('Düz xətt, parça və ya çoxbucaqlının tərəfini seçin.')
   }
   const selectedText = selection?.kind === 'text' ? value.texts.find((text) => text.id === selection.id) ?? null : null
   const cancelAttachmentPicking=()=>{setAttachmentPicking(null);setAttachmentTargets([]);setMessage(null)}
@@ -435,8 +436,8 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
     </div>
   return <div className={`geometry-editor${frameSize ? ' geometry-editor--framed' : ''}`} onKeyDown={e=>{if(e.key==='Escape'&&attachmentPicking){e.preventDefault();cancelAttachmentPicking()}else if(e.key==='Escape'&&(retargetPointId||pointTargets)){e.preventDefault();setRetargetPointId(null);setPointTargets(null);setMessage(null)}}}>
     {attachmentPicking&&<div data-frame-chrome="" role="group" aria-label="Bağlantı hədəfi">{attachmentTargets.map((target,i)=><button type="button" key={i} data-attachment-target-kind={target.target_kind} data-attachment-target-id={target.target_id} disabled={disabled} onClick={()=>acceptAttachmentTarget(target)}>{annotationTargetLabel(value,target)} ({i+1})</button>)}<button type="button" onClick={cancelAttachmentPicking}>Bağlamanı ləğv et</button></div>}
-    {pointTargets&&<div data-frame-chrome="" role="group" aria-label="Tərəfi seçin">{pointTargets.parents.map((parent,i)=><button key={i} type="button" disabled={disabled} onClick={()=>acceptPointTarget(parent,pointTargets.x,pointTargets.y)}>{parent.kind==='segment'?'Parça':'Çoxbucaqlı tərəfi'}: {parentLabel(parent)} ({i+1})</button>)}<button type="button" onClick={()=>setPointTargets(null)}>Ləğv et</button></div>}
-    {selectedConstraint&&<div data-frame-chrome=""><span>Yerləşmə: {parentLabel(selectedConstraint.parent)} üzərində</span><button type="button" disabled={disabled} onClick={()=>onChange(detachPointConstraint(value,selectedConstraint.output_point_id))}>Sərbəst et</button><button type="button" disabled={disabled} onClick={()=>{setRetargetPointId(selectedConstraint.output_point_id);setPointTargets(null);setMessage('Yeni parça və ya çoxbucaqlı tərəfini seçin.')}}>Başqa tərəfə bağla</button></div>}
+    {pointTargets&&<div data-frame-chrome="" role="group" aria-label="Tərəfi seçin">{pointTargets.parents.map((parent,i)=><button key={i} type="button" disabled={disabled} onClick={()=>acceptPointTarget(parent,pointTargets.x,pointTargets.y)}>{parent.kind==='line'?'Düz xətt':parent.kind==='segment'?'Parça':'Çoxbucaqlı tərəfi'}: {parentLabel(parent)} ({i+1})</button>)}<button type="button" onClick={()=>{setPointTargets(null);setRetargetPointId(null);setMessage(null)}}>Ləğv et</button></div>}
+    {selectedConstraint&&<div data-frame-chrome=""><span>Yerləşmə: {parentLabel(selectedConstraint.parent)} üzərində</span><button type="button" disabled={disabled} onClick={()=>onChange(detachPointConstraint(value,selectedConstraint.output_point_id))}>Sərbəst et</button><button type="button" disabled={disabled} onClick={()=>{setRetargetPointId(selectedConstraint.output_point_id);setPointTargets(null);setMessage('Yeni düz xətt, parça və ya çoxbucaqlı tərəfini seçin.')}}>{selectedConstraint.kind==='point_on_line'?'Başqa xəttə bağla':'Başqa tərəfə bağla'}</button></div>}
     {retargetPointId&&<button type="button" onClick={()=>{setRetargetPointId(null);setPointTargets(null);setMessage(null)}}>Bağlamanı ləğv et</button>}
     {tool === 'regular_polygon' && <div data-frame-chrome="" className="geometry-editor__regular-parameter" style={{ position: 'absolute', top: 8, right: 8, zIndex: 4, background: 'white', padding: 8, border: '1px solid #d1d5db', borderRadius: 6 }} onPointerDown={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') cancelLine() }}>
       <label>Tərəflərin sayı (n) <input aria-label="Tərəflərin sayı (n)" inputMode="numeric" value={regularSidesText} disabled={disabled} aria-invalid={regularSides === null} style={{ width: 60 }} onChange={event => { setRegularSidesText(event.target.value); setLineDraft([]) }} /></label>

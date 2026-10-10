@@ -1,6 +1,10 @@
 import type { GeometrySourceDataV1, GeometryPointParent } from '../api/questionEditor'
 
-export function pointParentEndpoints(g: Pick<GeometrySourceDataV1,'segments'> & Partial<Pick<GeometrySourceDataV1,'polygons'>>, parent: GeometryPointParent): [string,string] | null {
+export function pointParentEndpoints(g: Pick<GeometrySourceDataV1,'segments'> & Partial<Pick<GeometrySourceDataV1,'polygons'|'lines'>>, parent: GeometryPointParent): [string,string] | null {
+  if(parent.kind==='line') {
+    const line=g.lines?.find(l=>l.id===parent.line_id&&(l.kind==='line'||l.kind==='directed_line'))
+    return line?[line.start_point_id,line.end_point_id]:null
+  }
   if(parent.kind==='segment') {
     const s=g.segments.find(s=>s.id===parent.segment_id)
     return s ? [s.start_point_id,s.end_point_id] : null
@@ -11,17 +15,19 @@ export function pointParentEndpoints(g: Pick<GeometrySourceDataV1,'segments'> & 
   return i>=0&&j>=0&&((i+1)%p.point_ids.length===j||(j+1)%p.point_ids.length===i)?[a,b]:null
 }
 
-export function parameterCoordinates(a:{x:number;y:number},b:{x:number;y:number},t:number) {
-  if(![a.x,a.y,b.x,b.y,t].every(Number.isFinite)||t<0||t>1||a.x===b.x&&a.y===b.y)return null
+export function parameterCoordinates(a:{x:number;y:number},b:{x:number;y:number},t:number,unbounded=false) {
+  if(![a.x,a.y,b.x,b.y,t].every(Number.isFinite)||(!unbounded&&(t<0||t>1))||(a.x===b.x&&a.y===b.y))return null
   if(!Number.isFinite(Math.hypot(b.x-a.x,b.y-a.y)))return null
-  const x=(1-t)*a.x+t*b.x,y=(1-t)*a.y+t*b.y
+  // Keep the legacy bounded interpolation; infinite lines use their semantic direction.
+  const x=unbounded?a.x+t*(b.x-a.x):(1-t)*a.x+t*b.x
+  const y=unbounded?a.y+t*(b.y-a.y):(1-t)*a.y+t*b.y
   return [x,y].every(Number.isFinite)?{x,y}:null
 }
 
-export function projectPointParameter(a:{x:number;y:number},b:{x:number;y:number},p:{x:number;y:number}) {
+export function projectPointParameter(a:{x:number;y:number},b:{x:number;y:number},p:{x:number;y:number},unbounded=false) {
   if(![a.x,a.y,b.x,b.y,p.x,p.y].every(Number.isFinite))return null
   const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy)
   if(!Number.isFinite(length)||length===0)return null
   const t=((p.x-a.x)*(dx/length)+(p.y-a.y)*(dy/length))/length
-  return Number.isFinite(t)?Math.max(0,Math.min(1,t)):null
+  return Number.isFinite(t)?(unbounded?t:Math.max(0,Math.min(1,t))):null
 }

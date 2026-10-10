@@ -526,6 +526,19 @@ class GeometryPointOnSegmentConstructionV1(StrictEditorSchema):
     output_point_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
 
 
+class GeometryLinePointParent(StrictEditorSchema):
+    kind: Literal['line']
+    line_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+
+
+class GeometryPointOnLineConstructionV1(StrictEditorSchema):
+    id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+    kind: Literal['point_on_line']
+    parent: GeometryLinePointParent
+    t: float = Field(strict=True, allow_inf_nan=False)
+    output_point_id: str = Field(min_length=1, max_length=64, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
+
+
 class GeometrySourceDataV1(StrictEditorSchema):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
@@ -540,7 +553,7 @@ class GeometrySourceDataV1(StrictEditorSchema):
     polylines: list[GeometryPolylineV1] = Field(default_factory=list, max_length=200)
     circles: list[GeometryCircleV1] = Field(default_factory=list, max_length=200)
     arcs: list[GeometryArcV1] = Field(default_factory=list, max_length=200)
-    constructions: list[GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1 | GeometryAngleBisectorConstructionV1 | GeometryAltitudeConstructionV1 | GeometryMedianConstructionV1 | GeometryPointOnSegmentConstructionV1] = Field(default_factory=list, max_length=200)
+    constructions: list[GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1 | GeometryAngleBisectorConstructionV1 | GeometryAltitudeConstructionV1 | GeometryMedianConstructionV1 | GeometryPointOnSegmentConstructionV1 | GeometryPointOnLineConstructionV1] = Field(default_factory=list, max_length=200)
 
     @model_serializer(mode="wrap")
     def serialize_additive_collections(self, handler):

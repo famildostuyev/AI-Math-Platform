@@ -112,16 +112,16 @@ def validate_constructions(points, constructions, segments=(), lines=(), polygon
             return [c.output_segment_id]
         if c.kind == 'altitude':
             return [c.output_segment_id, c.foot_point_id]
-        if c.kind in ('midpoint', 'intersection', 'point_on_segment'):
+        if c.kind in ('midpoint', 'intersection', 'point_on_segment', 'point_on_line'):
             return [c.output_point_id]
         return [c.output_line_id, c.support_point_id] + (
             [c.intersection_point_id] if c.kind == 'angle_bisector' and c.intersection_point_id else []
         )
 
     def inputs(c):
-        if c.kind == 'point_on_segment':
+        if c.kind in ('point_on_segment', 'point_on_line'):
             a, b = parent_endpoints(c)
-            return [a, b] + ([c.parent.segment_id] if c.parent.kind == 'segment' else [])
+            return [a, b] + ([c.parent.segment_id] if c.parent.kind == 'segment' else [c.parent.line_id] if c.parent.kind == 'line' else [])
         if c.kind == 'median':
             return [c.vertex_point_id, c.midpoint_point_id]
         if c.kind in ('midpoint', 'angle_bisector', 'altitude'):
@@ -138,6 +138,11 @@ def validate_constructions(points, constructions, segments=(), lines=(), polygon
 
     def parent_endpoints(c):
         p = c.parent
+        if p.kind == 'line':
+            line = next((line for line in lines if line.id == p.line_id and line.kind in ('line', 'directed_line')), None)
+            if line is None:
+                raise ValueError('Missing or invalid constrained-point infinite line.')
+            return line.start_point_id, line.end_point_id
         if p.kind == 'segment':
             s = next((s for s in segments if s.id == p.segment_id), None)
             if s is None:
@@ -153,11 +158,11 @@ def validate_constructions(points, constructions, segments=(), lines=(), polygon
         return a, b
 
     for c in constructions:
-        if c.kind == 'point_on_segment':
+        if c.kind in ('point_on_segment', 'point_on_line'):
             a, b = parent_endpoints(c)
             if a == b or any(id not in locations for id in (a, b, c.output_point_id)) or c.output_point_id in (a, b):
                 raise ValueError('Invalid constrained-point references.')
-            pair = ('point_on_segment', c.output_point_id)
+            pair = (c.kind, c.output_point_id)
         elif c.kind == 'midpoint':
             a, b = c.source_point_ids
             pair = ('midpoint', *sorted((a, b)))
@@ -278,13 +283,16 @@ def validate_constructions(points, constructions, segments=(), lines=(), polygon
             raise ValueError('Construction dependency cycle.')
 
         for c in batch:
-            if c.kind == 'point_on_segment':
+            if c.kind in ('point_on_segment', 'point_on_line'):
                 a_id, b_id = parent_endpoints(c)
                 a, b = locations[a_id], locations[b_id]
                 length = math.hypot(b.x-a.x, b.y-a.y)
                 if not math.isfinite(length) or length == 0:
                     raise ValueError('Degenerate constrained-point parent.')
-                x, y = (1-c.t)*a.x+c.t*b.x, (1-c.t)*a.y+c.t*b.y
+                if c.kind == 'point_on_line':
+                    x, y = a.x+c.t*(b.x-a.x), a.y+c.t*(b.y-a.y)
+                else:
+                    x, y = (1-c.t)*a.x+c.t*b.x, (1-c.t)*a.y+c.t*b.y
                 output = locations[c.output_point_id]
             elif c.kind == 'midpoint':
                 x, y = midpoint_coordinates(

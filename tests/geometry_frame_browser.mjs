@@ -22,6 +22,7 @@ import { runGeometryShapesAcceptance } from './geometry_shapes_browser.mjs'
 import { runGeometryAnnotationsAcceptance } from './geometry_annotations_browser.mjs'
 import { runPointOnSegmentAcceptance, runFinalPointOnSegmentAcceptance } from './geometry_point_on_segment_browser.mjs'
 import { runGeometryAttachmentAcceptance } from './geometry_attachments_browser.mjs'
+import { runPointOnLineAcceptance } from './geometry_point_on_line_browser.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'geometry-frame-edge-'))
@@ -32,6 +33,7 @@ import {MathfieldElement} from 'mathlive';
 MathfieldElement.fontsDirectory='/node_modules/mathlive/fonts';
 import AdminQuestionEditor from '/src/components/AdminQuestionEditor.tsx';
 import GeometryEditor from '/src/components/GeometryEditor.tsx';
+import {useUniversalEditorSession,UniversalEditorSessionContext} from '/src/components/universalEditorSession.ts';
 import '/src/index.css'; import '/src/App.css';
 import '/src/components/UniversalEditor.css';
 const root=createRoot(document.getElementById('root'));
@@ -61,9 +63,19 @@ window.fetch=async(url,init={})=>{
 };
 window.reloadEditor=()=>root.render(${process.argv.includes('--reliability') ? 'React.createElement(React.StrictMode,null,' : ''}React.createElement(AdminQuestionEditor,{key:++mount,initialRevisionId:'revision',authenticatedRequest:fn=>fn('fixture'),onBack:()=>{}})${process.argv.includes('--reliability') ? ')' : ''});
 window.reloadEditor();
-${process.argv.includes('--point-on-segment-final') || process.argv.includes('--attachments') ? `
+${process.argv.includes('--point-on-segment-final') || process.argv.includes('--point-on-line') || process.argv.includes('--attachments') ? `
 window.openUnframedGeometry=source=>{
+ ${process.argv.includes('--point-on-line') ? `
+ function Unframed(){
+   const [geometry,setGeometry]=React.useState(source),session=useUniversalEditorSession();
+   window.unframedGeometry=geometry;
+   window.unframedUndo=()=>session.getActiveContext()?.history?.undo();
+   window.unframedRedo=()=>session.getActiveContext()?.history?.redo();
+   return React.createElement(UniversalEditorSessionContext.Provider,{value:session},React.createElement(GeometryEditor,{value:geometry,disabled:false,onChange:setGeometry,targetId:'unframed'}));
+ }
+ ` : `
  function Unframed(){const [geometry,setGeometry]=React.useState(source);window.unframedGeometry=geometry;return React.createElement(GeometryEditor,{value:geometry,disabled:false,onChange:setGeometry})}
+ `}
  root.render(React.createElement(Unframed,{key:++mount}));
 };` : ''}
 `
@@ -114,7 +126,9 @@ try {
     await pointer('mouseReleased', x + dx, y + dy, { button: 'left', clickCount: 1 }); await delay(150)
   }
   await until('document.querySelector(".universal-question-canvas")')
-  if (process.argv.includes('--attachments')) {
+  if (process.argv.includes('--point-on-line')) {
+    await runPointOnLineAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--attachments')) {
     await runGeometryAttachmentAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--point-on-segment-final')) {
     await runFinalPointOnSegmentAcceptance({evaluate,until,textButton,click,box,pointer,delay,send})

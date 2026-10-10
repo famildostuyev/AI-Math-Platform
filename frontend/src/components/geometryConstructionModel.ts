@@ -3,14 +3,14 @@ import limitsJson from '../../../backend/app/schemas/geometry_construction_limit
 import type { GeometryAltitudeConstructionV1 } from '../api/questionEditor'
 import type { GeometryMedianConstructionV1 } from '../api/questionEditor'
 import { triangleContext } from './geometryTopologyModel'
-import type { GeometryPointParent, GeometryPointOnSegmentConstructionV1 } from '../api/questionEditor'
+import type { GeometryPointParent, GeometryPointConstraintV1 } from '../api/questionEditor'
 import { pointParentEndpoints, parameterCoordinates, projectPointParameter } from './geometryPointConstraintModel'
 import { canAllocateGeometry } from './geometryCapacityModel'
 
 export const CONSTRUCTION_LIMITS = JSON.parse(limitsJson) as { coordinateTolerance: number; minimumSourceDistance: number; maxConstructions: number }
 export const midpointCoordinates = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: a.x / 2 + b.x / 2, y: a.y / 2 + b.y / 2 })
 export const ownedConstructionIds = (c: GeometryConstructionV1) =>
-  c.kind === 'midpoint' || c.kind === 'intersection' || c.kind === 'point_on_segment'
+  c.kind === 'midpoint' || c.kind === 'intersection' || c.kind === 'point_on_segment' || c.kind === 'point_on_line'
     ? [c.output_point_id]
     : c.kind === 'altitude' ? [c.output_segment_id, c.foot_point_id]
     : c.kind === 'median' ? [c.output_segment_id]
@@ -18,7 +18,7 @@ export const ownedConstructionIds = (c: GeometryConstructionV1) =>
 
 export const isDerivedPoint = (g: GeometrySourceDataV1, id: string) =>
   (g.constructions ?? []).some(c =>
-    c.kind === 'midpoint' || c.kind === 'intersection' || c.kind === 'point_on_segment'
+    c.kind === 'midpoint' || c.kind === 'intersection' || c.kind === 'point_on_segment' || c.kind === 'point_on_line'
       ? c.output_point_id === id
       : c.kind === 'altitude' ? c.foot_point_id === id
       : c.kind === 'median' ? false
@@ -76,8 +76,8 @@ export const findAngleBisector = (
 )
 
 const constructionInputs = (c: GeometryConstructionV1, g?: LinearObjects) =>
-  c.kind === 'point_on_segment'
-    ? [...(g ? pointParentEndpoints(g,c.parent) ?? [] : c.parent.kind==='polygon_edge'?[c.parent.start_point_id,c.parent.end_point_id]:[]), ...(c.parent.kind==='segment'?[c.parent.segment_id]:[])]
+  (c.kind === 'point_on_segment' || c.kind === 'point_on_line')
+    ? [...(g ? pointParentEndpoints(g,c.parent) ?? [] : c.parent.kind==='polygon_edge'?[c.parent.start_point_id,c.parent.end_point_id]:[]), ...(c.parent.kind==='segment'?[c.parent.segment_id]:c.parent.kind==='line'?[c.parent.line_id]:[])]
     : c.kind === 'median'
     ? [c.vertex_point_id, c.midpoint_point_id]
     : c.kind === 'midpoint' || c.kind === 'angle_bisector' || c.kind === 'altitude'
@@ -313,15 +313,15 @@ export function evaluateConstructions(points: GeometryPointV1[], recipes: unknow
   for (const c of recipes) {
     if (!c || typeof c !== 'object' || Array.isArray(c) || !validId(c.id) || ids.has(c.id)) return null
     let key: string
-    if (c.kind === 'point_on_segment') {
+    if (c.kind === 'point_on_segment' || c.kind === 'point_on_line') {
       const p=c.parent
       if(Object.keys(c).sort().join(',')!=='id,kind,output_point_id,parent,t'||!p||typeof p!=='object'||Array.isArray(p)
-        || !Number.isFinite(c.t)||c.t<0||c.t>1||!validId(c.output_point_id)||!locations.has(c.output_point_id)
-        || (p.kind==='segment' ? Object.keys(p).sort().join(',')!=='kind,segment_id'||!validId(p.segment_id)
+        || !Number.isFinite(c.t)||(c.kind==='point_on_segment'&&(c.t<0||c.t>1))||!validId(c.output_point_id)||!locations.has(c.output_point_id)
+        || (c.kind==='point_on_line' ? p.kind!=='line'||Object.keys(p).sort().join(',')!=='kind,line_id'||!validId(p.line_id) : p.kind==='segment' ? Object.keys(p).sort().join(',')!=='kind,segment_id'||!validId(p.segment_id)
           : p.kind==='polygon_edge'?Object.keys(p).sort().join(',')!=='end_point_id,kind,polygon_id,start_point_id'||![p.polygon_id,p.start_point_id,p.end_point_id].every(validId):true))return null
       const endpoints=pointParentEndpoints(linear,p)
       if(!endpoints||endpoints[0]===endpoints[1]||!endpoints.every(id=>locations.has(id))||endpoints.includes(c.output_point_id))return null
-      key=JSON.stringify(['point_on_segment',c.output_point_id])
+      key=JSON.stringify([c.kind,c.output_point_id])
     } else if (c.kind === 'midpoint') {
       if (Object.keys(c).sort().join(',') !== 'id,kind,output_point_id,source_point_ids' || !Array.isArray(c.source_point_ids) || c.source_point_ids.length !== 2
       || !c.source_point_ids.every((id: unknown) => validId(id) && locations.has(id)) || c.source_point_ids[0] === c.source_point_ids[1]
@@ -449,9 +449,9 @@ export function evaluateConstructions(points: GeometryPointV1[], recipes: unknow
       let expected: { x: number; y: number } | null
       let stored: GeometryPointV1
 
-      if (c.kind === 'point_on_segment') {
+      if (c.kind === 'point_on_segment' || c.kind === 'point_on_line') {
         const [a,b]=pointParentEndpoints(linear,c.parent)!
-        expected=parameterCoordinates(locations.get(a)!,locations.get(b)!,c.t)
+        expected=parameterCoordinates(locations.get(a)!,locations.get(b)!,c.t,c.kind==='point_on_line')
         stored=locations.get(c.output_point_id)!
       } else if (c.kind === 'midpoint') {
         expected = midpointCoordinates(
@@ -622,7 +622,7 @@ export function constructionDeletionClosure(g: GeometrySourceDataV1, objectId: s
     changed = false
     const add = (id: string) => { if (!removed.has(id)) { removed.add(id); changed = true } }
     for (const l of [...g.segments,...(g.lines ?? [])]) if (removed.has(l.start_point_id) || removed.has(l.end_point_id)) add(l.id)
-    for (const c of g.constructions ?? []) if ((c.kind !== 'point_on_segment' && constructionInputs(c,g).some(id => removed.has(id))) || ownedConstructionIds(c).some(id => removed.has(id))) {
+    for (const c of g.constructions ?? []) if ((c.kind !== 'point_on_segment' && c.kind !== 'point_on_line' && constructionInputs(c,g).some(id => removed.has(id))) || ownedConstructionIds(c).some(id => removed.has(id))) {
       add(c.id); ownedConstructionIds(c).forEach(add)
     }
   }
@@ -709,7 +709,7 @@ export function commitLinearConstruction(g: GeometrySourceDataV1, kind: Geometry
   return recomputeConstructions({...g,points:[...g.points,support],lines:[...(g.lines??[]),line],constructions:[...(g.constructions??[]),recipe]}) ?? g
 }
 
-export const pointConstraint = (g:GeometrySourceDataV1,id:string) => g.constructions?.find((c):c is GeometryPointOnSegmentConstructionV1=>c.kind==='point_on_segment'&&c.output_point_id===id)
+export const pointConstraint = (g:GeometrySourceDataV1,id:string) => g.constructions?.find((c):c is GeometryPointConstraintV1=>(c.kind==='point_on_segment'||c.kind==='point_on_line')&&c.output_point_id===id)
 
 export function detachPointConstraint(g:GeometrySourceDataV1,id:string):GeometrySourceDataV1 {
   const c=pointConstraint(g,id)
@@ -720,8 +720,13 @@ export function detachPointConstraint(g:GeometrySourceDataV1,id:string):Geometry
 export function detachInvalidPointParents(g:GeometrySourceDataV1):GeometrySourceDataV1 {
   if(!g.constructions)return g
   const constructions=g.constructions.filter(c=>{
-    if(c.kind!=='point_on_segment')return true
+    if(c.kind!=='point_on_segment'&&c.kind!=='point_on_line')return true
     const p=c.parent
+    if(c.kind==='point_on_line'){
+      // A present but invalid/degenerate parent must fail evaluation, never detach.
+      if(!p||typeof p!=='object'||Array.isArray(p)||p.kind!=='line'||Object.keys(p).sort().join(',')!=='kind,line_id'||typeof p.line_id!=='string'||!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(p.line_id))return true
+      return (g.lines??[]).some(line=>line.id===p.line_id)
+    }
     // Only a well-formed relationship may be detached; malformed data still fails evaluation.
     if(!p||typeof p!=='object'||(p.kind==='segment'?Object.keys(p).sort().join(',')!=='kind,segment_id'||typeof p.segment_id!=='string'
       :p.kind==='polygon_edge'?Object.keys(p).sort().join(',')!=='end_point_id,kind,polygon_id,start_point_id'||![p.polygon_id,p.start_point_id,p.end_point_id].every(id=>typeof id==='string'):true))return true
@@ -735,9 +740,9 @@ export function retargetPointConstraint(g:GeometrySourceDataV1,id:string,parent:
   if(!c||!p||!ends)return g
   const a=g.points.find(p=>p.id===ends[0]),b=g.points.find(p=>p.id===ends[1])
   if(!a||!b)return g
-  const t=projectPointParameter(a,b,{x:x??p.x,y:y??p.y})
+  const t=projectPointParameter(a,b,{x:x??p.x,y:y??p.y},parent.kind==='line')
   if(t===null||JSON.stringify(parent)===JSON.stringify(c.parent)&&Math.abs(t-c.t)<=8*Number.EPSILON)return g
-  const next=recomputeConstructions({...g,constructions:g.constructions!.map(r=>r.id===c.id?{...c,parent,t}:r)})
+  const next=recomputeConstructions({...g,constructions:g.constructions!.map(r=>r.id===c.id?(parent.kind==='line'?{...c,kind:'point_on_line' as const,parent,t}:{...c,kind:'point_on_segment' as const,parent,t}):r)})
   if(!next)return g
   const locations=new Map(next.points.map(p=>[p.id,p]))
   const coincident=(a:string,b:string)=>{const p=locations.get(a),q=locations.get(b);return !p||!q||p.x===q.x&&p.y===q.y}
@@ -746,13 +751,24 @@ export function retargetPointConstraint(g:GeometrySourceDataV1,id:string,parent:
   return next
 }
 
-export function commitPointOnSegment(g:GeometrySourceDataV1,parent:GeometryPointParent,x:number,y:number):GeometrySourceDataV1 {
+export function commitPointOnSegment(g:GeometrySourceDataV1,parent:Exclude<GeometryPointParent,{kind:'line'}>,x:number,y:number):GeometrySourceDataV1 {
   if(!canAllocateGeometry(g,{points:1})||(g.constructions?.length??0)>=CONSTRUCTION_LIMITS.maxConstructions)return g
   const ends=pointParentEndpoints(g,parent),a=ends&&g.points.find(p=>p.id===ends[0]),b=ends&&g.points.find(p=>p.id===ends[1])
   if(!a||!b)return g
   const t=projectPointParameter(a,b,{x,y}),q=t!==null?parameterCoordinates(a,b,t):null
   if(t===null||!q)return g
   const ids=geometryObjectIds(g),id=(prefix:string)=>{let i=1;while(ids.has(`${prefix}-${i}`))i++;const v=`${prefix}-${i}`;ids.add(v);return v}
-  const output_point_id=id('point'),recipe:GeometryPointOnSegmentConstructionV1={id:id('point-on-segment'),kind:'point_on_segment',output_point_id,parent,t}
+  const output_point_id=id('point'),recipe:GeometryPointConstraintV1={id:id('point-on-segment'),kind:'point_on_segment',output_point_id,parent,t}
+  return recomputeConstructions({...g,points:[...g.points,{id:output_point_id,...q,label:null}],constructions:[...(g.constructions??[]),recipe]})??g
+}
+
+export function commitPointOnLine(g:GeometrySourceDataV1,parent:Extract<GeometryPointParent,{kind:'line'}>,x:number,y:number,duplicateTolerance=CONSTRUCTION_LIMITS.coordinateTolerance):GeometrySourceDataV1 {
+  if(!canAllocateGeometry(g,{points:1})||(g.constructions?.length??0)>=CONSTRUCTION_LIMITS.maxConstructions||!Number.isFinite(duplicateTolerance)||duplicateTolerance<0)return g
+  const ends=pointParentEndpoints(g,parent),a=ends&&g.points.find(p=>p.id===ends[0]),b=ends&&g.points.find(p=>p.id===ends[1])
+  if(!a||!b)return g
+  const t=projectPointParameter(a,b,{x,y},true),q=t!==null?parameterCoordinates(a,b,t,true):null
+  if(t===null||!q||g.points.some(p=>Math.hypot(p.x-q.x,p.y-q.y)<=duplicateTolerance))return g
+  const ids=geometryObjectIds(g),id=(prefix:string)=>{let i=1;while(ids.has(`${prefix}-${i}`))i++;const v=`${prefix}-${i}`;ids.add(v);return v}
+  const output_point_id=id('point'),recipe:GeometryPointConstraintV1={id:id('point-on-line'),kind:'point_on_line',output_point_id,parent,t}
   return recomputeConstructions({...g,points:[...g.points,{id:output_point_id,...q,label:null}],constructions:[...(g.constructions??[]),recipe]})??g
 }

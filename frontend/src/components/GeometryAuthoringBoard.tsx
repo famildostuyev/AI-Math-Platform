@@ -9,6 +9,7 @@ import { CONSTRUCTION_LIMITS, isDerivedPoint, midpointCoordinates, isLinearConst
 import { geometryFrameMetrics, GEOMETRY_FRAME_SCALE, GEOMETRY_FRAME_FONT } from './geometryFrameModel'
 import type { GeometryArcV1, GeometrySourceDataV1, GeometryLinearSourceV1, GeometryPointParent } from '../api/questionEditor'
 import { pointConstraint } from './geometryConstructionModel'
+import { pointParentEndpoints, projectPointParameter, parameterCoordinates } from './geometryPointConstraintModel'
 import { geometryShapes } from './geometryTopologyModel'
 import type { AnnotationTarget } from './geometryAnnotationModel'
 import { addGeometryPoint, addGeometryText, boardYFromGeometry, geometryYFromBoard, moveGeometryPoint, moveGeometryText, type GeometrySelection, type GeometryTool } from './geometryAuthoringModel'
@@ -144,7 +145,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
     for (const line of geometry.lines ?? []) {
       const a = geometry.points.find(p => p.id === line.start_point_id), b = geometry.points.find(p => p.id === line.end_point_id)
       const element = a && b ? drawLine(a,b,line.kind) : null
-      if(element){linearElements.set(line.id,element);element.rendNode?.setAttribute('data-geometry-line-id',line.id);element.on('down',()=>onObjectClick({kind:'line',id:line.id}))}
+      if(element){linearElements.set(line.id,element);element.rendNode?.setAttribute('data-geometry-line-id',line.id);element.on('down',event=>selectBoundary({kind:'line',id:line.id},event))}
     }
     for (const polyline of geometry.polylines ?? []) {
       const vertices = polyline.point_ids.map(id => geometry.points.find(p => p.id === id)!)
@@ -361,8 +362,23 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       if(!disabled&&(tool==='point'||retargetPointId)) {
         const hit=board.getAllObjectsUnderMouse(event)
         if(geometry.points.some(p=>hit.includes(pointElements.get(p.id)!)))return
-        const parents=edgeElements.filter(e=>hit.includes(e.element)).map(e=>e.parent)
+        const parents:GeometryPointParent[]=[...edgeElements.filter(e=>hit.includes(e.element)).map(e=>e.parent),
+          ...(geometry.lines??[]).filter(l=>(l.kind==='line'||l.kind==='directed_line')&&hit.includes(linearElements.get(l.id)!)).map(l=>({kind:'line' as const,line_id:l.id}))]
         const [x,y]=board.getUsrCoordsOfMouse(event)
+        if(!retargetPointId&&parents.length){
+          const available=parents.filter(parent=>{
+            if(parent.kind!=='line')return true
+            const ends=pointParentEndpoints(geometry,parent),a=ends&&geometry.points.find(p=>p.id===ends[0]),b=ends&&geometry.points.find(p=>p.id===ends[1])
+            if(!a||!b)return false
+            const t=projectPointParameter(a,b,{x,y:geometryYFromBoard(geometry,y)},true),q=t!==null?parameterCoordinates(a,b,t,true):null
+            if(!q)return false
+            const screen=new JXG.Coords(JXG.COORDS_BY_USER,[q.x,boardYFromGeometry(geometry,q.y)],board).scrCoords
+            // JSXGraph implements hasPoint at runtime but omits it from Point's typings.
+            return ![...pointElements.values()].some(p=>(p as JXG.Point & {hasPoint:(x:number,y:number)=>boolean}).hasPoint(screen[1],screen[2]))
+          })
+          if(!available.length)return
+          callbacks.current.onPointTargets?.(available,x,geometryYFromBoard(geometry,y));return
+        }
         if(parents.length||retargetPointId){callbacks.current.onPointTargets?.(parents,x,geometryYFromBoard(geometry,y));return}
       }
       if(isLinearConstructionTool(tool)){

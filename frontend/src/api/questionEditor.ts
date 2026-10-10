@@ -184,9 +184,11 @@ export type GeometryIntersectionConstructionV1 = { id: string; kind: 'intersecti
 export type GeometryAngleBisectorConstructionV1 = { id: string; kind: 'angle_bisector'; source_point_ids: [string, string, string]; output_line_id: string; support_point_id: string; intersection_point_id?: string }
 export type GeometryAltitudeConstructionV1 = { id: string; kind: 'altitude'; source_point_ids: [string, string, string]; output_segment_id: string; foot_point_id: string }
 export type GeometryMedianConstructionV1 = { id: string; kind: 'median'; vertex_point_id: string; midpoint_point_id: string; output_segment_id: string }
-export type GeometryPointParent = { kind: 'segment'; segment_id: string } | { kind: 'polygon_edge'; polygon_id: string; start_point_id: string; end_point_id: string }
-export type GeometryPointOnSegmentConstructionV1 = { id: string; kind: 'point_on_segment'; parent: GeometryPointParent; t: number; output_point_id: string }
-export type GeometryConstructionV1 = GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1 | GeometryAngleBisectorConstructionV1 | GeometryAltitudeConstructionV1 | GeometryMedianConstructionV1 | GeometryPointOnSegmentConstructionV1
+export type GeometryPointParent = { kind: 'segment'; segment_id: string } | { kind: 'polygon_edge'; polygon_id: string; start_point_id: string; end_point_id: string } | { kind: 'line'; line_id: string }
+export type GeometryPointOnSegmentConstructionV1 = { id: string; kind: 'point_on_segment'; parent: Exclude<GeometryPointParent,{kind:'line'}>; t: number; output_point_id: string }
+export type GeometryPointOnLineConstructionV1 = { id: string; kind: 'point_on_line'; parent: Extract<GeometryPointParent,{kind:'line'}>; t: number; output_point_id: string }
+export type GeometryPointConstraintV1 = GeometryPointOnSegmentConstructionV1 | GeometryPointOnLineConstructionV1
+export type GeometryConstructionV1 = GeometryMidpointConstructionV1 | GeometryLinearConstructionV1 | GeometryIntersectionConstructionV1 | GeometryAngleBisectorConstructionV1 | GeometryAltitudeConstructionV1 | GeometryMedianConstructionV1 | GeometryPointOnSegmentConstructionV1 | GeometryPointOnLineConstructionV1
 export type GeometrySourceDataV1 = {
   constructions?: GeometryConstructionV1[]
   schema_version: 1
