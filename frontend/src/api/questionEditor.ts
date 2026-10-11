@@ -1,4 +1,5 @@
 import { requestJson } from './client'
+import type { GeometryScene3D } from '../components/geometry3dContract'
 
 export type UUID = string
 export type IsoDateTime = string
@@ -310,7 +311,7 @@ export type GeometryBlockPayloadRead = {
 }
 
 export type GeometryBlockWritePayload = {
-  source_data: GeometrySourceDataV1
+  source_data: GeometrySourceDataV1 | GeometryScene3D
   format_version?: 1
 }
 
@@ -323,7 +324,7 @@ export type GeometryBlockCreate = {
 
 export type GeometryBlockUpdate = {
   visual_placement?: PersistedVisualPlacement
-  source_data: GeometrySourceDataV1
+  source_data: GeometrySourceDataV1 | GeometryScene3D
   format_version?: 1
   expected_revision_updated_at: IsoDateTime
 }

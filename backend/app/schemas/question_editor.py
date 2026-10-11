@@ -20,6 +20,7 @@ from app.core.enums import (
 from app.schemas.question_answer import AcceptedAnswerRead, AnswerOptionRead
 from app.schemas.question_solution import SolutionRead
 from app.schemas.structured_text import StructuredTextDocument, InlineNode
+from app.schemas.geometry_3d import GeometryScene3D
 
 
 class StrictEditorSchema(BaseModel):
@@ -721,7 +722,7 @@ class ImageBlockWritePayload(StrictEditorSchema):
 
 
 class GeometryBlockWritePayload(StrictEditorSchema):
-    source_data: GeometrySourceDataV1
+    source_data: Annotated[Union[GeometrySourceDataV1, GeometryScene3D], Field(discriminator="schema_version")]
     format_version: Literal[1] = 1
 
     @field_validator("source_data", mode="before")
@@ -835,7 +836,7 @@ class ImageBlockUpdate(StrictEditorSchema):
 
 class GeometryBlockUpdate(StrictEditorSchema):
     visual_placement: VisualPlacementV1 | None = None
-    source_data: GeometrySourceDataV1
+    source_data: Annotated[Union[GeometrySourceDataV1, GeometryScene3D], Field(discriminator="schema_version")]
     format_version: Literal[1] = 1
     expected_revision_updated_at: datetime
 

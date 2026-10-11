@@ -1,0 +1,68 @@
+{
+  "version": 2,
+  "max_bytes": 1048576,
+  "max_depth": 32,
+  "max_items": 2000,
+  "feature_limits": {
+    "cube": [8, 12, 6], "cuboid": [8, 12, 6],
+    "prism": [[2, 0], [3, 0], [1, 2]],
+    "pyramid": [[1, 1], [2, 0], [1, 1]],
+    "truncated_pyramid": [[2, 0], [3, 0], [1, 2]],
+    "regular_polyhedron": {"tetrahedron": [4, 6, 4], "cube": [8, 12, 6], "octahedron": [6, 12, 8], "dodecahedron": [20, 30, 12], "icosahedron": [12, 30, 20]},
+    "sphere": [1, 0, 0], "cylinder": [2, 0, 0], "cone": [2, 0, 0], "frustum": [2, 0, 0]
+  },
+  "definitions": {
+    "vec3": {"tuple": ["number", "number", "number"]},
+    "vec2": {"tuple": ["number", "number"]},
+    "attachment_loss": {"object": {"subject_id": "id", "parent_id": "id", "reason": {"enum": ["parent_deleted", "feature_removed", "invalid_parent"]}, "preserved_world_position": {"nullable": "vec3"}}},
+    "camera": {"object": {"projection": {"enum": ["orthographic", "perspective"]}, "position": "vec3", "target": "vec3", "up": "vec3", "vertical_span": "positive", "fov_degrees": "positive", "near": "positive", "far": "positive"}},
+    "point": {"object": {"id": "id", "position": "vec3", "label": {"nullable": "text"}}},
+    "linear": {"object": {"id": "id", "kind": {"enum": ["line", "ray", "segment", "vector"]}, "a": "id", "b": "id"}},
+    "plane": {"object": {"id": "id", "point_ids": {"tuple": ["id", "id", "id"]}}},
+    "edge": {"object": {"id": "id", "start": "id", "end": "id"}},
+    "face": {"object": {"id": "id", "boundary": {"array": "id", "min": 3}}},
+    "surface": {"object": {"id": "id", "kind": {"enum": ["sphere", "cylinder", "cone", "frustum"]}, "solid_id": "id", "slot": "id"}},
+    "frame": {"object": {"origin": "vec3", "x_axis": "vec3", "y_axis": "vec3"}},
+    "feature": {"object": {"slot": "id", "entity_id": "id"}},
+    "cube_parameters": {"object": {"side": "positive"}},
+    "cuboid_parameters": {"object": {"width": "positive", "depth": "positive", "height": "positive"}},
+    "prism_parameters": {"object": {"sides": "side_count", "radius": "positive", "height": "positive"}},
+    "pyramid_parameters": {"object": {"sides": "side_count", "radius": "positive", "height": "positive"}},
+    "truncated_pyramid_parameters": {"object": {"sides": "side_count", "bottom_radius": "positive", "top_radius": "positive", "height": "positive"}},
+    "regular_polyhedron_parameters": {"object": {"family": {"enum": ["tetrahedron", "cube", "octahedron", "dodecahedron", "icosahedron"]}, "edge_length": "positive"}},
+    "cylinder_parameters": {"object": {"radius": "positive", "height": "positive"}},
+    "cone_parameters": {"object": {"radius": "positive", "height": "positive"}},
+    "frustum_parameters": {"object": {"bottom_radius": "positive", "top_radius": "positive", "height": "positive"}},
+    "sphere_parameters": {"object": {"radius": "positive"}},
+    "solid": {"discriminator": "kind", "variants": {
+      "cube": {"object": {"id": "id", "kind": {"literal": "cube"}, "mode": {"literal": "parametric"}, "frame": "frame", "parameters": "cube_parameters", "features": {"array": "feature"}}},
+      "cuboid": {"object": {"id": "id", "kind": {"literal": "cuboid"}, "mode": {"literal": "parametric"}, "frame": "frame", "parameters": "cuboid_parameters", "features": {"array": "feature"}}},
+      "prism": {"object": {"id": "id", "kind": {"literal": "prism"}, "mode": {"literal": "parametric"}, "frame": "frame", "parameters": "prism_parameters", "features": {"array": "feature"}}},
+      "pyramid": {"object": {"id": "id", "kind": {"literal": "pyramid"}, "mode": {"literal": "parametric"}, "frame": "frame", "parameters": "pyramid_parameters", "features": {"array": "feature"}}},
+      "truncated_pyramid": {"object": {"id": "id", "kind": {"literal": "truncated_pyramid"}, "mode": {"literal": "parametric"}, "frame": "frame", "parameters": "truncated_pyramid_parameters", "features": {"array": "feature"}}},
+      "regular_polyhedron": {"object": {"id": "id", "kind": {"literal": "regular_polyhedron"}, "mode": {"literal": "parametric"}, "frame": "frame", "parameters": "regular_polyhedron_parameters", "features": {"array": "feature"}}},
+      "cylinder": {"object": {"id": "id", "kind": {"literal": "cylinder"}, "mode": {"literal": "parametric"}, "frame": "frame", "parameters": "cylinder_parameters", "features": {"array": "feature"}}},
+      "cone": {"object": {"id": "id", "kind": {"literal": "cone"}, "mode": {"literal": "parametric"}, "frame": "frame", "parameters": "cone_parameters", "features": {"array": "feature"}}},
+      "frustum": {"object": {"id": "id", "kind": {"literal": "frustum"}, "mode": {"literal": "parametric"}, "frame": "frame", "parameters": "frustum_parameters", "features": {"array": "feature"}}},
+      "sphere": {"object": {"id": "id", "kind": {"literal": "sphere"}, "mode": {"literal": "parametric"}, "frame": "frame", "parameters": "sphere_parameters", "features": {"array": "feature"}}},
+      "polyhedron": {"object": {"id": "id", "kind": {"literal": "polyhedron"}, "mode": {"literal": "freeform"}, "point_ids": {"array": "id", "min": 4}, "edge_ids": {"array": "id", "min": 6}, "face_ids": {"array": "id", "min": 4}}}
+    }},
+    "construction": {"discriminator": "kind", "variants": {
+      "midpoint": {"object": {"id": "id", "kind": {"literal": "midpoint"}, "a": "id", "b": "id", "output_point_id": "id"}},
+      "point_on_linear": {"object": {"id": "id", "kind": {"literal": "point_on_linear"}, "linear_id": "id", "t": "number", "output_point_id": "id"}},
+      "point_on_edge": {"object": {"id": "id", "kind": {"literal": "point_on_edge"}, "edge_id": "id", "t": "number", "output_point_id": "id"}},
+      "point_on_face": {"object": {"id": "id", "kind": {"literal": "point_on_face"}, "face_id": "id", "uv": "vec2", "output_point_id": "id"}},
+      "point_on_surface": {"object": {"id": "id", "kind": {"literal": "point_on_surface"}, "surface_id": "id", "uv": "vec2", "output_point_id": "id"}}
+    }},
+    "anchor": {"discriminator": "kind", "variants": {
+      "world": {"object": {"kind": {"literal": "world"}, "position": "vec3"}},
+      "point": {"object": {"kind": {"literal": "point"}, "point_id": "id"}},
+      "edge": {"object": {"kind": {"literal": "edge"}, "edge_id": "id", "t": "number"}},
+      "face": {"object": {"kind": {"literal": "face"}, "face_id": "id", "uv": "vec2"}},
+      "surface": {"object": {"kind": {"literal": "surface"}, "surface_id": "id", "uv": "vec2"}}
+    }},
+    "annotation": {"object": {"id": "id", "content": "text", "format": {"enum": ["text", "latex"]}, "anchor": "anchor", "offset_mm": "vec2"}},
+    "marking": {"object": {"id": "id", "kind": {"enum": ["length", "angle", "right_angle", "equal_length"]}, "point_ids": {"array": "id", "min": 2}, "label": {"nullable": "text"}}},
+    "scene": {"object": {"schema_version": {"literal": 2}, "dimension": {"literal": 3}, "description": "text", "points": {"array": "point"}, "linear_objects": {"array": "linear"}, "planes": {"array": "plane"}, "edges": {"array": "edge"}, "faces": {"array": "face"}, "surfaces": {"array": "surface"}, "solids": {"array": "solid"}, "constructions": {"array": "construction"}, "annotations": {"array": "annotation"}, "markings": {"array": "marking"}, "print_camera": "camera"}}
+  }
+}
