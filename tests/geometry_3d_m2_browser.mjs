@@ -23,9 +23,11 @@ export async function runGeometry3DM2Acceptance({evaluate,until,textButton,click
   assert.ok(await evaluate(`document.querySelector('${viewport} svg [data-id="vector_bc"]')`))
   await click(frame);await action()
   await until(`document.querySelector('${viewport} canvas')`)
+  await click('[data-tool-3d="camera"]') // M3 reserves point gestures for semantic editing.
   const original=await camera()
   const printSvg=await evaluate(`document.querySelector('${viewport} .geometry-3d-static').innerHTML`)
   await until(`Number(document.querySelector('${viewport} canvas').dataset.renderCount)>0`)
+  await delay(300) // Allow initial resize and ribbon/session registration frames to settle.
   const count=await evaluate(`document.querySelector('${viewport} canvas').dataset.renderCount`)
   await delay(250)
   assert.equal(await evaluate(`document.querySelector('${viewport} canvas').dataset.renderCount`),count,'no idle continuous rendering')

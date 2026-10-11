@@ -5,6 +5,7 @@ import type { GeometryCamera3D, GeometryScene3D, Vec3 } from './geometry3dContra
 import { normalizeGeometryEditingCamera3D } from './geometry3d'
 import { createProjection3D, geometrySceneSVG3D, scenePrimitives3D, sub, unit, cross, dot } from './geometry3dProjection'
 import './GeometrySceneViewport.css'
+import type { Pointer3D, PointerPhase3D } from './geometry3dAuthoring'
 
 function disposeGroup(group: THREE.Group) {
   group.traverse(object => {
@@ -14,20 +15,21 @@ function disposeGroup(group: THREE.Group) {
   })
   group.clear()
 }
-function populate(group: THREE.Group, source: GeometryScene3D, camera: GeometryCamera3D, width: number, height: number) {
+function populate(group: THREE.Group, source: GeometryScene3D, camera: GeometryCamera3D, width: number, height: number, highlighted: Set<string>) {
   disposeGroup(group)
   const adapter=scenePrimitives3D(source), projection=createProjection3D(camera,width,height)
   const geometry = (vertices: Vec3[]) => new THREE.BufferGeometry().setFromPoints(vertices.map(v=>new THREE.Vector3(...v)))
   for (const p of adapter.primitives) {
+    const color=highlighted.has(p.id)?0xf97316:0x334155
     let object: THREE.Object3D | null = null
-    if(p.kind==='point') object=new THREE.Points(geometry([p.position]),new THREE.PointsMaterial({color:0x2563eb,size:6,sizeAttenuation:false}))
+    if(p.kind==='point') object=new THREE.Points(geometry([p.position]),new THREE.PointsMaterial({color:highlighted.has(p.id)?0xf97316:0x2563eb,size:highlighted.has(p.id)?10:6,sizeAttenuation:false}))
     else if('a' in p) {
       const clipped=projection.line(p.a,p.b,p.kind)
       if(clipped) {
-        object=new THREE.Line(geometry(clipped.map(projection.world)),new THREE.LineBasicMaterial({color:0x334155}))
+        object=new THREE.Line(geometry(clipped.map(projection.world)),new THREE.LineBasicMaterial({color}))
         if(p.kind==='vector' && projection.visible(p.b)) {
           const direction=new THREE.Vector3(...sub(p.b,p.a)).normalize(), length=Math.hypot(...sub(p.b,p.a)), head=Math.min(length*.2,camera.vertical_span*.025)
-          const arrow=new THREE.ArrowHelper(direction,new THREE.Vector3(...p.a),length,0x334155,head,head*.5)
+          const arrow=new THREE.ArrowHelper(direction,new THREE.Vector3(...p.a),length,color,head,head*.5)
           arrow.userData.semanticId=p.id; group.add(arrow)
         }
       }
@@ -38,7 +40,7 @@ function populate(group: THREE.Group, source: GeometryScene3D, camera: GeometryC
         const contour=vertices.map(v=>{ const d=sub(v,vertices[0]); return new THREE.Vector2(dot(d,x),dot(d,y)) })
         const triangles=THREE.ShapeUtils.triangulateShape(contour,[])
         const meshGeometry=geometry(vertices); meshGeometry.setIndex(triangles.flat()); meshGeometry.computeVertexNormals()
-        object=new THREE.Mesh(meshGeometry,new THREE.MeshBasicMaterial({color:0xcbd5e1,side:THREE.DoubleSide,transparent:true,opacity:p.kind==='plane'?.15:.35,depthWrite:false}))
+        object=new THREE.Mesh(meshGeometry,new THREE.MeshBasicMaterial({color:highlighted.has(p.id)?0xf97316:0xcbd5e1,side:THREE.DoubleSide,transparent:true,opacity:p.kind==='plane'?.15:.35,depthWrite:false}))
         const outline=new THREE.LineLoop(geometry(vertices),new THREE.LineBasicMaterial({color:0x94a3b8})); outline.userData.semanticId=p.id; group.add(outline)
       }
     }
@@ -46,12 +48,16 @@ function populate(group: THREE.Group, source: GeometryScene3D, camera: GeometryC
   }
 }
 
-export default function GeometrySceneViewport({ scene, camera, interactive=false, onNavigate }: {
+export default function GeometrySceneViewport({ scene, camera, interactive=false, onNavigate, onInteraction, highlightedIds=[], interactionTool='camera' }: {
   scene: GeometryScene3D; camera: GeometryCamera3D; interactive?: boolean; onNavigate?: (camera: GeometryCamera3D)=>void
+  onInteraction?: (phase:PointerPhase3D,pointer:Pointer3D)=>boolean; highlightedIds?:string[]; interactionTool?:string
 }) {
   const host=useRef<HTMLDivElement>(null), callback=useRef(onNavigate), cameraRef=useRef(camera)
+  const sceneRef=useRef(scene), highlightedRef=useRef(highlightedIds), interactionRef=useRef(onInteraction)
+  sceneRef.current=scene;highlightedRef.current=highlightedIds;interactionRef.current=onInteraction
   callback.current=onNavigate; cameraRef.current=camera
   const [size,setSize]=useState({width:520,height:300}), [failure,setFailure]=useState(false)
+  const failureRef=useRef(failure);failureRef.current=failure
   const adapter=useMemo(()=>scenePrimitives3D(scene),[scene])
   const svg=useMemo(()=>{try{return geometrySceneSVG3D(scene,size.width,size.height)}catch{return ''}},[scene,size])
   const labels=useMemo(()=>{
@@ -64,7 +70,27 @@ export default function GeometrySceneViewport({ scene, camera, interactive=false
     } catch { /* Invalid input is handled by the scene/fallback status below. */ }
     return output
   },[adapter,camera,size])
-  const controller=useRef<{ setCamera:(camera:GeometryCamera3D)=>void } | null>(null)
+  const controller=useRef<{ setCamera:(camera:GeometryCamera3D)=>void; refresh:()=>void } | null>(null)
+  useEffect(()=>{
+    const element=host.current;if(!element||!interactive)return
+    const listeners: [string,EventListener][]=[]
+    let owned:number|null=null
+    for(const [name,phase] of [['pointerdown','down'],['pointermove','move'],['pointerup','up'],['pointercancel','cancel'],['lostpointercapture','cancel'],['wheel','wheel']] as [string,PointerPhase3D][]){
+      const listener:EventListener=event=>{
+        // Static fallback uses the saved camera; do not author through a different session camera.
+        if(failureRef.current)return
+        const input=event as PointerEvent,box=element.getBoundingClientRect()
+        const pointer={pointerId:input.pointerId,button:input.button,x:input.clientX-box.left,y:input.clientY-box.top,width:box.width,height:box.height,altKey:input.altKey}
+        const handled=interactionRef.current?.(phase,pointer)
+        if(!handled)return
+        event.preventDefault();event.stopImmediatePropagation()
+        if(phase==='down'){owned=input.pointerId;element.focus({preventScroll:true});element.setPointerCapture(input.pointerId)}
+        if((phase==='up'||phase==='cancel')&&owned!==null){const id=owned;owned=null;if(element.hasPointerCapture(id))element.releasePointerCapture(id)}
+      }
+      listeners.push([name,listener]);element.addEventListener(name,listener,{capture:true,passive:false})
+    }
+    return ()=>{listeners.forEach(([name,listener])=>element.removeEventListener(name,listener,true));if(owned!==null&&element.hasPointerCapture(owned))element.releasePointerCapture(owned)}
+  },[interactive])
   useEffect(()=>{
     const element=host.current; if(!element)return
     const observer=new ResizeObserver(entries=>{const box=entries[0].contentRect; if(box.width>0&&box.height>0)setSize({width:box.width,height:box.height})})
@@ -90,7 +116,7 @@ export default function GeometrySceneViewport({ scene, camera, interactive=false
         else { view.aspect=aspect; view.fov=current.fov_degrees }
         view.near=current.near; view.far=current.far; view.position.set(...current.position); view.up.set(...current.up); view.lookAt(new THREE.Vector3(...current.target)); view.updateProjectionMatrix()
       }
-      const draw=()=>{ frame=0; if(dead)return; try { populate(group!,scene,current,width,height); renderer!.render(world,view);renderer!.domElement.dataset.renderCount=String(Number(renderer!.domElement.dataset.renderCount ?? 0)+1) } catch { setFailure(true) } }
+      const draw=()=>{ frame=0; if(dead)return; try { populate(group!,sceneRef.current,current,width,height,new Set(highlightedRef.current)); renderer!.render(world,view);renderer!.domElement.dataset.renderCount=String(Number(renderer!.domElement.dataset.renderCount ?? 0)+1) } catch { setFailure(true) } }
       const request=()=>{if(!frame&&!dead)frame=requestAnimationFrame(draw)}
       const changed=()=>{
         if(suppress || dead)return
@@ -104,7 +130,7 @@ export default function GeometrySceneViewport({ scene, camera, interactive=false
         suppress=true;controls.update();suppress=false;controls.addEventListener('change',changed)
       }
       configure();bind()
-      controller.current={setCamera(next){
+      controller.current={refresh:request,setCamera(next){
         current=structuredClone(next)
         const switchProjection=(view instanceof THREE.OrthographicCamera)!==(current.projection==='orthographic')
         suppress=true
@@ -123,10 +149,11 @@ export default function GeometrySceneViewport({ scene, camera, interactive=false
       controls?.dispose();if(group)disposeGroup(group)
       if(renderer){if(lost)renderer.domElement.removeEventListener('webglcontextlost',lost);renderer.dispose();renderer.domElement.remove()}
     }
-  },[scene,interactive,adapter.status])
+  },[interactive,adapter.status])
   useEffect(()=>{controller.current?.setCamera(camera)},[camera])
+  useEffect(()=>{controller.current?.refresh()},[scene,highlightedIds])
   return <div className="geometry-3d-view" data-geometry-version="2" data-render-status={adapter.status}>
-    <div ref={host} className="geometry-3d-viewport" data-webgl-fallback={failure} data-editing-camera={JSON.stringify(camera)}
+    <div ref={host} tabIndex={interactive?0:undefined} className="geometry-3d-viewport" data-interaction-tool={interactionTool} data-webgl-fallback={failure} data-editing-camera={JSON.stringify(camera)}
       onPointerDown={event=>{if(interactive)event.stopPropagation()}} onWheel={event=>{if(interactive)event.stopPropagation()}} onContextMenu={event=>{if(interactive)event.preventDefault()}}>
       <div className={`geometry-3d-static${interactive&&!failure&&adapter.status==='ok'?' is-print-only':''}`} dangerouslySetInnerHTML={{__html:svg}} />
       {interactive&&!failure&&<div className="geometry-3d-labels" aria-hidden="true">{labels.map(label=><span key={label.id} data-label-id={label.id} style={{left:label.x,top:label.y}}>{label.text}</span>)}</div>}

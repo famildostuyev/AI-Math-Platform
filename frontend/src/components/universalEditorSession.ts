@@ -2,6 +2,7 @@ import { createContext, useCallback, useEffect, useRef, useState } from 'react'
 import type { MathfieldElement } from 'mathlive'
 import type { GeometrySelection } from './geometryAuthoringModel'
 import type { GeometryCamera3D } from './geometry3dContract'
+import type { GeometryTool3D } from './geometry3dAuthoring'
 import type { GeometryRibbonAction } from './geometryRibbonMenu'
 
 export type GeometryRibbonCommands = {
@@ -11,6 +12,7 @@ export type GeometryRibbonCommands = {
   canDelete: boolean
   run: (action: GeometryRibbonAction) => void
 }
+export type Geometry3DRibbonCommands = { id:string;tool:GeometryTool3D;disabled:boolean;canDelete:boolean;run:(action:GeometryTool3D|'delete')=>void }
 import { useUniversalEditorHistory, type EditorHistoryProvider } from './universalEditorHistory'
 import type { StructuredContinuousTextCommands, StructuredContinuousTextActiveState, StructuredTextFontSize } from './structuredContinuousTextEditorModel'
 import { fieldTraceState, traceContext } from './universalContextTrace'
@@ -38,6 +40,7 @@ export function useUniversalEditorSession() {
   const [hasMath, setHasMath] = useState(false)
   const [geometryToolbarHost, setGeometryToolbarHost] = useState<HTMLDivElement | null>(null)
   const [geometryCommands, setGeometryCommands] = useState<GeometryRibbonCommands | null>(null)
+  const [geometry3DCommands, setGeometry3DCommands] = useState<Geometry3DRibbonCommands | null>(null)
   const [mathSelectionVersion, setMathSelectionVersion] = useState(0)
   const activeContext = useRef<PersistentActiveContext | null>(null)
   const geometryHistoryProviders = useRef(new Map<string, EditorHistoryProvider>())
@@ -214,7 +217,7 @@ export function useUniversalEditorSession() {
   return { commands, save, math, format, setFormat, activateText, activateMath, unregisterMath, unregisterText, mathSelectionVersion, history,
     activeContext, activeContextVersion, getActiveContext, canRun, captureTextSelection, restoreTextTarget, restoreMathTarget, activateGeometry, registerGeometryHistory, unregisterGeometry,
     bottomPanel, showAI, toggleKeyboard, insertMath, formatMath, formatMathColor, mathContext, hasMath,
-    geometryToolbarHost, setGeometryToolbarHost, geometryCommands, setGeometryCommands, geometry3DCameras }
+    geometryToolbarHost, setGeometryToolbarHost, geometryCommands, setGeometryCommands, geometry3DCameras, geometry3DCommands, setGeometry3DCommands }
 }
 
 export const UniversalEditorSessionContext = createContext<ReturnType<typeof useUniversalEditorSession> | null>(null)

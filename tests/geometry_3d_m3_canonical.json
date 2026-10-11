@@ -1,0 +1,116 @@
+{
+  "annotations": [],
+  "constructions": [
+    {
+      "id": "constraint_d",
+      "kind": "point_on_linear",
+      "linear_id": "line_ab",
+      "output_point_id": "d",
+      "t": 2
+    }
+  ],
+  "description": "3D həndəsə səhnəsi",
+  "dimension": 3,
+  "edges": [],
+  "faces": [],
+  "linear_objects": [
+    {
+      "a": "a",
+      "b": "b",
+      "id": "line_ab",
+      "kind": "line"
+    },
+    {
+      "a": "a",
+      "b": "b",
+      "id": "ray_ab",
+      "kind": "ray"
+    },
+    {
+      "a": "a",
+      "b": "b",
+      "id": "segment_ab",
+      "kind": "segment"
+    },
+    {
+      "a": "a",
+      "b": "b",
+      "id": "vector_ab",
+      "kind": "vector"
+    }
+  ],
+  "markings": [],
+  "planes": [
+    {
+      "id": "plane_abc",
+      "point_ids": [
+        "a",
+        "b",
+        "c"
+      ]
+    }
+  ],
+  "points": [
+    {
+      "id": "a",
+      "label": null,
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "b",
+      "label": null,
+      "position": [
+        3,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "c",
+      "label": null,
+      "position": [
+        0,
+        3,
+        0
+      ]
+    },
+    {
+      "id": "d",
+      "label": null,
+      "position": [
+        6,
+        0,
+        0
+      ]
+    }
+  ],
+  "print_camera": {
+    "far": 1000,
+    "fov_degrees": 45,
+    "near": 0.01,
+    "position": [
+      4,
+      3,
+      5
+    ],
+    "projection": "orthographic",
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ],
+    "vertical_span": 10
+  },
+  "schema_version": 2,
+  "solids": [],
+  "surfaces": []
+}

@@ -31,6 +31,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--temporary-admin', action='store_true', required=True)
     parser.add_argument('--m2', action='store_true', help='Verify M2 saved camera and deterministic projection after real reload')
+    parser.add_argument('--m3', action='store_true', help='Verify M3 semantic authoring after real reload')
     args = parser.parse_args()
     assert settings.APP_ENV == 'development' and engine.url.host in ('localhost', '127.0.0.1')
     with engine.connect() as connection:
@@ -66,7 +67,8 @@ def main():
         draft = api('POST', '/question-editor/drafts', dict(question_type_id=types[0]['id']), 201)
         path = '/question-editor/revisions/' + draft['revision_id']
         reload = lambda: api('GET', path)
-        scene = json.loads((ROOT / 'tests/geometry_3d_canonical.json').read_text(encoding='utf-8'))
+        canonical = 'geometry_3d_m3_canonical.json' if args.m3 else 'geometry_3d_canonical.json'
+        scene = json.loads((ROOT / 'tests' / canonical).read_text(encoding='utf-8'))
         blocks = []
         for source in (geometry_v1(), scene):
             blocks.append(api('POST', path + '/blocks/geometry', dict(block_type='geometry', payload=dict(source_data=source, format_version=1), expected_revision_updated_at=reload()['updated_at']), 201))
@@ -74,7 +76,7 @@ def main():
         loaded = reload()
         assert [b['payload']['source_data']['schema_version'] for b in loaded['blocks']] == [1, 2]
         assert loaded['blocks'][1]['payload']['source_data'] == scene
-        helper = 'geometry_3d_m2_reload_view.mjs' if args.m2 else 'geometry_3d_m1_reload_edit.mjs'
+        helper = 'geometry_3d_m3_reload_edit.mjs' if args.m3 else 'geometry_3d_m2_reload_view.mjs' if args.m2 else 'geometry_3d_m1_reload_edit.mjs'
         operations = json.loads(subprocess.check_output(['node', str(ROOT / 'tests' / helper)], input=json.dumps(loaded['blocks'][1]['payload']['source_data']).encode(), cwd=ROOT))
         stale = loaded['updated_at']
         for stage in ('edited', 'detached'):
@@ -100,6 +102,8 @@ def main():
         print('Acceptance revision:', draft['revision_id'])
         if args.m2:
             print('PASS: M2 saved standard camera, Undo/Redo result and deterministic SVG computed from real API reload preserved in PostgreSQL')
+        if args.m3:
+            print('PASS: M3 primitive creation, coordinate/reference edits, stable IDs, dependency updates, Undo/Redo and parent detachment after real API reload preserved in PostgreSQL')
     finally:
         if user_id is not None:
             with SessionLocal() as db:

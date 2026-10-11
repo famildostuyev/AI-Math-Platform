@@ -25,6 +25,7 @@ import { runGeometryAttachmentAcceptance } from './geometry_attachments_browser.
 import { runPointOnLineAcceptance } from './geometry_point_on_line_browser.mjs'
 import { runGeometry3DM1Acceptance } from './geometry_3d_m1_browser.mjs'
 import { runGeometry3DM2Acceptance } from './geometry_3d_m2_browser.mjs'
+import { runGeometry3DM3Acceptance } from './geometry_3d_m3_browser.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'geometry-frame-edge-'))
@@ -104,7 +105,7 @@ const server = await createServer({ root: path.join(root, 'frontend'), server: {
   }) },
 }] })
 await server.listen()
-const browser = spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', ['--headless=new', ...(process.argv.includes('--scene-3d-m2') ? ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] : ['--disable-gpu']), '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' })
+const browser = spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', ['--headless=new', ...(process.argv.includes('--scene-3d-m2')||process.argv.includes('--scene-3d-m3') ? ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] : ['--disable-gpu']), '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' })
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 let socket
 try {
@@ -141,7 +142,9 @@ try {
     await pointer('mouseReleased', x + dx, y + dy, { button: 'left', clickCount: 1 }); await delay(150)
   }
   await until('document.querySelector(".universal-question-canvas")')
-  if (process.argv.includes('--scene-3d-m2')) {
+  if (process.argv.includes('--scene-3d-m3')) {
+    await runGeometry3DM3Acceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--scene-3d-m2')) {
     await runGeometry3DM2Acceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--scene-3d-m1')) {
     await runGeometry3DM1Acceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})

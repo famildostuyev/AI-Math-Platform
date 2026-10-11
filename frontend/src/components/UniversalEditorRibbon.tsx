@@ -3,6 +3,7 @@ import type { MathfieldElement } from 'mathlive'
 import MathContent from './MathContent'
 import MatrixMenu from './MatrixMenu'
 import { GEOMETRY_RIBBON, GEOMETRY_FUTURE_TITLE, type GeometryRibbonItem } from './geometryRibbonMenu'
+import { GEOMETRY_TOOLS_3D } from './geometry3dAuthoring'
 import { Bold, Italic, Underline, Keyboard, Plus, Highlighter, List, ListOrdered, AlignLeft, AlignCenter, AlignRight, AlignJustify } from 'lucide-react'
 import { FORMULA_FONT_SIZES, UniversalEditorSessionContext, type ActiveContextCapability } from './universalEditorSession'
 import { getMathRibbonActions, getMoreMathRibbonActions, type MathRibbonAction } from './mathLiveRibbonMenu'
@@ -314,6 +315,7 @@ export default function UniversalEditorRibbon({ module, disabled, onCreateGeomet
     traceContext(`ribbon-${phase}`, { control: element?.closest('summary') ? 'summary' : element?.closest('button') ? 'button' : element?.closest('select') ? 'select' : 'other', targetKind: session?.activeContext.current?.kind ?? null, field: fieldTraceState(session?.math.current) })
   }
   const geometry = activeContext?.kind === 'geometry' && session?.geometryCommands?.id === activeContext.id ? session.geometryCommands : null
+  const geometry3D = activeContext?.kind === 'geometry' && session?.geometry3DCommands?.id === activeContext.id ? session.geometry3DCommands : null
   const geometryButton = (item: GeometryRibbonItem) => <button type="button" key={item.label}
     disabled={disabled || !item.action || (item.action !== 'select' && (!geometry || geometry.disabled)) || (item.action === 'delete' && !geometry?.canDelete)}
     aria-pressed={item.action && item.action !== 'delete' ? geometry?.tool === item.action : undefined}
@@ -394,7 +396,8 @@ export default function UniversalEditorRibbon({ module, disabled, onCreateGeomet
     </div>}
     <div className="universal-editor-geometry-ribbon" hidden={module !== 'geometry'} ref={session?.setGeometryToolbarHost} role="toolbar" aria-label="Həndəsə alətləri">
       {module === 'geometry' && <button type="button" disabled={disabled || !onCreateGeometryScene} onClick={onCreateGeometryScene}>3D səhnə əlavə et</button>}
-      {module === 'geometry' && GEOMETRY_RIBBON.map(item => item.create
+      {module === 'geometry' && geometry3D && <>{GEOMETRY_TOOLS_3D.map(item=><button type="button" key={item.tool} data-tool-3d={item.tool} disabled={disabled||geometry3D.disabled} aria-pressed={geometry3D.tool===item.tool} onClick={()=>geometry3D.run(item.tool)}>{item.label}</button>)}<button type="button" disabled={disabled||geometry3D.disabled||!geometry3D.canDelete} onClick={()=>geometry3D.run('delete')}>3D seçiləni sil</button></>}
+      {module === 'geometry' && GEOMETRY_RIBBON.filter(item=>!geometry3D||item.create||item.label==='3D').map(item => item.create
         ? <button key={item.label} type="button" disabled={disabled || !onCreateGeometryFrame} onClick={onCreateGeometryFrame}>{item.label}</button>
         : item.groups ? <details key={item.label} open={activeMenu === `geometry:${item.label}`}>
           <summary {...trigger(`geometry:${item.label}`, !disabled)}>{item.label} <span aria-hidden="true">▾</span></summary>
