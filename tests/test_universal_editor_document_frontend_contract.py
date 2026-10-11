@@ -60,7 +60,9 @@ class UniversalEditorDocumentFrontendContractTest(unittest.TestCase):
     def test_geometry_remains_one_node_with_intrinsic_children_inside_payload(self) -> None:
         self.assertIn("type: 'geometry'", self.adapter)
         self.assertIn("sourceData: geometryBlock.payload.source_data", self.adapter)
-        self.assertIn("normalizeGeometrySourceDataV1(geometryBlock.payload.source_data)", self.adapter)
+        self.assertIn("normalizeGeometrySourceData(geometryBlock.payload.source_data)", self.adapter)
+        self.assertIn("geometry?.schema_version === 1", self.adapter)
+        self.assertIn("geometry?.schema_version === 2", self.adapter)
         self.assertNotIn("points.map", self.adapter)
         self.assertNotIn("segments.map", self.adapter)
         self.assertNotIn("polygons.map", self.adapter)
@@ -92,7 +94,8 @@ class UniversalEditorDocumentFrontendContractTest(unittest.TestCase):
         self.assertIn("adaptContentBlocksToUniversalDocument(revision?.blocks ?? [])", self.editor)
         self.assertIn("selectedNodeId={selectedDocumentNodeId}", self.editor)
         self.assertIn("document={universalDocument}", self.editor)
-        self.assertIn("onCreateGeometryFrame={createGeometryFrame}", self.editor)
+        self.assertIn("onCreateGeometryFrame={() => createGeometryFrame()}", self.editor)
+        self.assertIn("onCreateGeometryScene={() => createGeometryFrame(3)}", self.editor)
         self.assertIn("<UniversalQuestionCanvas", self.editor)
 
 

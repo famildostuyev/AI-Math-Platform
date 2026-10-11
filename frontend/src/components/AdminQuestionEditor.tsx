@@ -53,7 +53,10 @@ import AnswerEditorSection from './AnswerEditorSection'
 import { defaultGeometryPlacement } from './geometryFrameModel'
 import SolutionEditorSection from './SolutionEditorSection'
 import UniversalQuestionCanvas from './UniversalQuestionCanvas'
-import { emptyGeometryV1, normalizeGeometrySourceDataV1 } from './geometryV1'
+import { emptyGeometryV1 } from './geometryV1'
+import { normalizeGeometrySourceData } from './geometrySourceData'
+import type { GeometryScene3D } from './geometry3dContract'
+import { defaultGeometryScenePlacement3D, emptyGeometryScene3D, evaluateGeometryScene3D } from './geometry3dModel'
 import {
   getUniversalEditorModule,
   UNIVERSAL_EDITOR_MODULES,
@@ -144,7 +147,7 @@ export default function AdminQuestionEditor({
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
   const [selectedDocumentNodeId, setSelectedDocumentNodeId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
-  const [editingGeometry, setEditingGeometry] = useState<GeometrySourceDataV1 | null>(null)
+  const [editingGeometry, setEditingGeometry] = useState<GeometrySourceDataV1 | GeometryScene3D | null>(null)
   const [activeSection, setActiveSection] = useState<EditorDocumentSectionId>('question')
   const [activeModule, setActiveModule] = useState<UniversalEditorModuleId>('text')
   const restoreFormulaAfterModuleChange = useRef(false)
@@ -418,8 +421,13 @@ export default function AdminQuestionEditor({
   const startEditing = (block: ContentBlockRead) => {
     if (block.block_type === 'formula') setEditingValue(block.payload.source_latex)
     else if (block.block_type === 'geometry') {
-      const geometry = normalizeGeometrySourceDataV1(block.payload.source_data)
+      let geometry = normalizeGeometrySourceData(block.payload.source_data)
       if (geometry === null) return
+      if (geometry.schema_version === 2) {
+        const evaluated = evaluateGeometryScene3D(geometry)
+        if (evaluated.status === 'invalid') { setError('3D səhnəsinin hesablanması etibarsızdır.'); return }
+        geometry = evaluated.scene
+      }
       setEditingGeometry(structuredClone(geometry))
       setActiveModule('geometry')
       session.activateGeometry(block.id)
@@ -437,11 +445,11 @@ export default function AdminQuestionEditor({
     void runMutation('geometry-update', (token, current) => updateVisualPlacement(token, current.revision_id, id,
       placement, current.updated_at), () => clearFrameDraft(id))
   }
-  const createGeometryFrame = () => {
+  const createGeometryFrame = (dimension: 2 | 3 = 2) => {
     if (editingBlockId) { setError('Əvvəlcə cari redaktəni yadda saxlayın və ya ləğv edin.'); return }
-    const geometry = { ...emptyGeometryV1(), description: 'Həndəsə təsviri' }
+    const geometry = dimension === 3 ? emptyGeometryScene3D() : { ...emptyGeometryV1(), description: 'Həndəsə təsviri' }
     const canvas = document.querySelector('.universal-question-canvas')
-    const placement = defaultGeometryPlacement(geometry, canvas?.scrollHeight ?? 0)
+    const placement = geometry.schema_version === 2 ? defaultGeometryScenePlacement3D(canvas?.scrollHeight ?? 0) : defaultGeometryPlacement(geometry, canvas?.scrollHeight ?? 0)
     let created: GeometryBlockRead | null = null
     void runMutation('geometry-create', async (token, current) => {
       created = await createGeometryBlock(token, current.revision_id, {
@@ -466,7 +474,7 @@ export default function AdminQuestionEditor({
     } else if (block.block_type === 'geometry' && editingGeometry !== null) {
       // A frame-only gesture must not canonicalize or rewrite the Geometry payload,
       // including a legacy V1 payload with omitted optional fields.
-      if (JSON.stringify(editingGeometry) === JSON.stringify(normalizeGeometrySourceDataV1(block.payload.source_data))) {
+      if (JSON.stringify(editingGeometry) === JSON.stringify(normalizeGeometrySourceData(block.payload.source_data))) {
         const placement = framePlacements[block.id]
         if (placement) void runMutation('geometry-update', (token, current) => updateVisualPlacement(token,
           current.revision_id, block.id, placement, current.updated_at),
@@ -632,7 +640,7 @@ export default function AdminQuestionEditor({
               )
             })}
           </div>
-          {activeSection === 'question' && <UniversalEditorRibbon module={activeModule} disabled={mutationDisabled} onCreateGeometryFrame={createGeometryFrame} />}
+          {activeSection === 'question' && <UniversalEditorRibbon module={activeModule} disabled={mutationDisabled} onCreateGeometryFrame={() => createGeometryFrame()} onCreateGeometryScene={() => createGeometryFrame(3)} />}
           <div className={`admin-authoring-workspace-grid universal-editor-layout${leftPanelCollapsed ? ' is-left-collapsed' : ''}`}>
             <aside className="admin-authoring-source universal-editor-sidebar universal-editor-sidebar--left" aria-label="Sənəd naviqasiyası">
               <div className="universal-editor-pages-header">

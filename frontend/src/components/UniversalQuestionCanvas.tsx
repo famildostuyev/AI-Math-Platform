@@ -2,6 +2,10 @@ import { ArrowDown, ArrowUp, Pencil, Save, Trash2, X } from 'lucide-react'
 import { useCallback, useContext, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import type { StructuredTextDocument } from '../api/questionEditor'
 import GeometryEditor from './GeometryEditor'
+import GeometrySceneEditor from './GeometrySceneEditor'
+import GeometryScenePlaceholder from './GeometryScenePlaceholder'
+import { defaultGeometryScenePlacement3D } from './geometry3dModel'
+import type { GeometryScene3D } from './geometry3dContract'
 import MathContent from './MathContent'
 import StructuredContinuousTextEditor from './StructuredContinuousTextEditor'
 import VisualContentRenderer from './VisualContentRenderer'
@@ -24,7 +28,7 @@ type UniversalQuestionCanvasProps = {
   selectedNodeId: string | null
   editingNodeId: string | null
   editingValue: string
-  editingGeometry: Extract<UniversalDocumentNode, { type: 'geometry' }>['geometryV1']
+  editingGeometry: Extract<UniversalDocumentNode, { type: 'geometry' }>['geometryV1'] | GeometryScene3D
   textAuthoringEnabled: boolean
   disabled: boolean
   onSelectNode: (nodeId: string | null) => void
@@ -239,9 +243,31 @@ export default function UniversalQuestionCanvas({
       const isSelected = selectedNodeId === node.id
       const isEditing = editingNodeId === node.id
       const isEditable = node.type === 'display_formula'
-        || (node.type === 'geometry' && node.geometryV1 !== null)
+        || (node.type === 'geometry' && (node.geometryV1 !== null || node.geometryV2 !== null))
+      if (node.type === 'geometry' && node.geometryV2) {
+        const scene = isEditing && editingGeometry?.schema_version === 2 ? editingGeometry : node.geometryV2
+        const saved = node.placement?.version === 1 ? node.placement as PersistedVisualPlacement : undefined
+        const draft = framePlacements[node.id] ?? saved
+        const placement = draft ?? defaultGeometryScenePlacement3D()
+        return <article key={node.id} id={`universal-node-${node.id}`} className="universal-question-node--geometry">
+          <VisualFrame id={node.id} placement={placement} floating={!!draft} selected={isSelected} disabled={disabled || (!!editingNodeId && editingNodeId !== node.id)}
+            minimum={{ width: 320, height: 260 }} onSelect={() => onSelectNode(node.id)} onChange={next => onFramePlacementChange?.(node.id, next)}>
+            {isEditing ? <GeometrySceneEditor key={node.id} value={scene} onChange={onEditingGeometryChange} targetId={node.id} disabled={disabled} /> : <GeometryScenePlaceholder scene={scene} />}
+            {isSelected && <div className="visual-frame__actions" data-frame-chrome="">
+              {isEditing ? <>
+                <button type="button" disabled={disabled} onClick={() => onSaveEdit(node.id)}><Save size={15} /> Yadda saxla</button>
+                <button type="button" onClick={onCancelEdit}><X size={15} /> Ləğv et</button>
+              </> : <>
+                <button type="button" disabled={disabled} onClick={() => onStartEdit(node.id)}><Pencil size={15} /> Redaktə et</button>
+                <button type="button" disabled={disabled} onClick={() => onSaveFrame?.(node.id)}><Save size={15} /> Yadda saxla</button>
+                <button type="button" disabled={disabled} onClick={() => onDelete(node.id)}><Trash2 size={15} /> Sil</button>
+              </>}
+            </div>}
+          </VisualFrame>
+        </article>
+      }
       if (node.type === 'geometry' && node.geometryV1) {
-        const geometry = isEditing && editingGeometry ? editingGeometry : node.geometryV1
+        const geometry = isEditing && editingGeometry?.schema_version === 1 ? editingGeometry : node.geometryV1
         const saved = node.placement?.version === 1 ? node.placement as PersistedVisualPlacement : undefined
         const draft = framePlacements[node.id] ?? saved
         const placement = containGeometry(draft ?? defaultGeometryPlacement(geometry), geometry)
@@ -287,7 +313,7 @@ export default function UniversalQuestionCanvas({
           onCommit={(nextDocument) => onUpdateText(node.id, nextDocument)}
         /> : isEditing ? <div className="universal-question-node__editor">
           {node.type === 'display_formula' ? <VisualMathInput value={editingValue} onChange={onEditingValueChange} disabled={disabled} ariaLabel="Düsturu redaktə et" targetId={node.id} />
-            : node.type === 'geometry' && editingGeometry && <GeometryEditor value={editingGeometry} onChange={onEditingGeometryChange} disabled={disabled} targetId={node.id} />}
+            : node.type === 'geometry' && editingGeometry?.schema_version === 1 && <GeometryEditor value={editingGeometry} onChange={onEditingGeometryChange} disabled={disabled} targetId={node.id} />}
           <div className="universal-question-node__editor-actions">
             <button type="button" onClick={() => onSaveEdit(node.id)} disabled={disabled}><Save size={15} /> Yadda saxla</button>
             <button type="button" onClick={onCancelEdit}><X size={15} /> Ləğv et</button>

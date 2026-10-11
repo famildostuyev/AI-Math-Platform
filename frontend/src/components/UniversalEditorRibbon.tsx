@@ -78,7 +78,7 @@ function NativeFormulaActions({ actions, disabled, onClose, ungrouped = false }:
     : <div key="commands" className="universal-editor-ribbon-commands">{buttons()}</div>)}</>
 }
 
-export default function UniversalEditorRibbon({ module, disabled, onCreateGeometryFrame }: { module: string; disabled: boolean; onCreateGeometryFrame?: () => void }) {
+export default function UniversalEditorRibbon({ module, disabled, onCreateGeometryFrame, onCreateGeometryScene }: { module: string; disabled: boolean; onCreateGeometryFrame?: () => void; onCreateGeometryScene?: () => void }) {
   const session = useContext(UniversalEditorSessionContext)
   const activeContext = session?.getActiveContext()
   const activeText = activeContext?.kind === 'text'
@@ -393,6 +393,7 @@ export default function UniversalEditorRibbon({ module, disabled, onCreateGeomet
       <details open={activeMenu === 'Daha çox'}><summary {...trigger('Daha çox', !disabled)}>Daha çox ▾</summary><div className="universal-editor-ribbon-menu"><NativeFormulaActions actions={getMoreMathRibbonActions(mathActions)} disabled={disabled} onClose={closeMenu} /></div></details>
     </div>}
     <div className="universal-editor-geometry-ribbon" hidden={module !== 'geometry'} ref={session?.setGeometryToolbarHost} role="toolbar" aria-label="Həndəsə alətləri">
+      {module === 'geometry' && <button type="button" disabled={disabled || !onCreateGeometryScene} onClick={onCreateGeometryScene}>3D səhnə əlavə et</button>}
       {module === 'geometry' && GEOMETRY_RIBBON.map(item => item.create
         ? <button key={item.label} type="button" disabled={disabled || !onCreateGeometryFrame} onClick={onCreateGeometryFrame}>{item.label}</button>
         : item.groups ? <details key={item.label} open={activeMenu === `geometry:${item.label}`}>

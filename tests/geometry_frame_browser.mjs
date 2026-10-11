@@ -23,6 +23,7 @@ import { runGeometryAnnotationsAcceptance } from './geometry_annotations_browser
 import { runPointOnSegmentAcceptance, runFinalPointOnSegmentAcceptance } from './geometry_point_on_segment_browser.mjs'
 import { runGeometryAttachmentAcceptance } from './geometry_attachments_browser.mjs'
 import { runPointOnLineAcceptance } from './geometry_point_on_line_browser.mjs'
+import { runGeometry3DM1Acceptance } from './geometry_3d_m1_browser.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'geometry-frame-edge-'))
@@ -58,6 +59,11 @@ window.fetch=async(url,init={})=>{
   if(body.visual_placement)block.visual_placement=body.visual_placement;
   revision.updated_at=new Date(Date.parse(revision.updated_at)+1000).toISOString();
   return new Response(JSON.stringify(block));
+ }
+ if(method==='DELETE'&&String(url).includes('/blocks/')){
+  const id=new URL(String(url),window.location.origin).pathname.split('/').at(-1);revision.blocks=revision.blocks.filter(b=>b.id!==id);
+  revision.updated_at=new Date(Date.parse(revision.updated_at)+1000).toISOString();
+  return new Response(null,{status:204});
  }
  throw Error('Unexpected request '+method+' '+url);
 };
@@ -126,7 +132,9 @@ try {
     await pointer('mouseReleased', x + dx, y + dy, { button: 'left', clickCount: 1 }); await delay(150)
   }
   await until('document.querySelector(".universal-question-canvas")')
-  if (process.argv.includes('--point-on-line')) {
+  if (process.argv.includes('--scene-3d-m1')) {
+    await runGeometry3DM1Acceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--point-on-line')) {
     await runPointOnLineAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--attachments')) {
     await runGeometryAttachmentAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})

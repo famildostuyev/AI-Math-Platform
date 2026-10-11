@@ -8,7 +8,7 @@ import type {
   FormulaBlockRead,
   UUID,
 } from '../api/questionEditor'
-import { normalizeGeometrySourceDataV1 } from './geometryV1'
+import { normalizeGeometrySourceData } from './geometrySourceData'
 import type {
   UniversalDocumentNode,
   UniversalEditorDocument,
@@ -71,12 +71,14 @@ function adaptBlock(block: UniversalDocumentAdapterBlock): UniversalDocumentNode
     }
     case 'geometry': {
       const geometryBlock = block as GeometryBlockRead
+      const geometry = normalizeGeometrySourceData(geometryBlock.payload.source_data)
       return {
         ...base,
         type: 'geometry',
         placement: geometryBlock.visual_placement ?? undefined,
         sourceData: geometryBlock.payload.source_data,
-        geometryV1: normalizeGeometrySourceDataV1(geometryBlock.payload.source_data),
+        geometryV1: geometry?.schema_version === 1 ? geometry : null,
+        geometryV2: geometry?.schema_version === 2 ? geometry : null,
       }
     }
     case 'graph':

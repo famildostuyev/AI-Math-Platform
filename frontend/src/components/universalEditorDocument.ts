@@ -5,6 +5,7 @@ import type {
   TextMark,
   UUID,
 } from '../api/questionEditor'
+import type { GeometryScene3D } from './geometry3dContract'
 
 export type UniversalLayoutMode = 'inline' | 'anchored' | 'floating'
 
@@ -87,6 +88,7 @@ export type UniversalGeometryNode = UniversalVisualNodeBase & {
   /** Complete original payload remains available for lossless legacy handling. */
   sourceData: JsonObject
   geometryV1: GeometrySourceDataV1 | null
+  geometryV2: GeometryScene3D | null
 }
 
 export type UniversalImageNode = UniversalVisualNodeBase & {
