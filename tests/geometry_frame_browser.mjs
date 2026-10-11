@@ -24,6 +24,7 @@ import { runPointOnSegmentAcceptance, runFinalPointOnSegmentAcceptance } from '.
 import { runGeometryAttachmentAcceptance } from './geometry_attachments_browser.mjs'
 import { runPointOnLineAcceptance } from './geometry_point_on_line_browser.mjs'
 import { runGeometry3DM1Acceptance } from './geometry_3d_m1_browser.mjs'
+import { runGeometry3DM2Acceptance } from './geometry_3d_m2_browser.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'geometry-frame-edge-'))
@@ -34,12 +35,20 @@ import {MathfieldElement} from 'mathlive';
 MathfieldElement.fontsDirectory='/node_modules/mathlive/fonts';
 import AdminQuestionEditor from '/src/components/AdminQuestionEditor.tsx';
 import GeometryEditor from '/src/components/GeometryEditor.tsx';
+import GeometrySceneEditor from '/src/components/GeometrySceneEditor.tsx';
 import {useUniversalEditorSession,UniversalEditorSessionContext} from '/src/components/universalEditorSession.ts';
 import '/src/index.css'; import '/src/App.css';
 import '/src/components/UniversalEditor.css';
 const root=createRoot(document.getElementById('root'));
 const revision={question_family_id:'family',question_form_id:'form',revision_id:'revision',revision_number:1,status:'draft',question_type_id:'type',source_id:null,source_display_name:null,source_detail:null,difficulty:null,updated_at:'2026-01-01T00:00:00Z',primary_topic_id:null,related_topic_ids:[],purpose_ids:[],blocks:[],answer_policy:'unsupported',answer_options:[],accepted_answers:[],solution:null};
 window.savedRevision=revision;window.requests=[];let serial=0,mount=0;
+window.openUnframedScene=source=>{
+ function UnframedScene(){
+  const [scene,setScene]=React.useState(source),session=useUniversalEditorSession();window.unframedScene=scene;
+  return React.createElement(UniversalEditorSessionContext.Provider,{value:session},React.createElement('div',{style:{width:700,height:500}},React.createElement(GeometrySceneEditor,{value:scene,onChange:setScene,targetId:'unframed-3d',disabled:false})));
+ }
+ root.render(React.createElement(UnframedScene,{key:++mount}));
+};
 ${['--ribbon', '--lines', '--triangles', '--quadrilaterals', '--regular', '--complete', '--circles', '--arcs', '--midpoint', '--linear-constructions', '--angle-bisector', '--altitude', '--median', '--capacity', '--reliability'].some(flag => process.argv.includes(flag)) ? `revision.blocks.push({id:'text-fixture',block_type:'text',sort_order:0,payload:{source_text:'Triangle exercise',format_version:1,document:{type:'document',content:[{type:'paragraph',content:[{type:'text',text:'Triangle exercise ',marks:[]},{type:'inline_math',latex:'a^2+b^2=c^2'},{type:'text',text:' — construct below.',marks:[]}]}]}}});` : ''}
 window.fetch=async(url,init={})=>{
  const method=init.method||'GET';const body=init.body?JSON.parse(init.body):null;
@@ -95,7 +104,7 @@ const server = await createServer({ root: path.join(root, 'frontend'), server: {
   }) },
 }] })
 await server.listen()
-const browser = spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', ['--headless=new', '--disable-gpu', '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' })
+const browser = spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', ['--headless=new', ...(process.argv.includes('--scene-3d-m2') ? ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] : ['--disable-gpu']), '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' })
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 let socket
 try {
@@ -132,7 +141,9 @@ try {
     await pointer('mouseReleased', x + dx, y + dy, { button: 'left', clickCount: 1 }); await delay(150)
   }
   await until('document.querySelector(".universal-question-canvas")')
-  if (process.argv.includes('--scene-3d-m1')) {
+  if (process.argv.includes('--scene-3d-m2')) {
+    await runGeometry3DM2Acceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--scene-3d-m1')) {
     await runGeometry3DM1Acceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--point-on-line')) {
     await runPointOnLineAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})

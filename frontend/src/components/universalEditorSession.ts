@@ -1,6 +1,7 @@
 import { createContext, useCallback, useEffect, useRef, useState } from 'react'
 import type { MathfieldElement } from 'mathlive'
 import type { GeometrySelection } from './geometryAuthoringModel'
+import type { GeometryCamera3D } from './geometry3dContract'
 import type { GeometryRibbonAction } from './geometryRibbonMenu'
 
 export type GeometryRibbonCommands = {
@@ -40,6 +41,7 @@ export function useUniversalEditorSession() {
   const [mathSelectionVersion, setMathSelectionVersion] = useState(0)
   const activeContext = useRef<PersistentActiveContext | null>(null)
   const geometryHistoryProviders = useRef(new Map<string, EditorHistoryProvider>())
+  const geometry3DCameras = useRef(new Map<string, GeometryCamera3D>())
   const [activeContextVersion, setActiveContextVersion] = useState(0)
   const setActiveContext = useCallback((next: PersistentActiveContext | null) => {
     traceContext(next ? 'session-target-replace' : 'session-target-clear', { previousKind: activeContext.current?.kind ?? null, nextKind: next?.kind ?? null, field: fieldTraceState(next?.kind === 'formula' ? next.field : math.current) })
@@ -212,7 +214,7 @@ export function useUniversalEditorSession() {
   return { commands, save, math, format, setFormat, activateText, activateMath, unregisterMath, unregisterText, mathSelectionVersion, history,
     activeContext, activeContextVersion, getActiveContext, canRun, captureTextSelection, restoreTextTarget, restoreMathTarget, activateGeometry, registerGeometryHistory, unregisterGeometry,
     bottomPanel, showAI, toggleKeyboard, insertMath, formatMath, formatMathColor, mathContext, hasMath,
-    geometryToolbarHost, setGeometryToolbarHost, geometryCommands, setGeometryCommands }
+    geometryToolbarHost, setGeometryToolbarHost, geometryCommands, setGeometryCommands, geometry3DCameras }
 }
 
 export const UniversalEditorSessionContext = createContext<ReturnType<typeof useUniversalEditorSession> | null>(null)

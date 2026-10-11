@@ -3,9 +3,11 @@ import assert from 'node:assert/strict'
 export async function runGeometry3DM1Acceptance({ evaluate, until, textButton, click, send, drag }) {
   await textButton('Həndəsə'); await textButton('3D səhnə əlavə et')
   const frame = '[data-frame-id="frame-1"]'
+  await until(`document.querySelector('${frame} summary')`)
+  await click(`${frame} summary`)
   await until(`document.querySelector('${frame} [aria-label="3D səhnə təsviri"]')`)
   assert.equal(await evaluate('savedRevision.blocks[0].payload.source_data.schema_version'), 2)
-  assert.ok(await evaluate('document.body.innerText.includes("İnteraktiv 3D təsvir hələ əlçatan deyil")'))
+  assert.ok(await evaluate('document.body.innerText.includes("3D səhnə boşdur")'))
   assert.equal(await evaluate(`document.querySelectorAll('${frame} [data-handle]').length`), 8)
   const input = async (selector, value) => {
     await click(selector)
@@ -35,6 +37,7 @@ export async function runGeometry3DM1Acceptance({ evaluate, until, textButton, c
   await until(`!document.querySelector('${frame} [aria-label="3D səhnə təsviri"]')`)
   const saved = await evaluate('structuredClone(savedRevision.blocks[0].payload.source_data)')
   assert.equal(saved.description, 'M1 Edge səhnəsi'); assert.equal(saved.print_camera.position[0], 6)
+  await click(frame)
   await drag(`${frame} [data-handle="se"]`, 40, 40)
   await click(`${frame} .visual-frame__actions button:nth-child(2)`)
   await until('requests.some(r=>r.url.endsWith("/visual-placement"))')
@@ -49,6 +52,8 @@ export async function runGeometry3DM1Acceptance({ evaluate, until, textButton, c
   await until(`document.querySelector('${frame} [data-geometry-version="2"]') && document.querySelector('[data-frame-id="frame-2"]')`)
   assert.deepEqual(await evaluate('savedRevision.blocks[0].payload.source_data'), saved)
   await click(frame); await click(`${frame} .visual-frame__actions button`)
+  await until(`document.querySelector('${frame} summary')`)
+  await click(`${frame} summary`)
   await until(`document.querySelector('[aria-label="3D səhnə təsviri"]')`)
   await input('[aria-label="3D səhnə təsviri"]', 'Ləğv edilən dəyişiklik')
   await click('[aria-label="Sual kamerası X"]'); await textButton('Ləğv et')

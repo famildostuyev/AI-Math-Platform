@@ -30,7 +30,8 @@ from tests.test_geometry_v1_contract import geometry_v1
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--temporary-admin', action='store_true', required=True)
-    parser.parse_args()
+    parser.add_argument('--m2', action='store_true', help='Verify M2 saved camera and deterministic projection after real reload')
+    args = parser.parse_args()
     assert settings.APP_ENV == 'development' and engine.url.host in ('localhost', '127.0.0.1')
     with engine.connect() as connection:
         assert connection.execute(text('SELECT 1')).scalar_one() == 1
@@ -73,7 +74,8 @@ def main():
         loaded = reload()
         assert [b['payload']['source_data']['schema_version'] for b in loaded['blocks']] == [1, 2]
         assert loaded['blocks'][1]['payload']['source_data'] == scene
-        operations = json.loads(subprocess.check_output(['node', str(ROOT / 'tests/geometry_3d_m1_reload_edit.mjs')], input=json.dumps(scene).encode(), cwd=ROOT))
+        helper = 'geometry_3d_m2_reload_view.mjs' if args.m2 else 'geometry_3d_m1_reload_edit.mjs'
+        operations = json.loads(subprocess.check_output(['node', str(ROOT / 'tests' / helper)], input=json.dumps(loaded['blocks'][1]['payload']['source_data']).encode(), cwd=ROOT))
         stale = loaded['updated_at']
         for stage in ('edited', 'detached'):
             expected = operations[stage]
@@ -96,6 +98,8 @@ def main():
         assert reload()['blocks'] == [unchanged['blocks'][0]]
         print('PASS: real authenticated HTTP/PostgreSQL mixed V1/V2 create/reload, post-reload frontend evaluation, stable IDs, saved camera, safe detachment, 409/422 atomic rejection and block deletion')
         print('Acceptance revision:', draft['revision_id'])
+        if args.m2:
+            print('PASS: M2 saved standard camera, Undo/Redo result and deterministic SVG computed from real API reload preserved in PostgreSQL')
     finally:
         if user_id is not None:
             with SessionLocal() as db:
