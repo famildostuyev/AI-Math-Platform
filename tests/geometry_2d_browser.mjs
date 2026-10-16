@@ -9,7 +9,7 @@ export async function runGeometry2DAcceptance({ evaluate, until, textButton, cli
   const action = async label => {
     await evaluate(`(()=>{const b=[...document.querySelectorAll('.universal-editor-geometry-ribbon button')].find(b=>b.textContent===${JSON.stringify(label)});if(!b||b.disabled)throw Error('Unavailable action');b.click()})()`); await delay(100)
   }
-  const tool = async label => { await menu('2D fiqurlar'); await action(label) }
+  const tool = async label => { await menu('Müstəvi fiqurları'); await action(label) }
   const at = async (x,y,press=true) => {
     await evaluate(`document.querySelector('${board}').scrollIntoView({block:'center'})`)
     const r=await box(board); await pointer('mouseMoved',r.x+x,r.y+y)
@@ -37,7 +37,7 @@ export async function runGeometry2DAcceptance({ evaluate, until, textButton, cli
   await textButton('Həndəsə'); await textButton('Çərçivə əlavə et'); await until(`document.querySelector('${board} svg')`)
   const baseline=await layout()
   const labels=['Üçbucaq','Düzbucaqlı üçbucaq','Düzbucaqlı','Kvadrat','Paraleloqram','Romb','Trapesiya','Düzgün 5-bucaqlı','Düzgün 6-bucaqlı','Düzgün n-bucaqlı']
-  await menu('2D fiqurlar')
+  await menu('Müstəvi fiqurları')
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.universal-editor-geometry-ribbon details[open] button')].map(b=>[b.textContent,b.disabled])"), [...labels,'Sərbəst fiqur'].map(s=>[s,false]))
   assert.deepEqual(await layout(),baseline)
   for(let i=0;i<labels.length;i++) {

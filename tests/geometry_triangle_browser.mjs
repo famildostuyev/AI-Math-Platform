@@ -17,7 +17,7 @@ export async function runGeometryTriangleAcceptance({ evaluate, until, textButto
     await evaluate(`(()=>{const b=[...document.querySelectorAll('.universal-editor-geometry-ribbon button')].find(b=>b.textContent===${JSON.stringify(label)});if(!b||b.disabled)throw Error('Unavailable '+${JSON.stringify(label)});b.click()})()`)
     await delay(100)
   }
-  const tool = async label => { await menu('2D fiqurlar'); await action(label) }
+  const tool = async label => { await menu('Müstəvi fiqurları'); await action(label) }
   const setN = async text => {
     await evaluate(`(()=>{const input=document.querySelector('input[aria-label="Tərəflərin sayı (n)"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(String(text))});input.dispatchEvent(new Event('input',{bubbles:true}))})()`)
     await delay(100)
@@ -74,7 +74,7 @@ export async function runGeometryTriangleAcceptance({ evaluate, until, textButto
   const textBefore = await evaluate('JSON.stringify(savedRevision.blocks[0])'), formula = await evaluate('document.querySelector("math-field").value')
   await textButton('Həndəsə'); await textButton('Çərçivə əlavə et'); await until(`document.querySelector('${board} svg')`)
   const beforeLayout = await layout()
-  await menu('2D fiqurlar')
+  await menu('Müstəvi fiqurları')
   assert.deepEqual(await layout(), beforeLayout)
   assert.equal(await evaluate("[...document.querySelectorAll('.universal-editor-geometry-ribbon details[open] button')].filter(b=>!b.disabled).map(b=>b.textContent).join('|')"), 'Üçbucaq|Düzbucaqlı üçbucaq|Düzbucaqlı|Kvadrat|Paraleloqram|Romb|Trapesiya|Düzgün 5-bucaqlı|Düzgün 6-bucaqlı|Düzgün n-bucaqlı|Sərbəst fiqur')
   if (regular) {

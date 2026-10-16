@@ -26,10 +26,34 @@ import { runPointOnLineAcceptance } from './geometry_point_on_line_browser.mjs'
 import { runGeometry3DM1Acceptance } from './geometry_3d_m1_browser.mjs'
 import { runGeometry3DM2Acceptance } from './geometry_3d_m2_browser.mjs'
 import { runGeometry3DM3Acceptance } from './geometry_3d_m3_browser.mjs'
+import { runGeometry3DM4Acceptance } from './geometry_3d_m4_browser.mjs'
+import { runUnifiedGeometryMenuAcceptance } from './geometry_unified_menu_browser.mjs'
+import { runGeometryFrameControlsAcceptance } from './geometry_frame_controls_browser.mjs'
+import { runGeometryFrameContextAcceptance } from './geometry_frame_context_browser.mjs'
+import { runGeometryPropertiesAcceptance } from './geometry_properties_browser.mjs'
+import { runCameraSyncAcceptance } from './geometry_camera_sync_browser.mjs'
+import { runContextPickingAcceptance } from './geometry_context_picking_browser.mjs'
+import { runMenuPlacementAcceptance } from './geometry_menu_placement_browser.mjs'
+import { runApexDragAcceptance } from './geometry_apex_drag_browser.mjs'
+import { runApexHeightAcceptance } from './geometry_apex_height_browser.mjs'
+import { runApexApplyAcceptance } from './geometry_apex_apply_browser.mjs'
+import { runBaseVertexAcceptance } from './geometry_base_vertex_browser.mjs'
+import { runPlanarAcceptance } from './geometry_planar_browser.mjs'
+import { runScenePyramidAcceptance } from './geometry_scene_pyramid_browser.mjs'
+import { runBaseAlignmentAcceptance } from './geometry_base_alignment_browser.mjs'
+import { runPyramidConsumptionAcceptance } from './geometry_pyramid_consumption_browser.mjs'
+import { runEdgeVisibilityAcceptance } from './geometry_edge_visibility_browser.mjs'
+import { runSolidRotationAcceptance } from './geometry_solid_rotation_browser.mjs'
+import { runSolidTranslationAcceptance } from './geometry_solid_translation_browser.mjs'
+import { runSolidScaleAcceptance } from './geometry_solid_scale_browser.mjs'
+import { runM5RealAcceptance } from './geometry_m5_real_browser.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'geometry-frame-edge-'))
-const fixture = `
+const realContext=process.argv.includes('--m5-real')?JSON.parse(process.env.M5_REAL_CONTEXT??'null'):null
+if(process.argv.includes('--m5-real'))assert.ok(realContext&&/^http:\/\/127\.0\.0\.1:\d+$/.test(realContext.backend)&&/^[a-f0-9-]{36}$/.test(realContext.revision_id))
+delete process.env.M5_REAL_CONTEXT
+let fixture = `
 import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {MathfieldElement} from 'mathlive';
@@ -37,12 +61,25 @@ MathfieldElement.fontsDirectory='/node_modules/mathlive/fonts';
 import AdminQuestionEditor from '/src/components/AdminQuestionEditor.tsx';
 import GeometryEditor from '/src/components/GeometryEditor.tsx';
 import GeometrySceneEditor from '/src/components/GeometrySceneEditor.tsx';
+import GeometrySceneViewport from '/src/components/GeometrySceneViewport.tsx';
 import {useUniversalEditorSession,UniversalEditorSessionContext} from '/src/components/universalEditorSession.ts';
 import '/src/index.css'; import '/src/App.css';
 import '/src/components/UniversalEditor.css';
 const root=createRoot(document.getElementById('root'));
 const revision={question_family_id:'family',question_form_id:'form',revision_id:'revision',revision_number:1,status:'draft',question_type_id:'type',source_id:null,source_display_name:null,source_detail:null,difficulty:null,updated_at:'2026-01-01T00:00:00Z',primary_topic_id:null,related_topic_ids:[],purpose_ids:[],blocks:[],answer_policy:'unsupported',answer_options:[],accepted_answers:[],solution:null};
 window.savedRevision=revision;window.requests=[];let serial=0,mount=0;
+${process.argv.includes('--camera-sync') ? `
+window.openCameraSyncFixture=source=>{
+ function CameraFixture(){
+  const [update,setUpdate]=React.useState({camera:source.print_camera}),[generation,setGeneration]=React.useState(0);
+  const pending=React.useRef([]);window.cameraSyncPending=pending.current;
+  window.cameraSyncApply=i=>setUpdate(pending.current[i]);
+  window.cameraSyncExternal=camera=>setUpdate({camera});
+  window.cameraSyncRemount=()=>setGeneration(n=>n+1);
+  return React.createElement('div',{style:{width:520,height:400}},React.createElement(GeometrySceneViewport,{key:generation,scene:source,camera:update.camera,cameraOrigin:update.origin,interactive:true,onNavigate:(camera,origin)=>pending.current.push({camera,origin})}));
+ }
+ root.render(React.createElement(CameraFixture,{key:++mount}));
+};` : ''}
 window.openUnframedScene=source=>{
  function UnframedScene(){
   const [scene,setScene]=React.useState(source),session=useUniversalEditorSession();window.unframedScene=scene;
@@ -95,8 +132,41 @@ window.openUnframedGeometry=source=>{
  root.render(React.createElement(Unframed,{key:++mount}));
 };` : ''}
 `
-const server = await createServer({ root: path.join(root, 'frontend'), server: { host: '127.0.0.1', port: 0 }, plugins: [{
-  name: 'geometry-frame-fixture', resolveId(id) { if (id === '/__frame.jsx') return id },
+if(realContext){
+  const start=fixture.indexOf('window.fetch=async'),end=fixture.indexOf('window.reloadEditor=',start)
+  assert.ok(start>0&&end>start)
+  fixture=fixture.slice(0,start)+`
+const realFetch=window.fetch.bind(window);window.realResponses=[];
+window.fetch=async(url,init={})=>{
+ const response=await realFetch(url,init),data=await response.clone().json().catch(()=>null),method=init.method||'GET';
+ window.realResponses.push({url:String(url),method,status:response.status,data});
+ if(method==='GET'&&String(url).endsWith('/revisions/'+${JSON.stringify(realContext.revision_id)}))window.savedRevision=data;
+ return response;
+};
+window.realRevision=()=>window.fetch('/api/v1/question-editor/revisions/'+${JSON.stringify(realContext.revision_id)},{headers:{Authorization:'Bearer '+${JSON.stringify(realContext.token)}}}).then(r=>{if(!r.ok)throw Error('Real revision GET '+r.status);return r.json()});
+`+fixture.slice(end)
+  fixture=fixture.replace("initialRevisionId:'revision'",`initialRevisionId:${JSON.stringify(realContext.revision_id)}`).replace("fn=>fn('fixture')",`fn=>fn(${JSON.stringify(realContext.token)})`)
+}
+const server = await createServer({ root: path.join(root, 'frontend'), ...(realContext?{define:{'import.meta.env.VITE_API_BASE_URL':'""'}}:{}), server: { host: '127.0.0.1', port: 0, ...(realContext?{proxy:{'/api':{target:realContext.backend,changeOrigin:true}}}:{}) }, plugins: [{
+  name: 'geometry-frame-fixture', enforce: 'pre',
+  transform(code,id) {
+    if((realContext||process.argv.includes('--solid-scale')||process.argv.includes('--solid-rotation')||process.argv.includes('--solid-translation'))&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).rotationScene=structuredClone(value);(globalThis as any).solidGestureState={selected:state.selected,dragging:state.dragging,message:state.message}; return <div className="geometry-3d-editor"')
+    if(process.argv.includes('--edge-visibility')&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).visibilityScene=structuredClone(value);(globalThis as any).visibilityNavigate=navigate; return <div className="geometry-3d-editor"')
+    if(process.argv.includes('--edge-visibility')&&id.endsWith('/GeometrySceneViewport.tsx'))return code.replace('renderer!.render(world,view);','renderer!.render(world,view);(globalThis as any).visibilityDraw={camera:structuredClone(current),lines:group!.children.filter(o=>o.type==="Line").map(o=>({id:o.userData.semanticId,hidden:(o as THREE.Line<THREE.BufferGeometry,THREE.LineDashedMaterial>).material.isLineDashedMaterial===true}))};')
+    if(process.argv.includes('--base-alignment')&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).baseAlignmentScene=structuredClone(value); return <div className="geometry-3d-editor"')
+    if(process.argv.includes('--base-alignment')&&id.endsWith('/GeometrySceneViewport.tsx'))return code.replace('renderer!.render(world,view);','renderer!.render(world,view);(globalThis as any).baseAlignmentDraw=group!.children.map(o=>({id:o.userData.semanticId,type:o.type,positions:Array.from((o as THREE.Mesh).geometry?.getAttribute("position")?.array??[])}));')
+    if((process.argv.includes('--scene-pyramid')||process.argv.includes('--pyramid-consumption'))&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).scenePyramidScene=structuredClone(value); return <div className="geometry-3d-editor"')
+    if(process.argv.includes('--planar')&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).planarScene=structuredClone(value); return <div className="geometry-3d-editor"')
+    if(process.argv.includes('--base-vertex')&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).baseVertexScene=structuredClone(value); return <div className="geometry-3d-editor"')
+    if(process.argv.includes('--apex-apply')&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).apexApplyScene=structuredClone(value); return <div className="geometry-3d-editor"')
+    if(!process.argv.includes('--camera-sync')||!id.endsWith('/GeometrySceneViewport.tsx'))return
+    // Observational instrumentation only: exercise the production synchronization paths.
+    return code.replace('const draw=()=>{ frame=0;', 'const draw=()=>{ const started=performance.now(); frame=0;')
+      .replace('renderer!.render(world,view);','renderer!.render(world,view);window.cameraSyncLog?.push({kind:"draw",time:performance.now(),ms:performance.now()-started,position:view.position.toArray()});')
+      .replace('current=structuredClone(next)','window.cameraSyncLog?.push({kind:"apply",position:view.position.toArray(),next:next.position});current=structuredClone(next)')
+      .replace('if(next) {current=next;', 'if(next) {window.cameraSyncLog?.push({kind:"navigate",position:next.position});current=next;')
+  },
+  resolveId(id) { if (id === '/__frame.jsx') return id },
   load(id) { if (id === '/__frame.jsx') return fixture },
   configureServer(server) { server.middlewares.use(async (req, res, next) => {
     if (req.url !== '/__frame') return next()
@@ -105,7 +175,7 @@ const server = await createServer({ root: path.join(root, 'frontend'), server: {
   }) },
 }] })
 await server.listen()
-const browser = spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', ['--headless=new', ...(process.argv.includes('--scene-3d-m2')||process.argv.includes('--scene-3d-m3') ? ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] : ['--disable-gpu']), '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' })
+const browser = spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', ['--headless=new', ...(realContext||process.argv.includes('--solid-scale')||process.argv.includes('--solid-translation')||process.argv.includes('--solid-rotation')||process.argv.includes('--edge-visibility')||process.argv.includes('--pyramid-consumption')||process.argv.includes('--base-alignment')||process.argv.includes('--scene-pyramid')||process.argv.includes('--planar')||process.argv.includes('--base-vertex')||process.argv.includes('--apex-apply')||process.argv.includes('--apex-height')||process.argv.includes('--apex-drag')||process.argv.includes('--menu-placement')||process.argv.includes('--context-picking')||process.argv.includes('--camera-sync')||process.argv.includes('--scene-3d-m2')||process.argv.includes('--scene-3d-m3')||process.argv.includes('--scene-3d-m4')||process.argv.includes('--unified-menu')||process.argv.includes('--frame-controls')||process.argv.includes('--frame-context')||process.argv.includes('--geometry-properties') ? ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] : ['--disable-gpu']), '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' })
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 let socket
 try {
@@ -122,14 +192,46 @@ try {
   const evaluate = async expression => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); assert.ok(!r.result?.exceptionDetails, JSON.stringify(r.result?.exceptionDetails)); return r.result?.result.value }
   const until = async expression => { for (let i = 0; i < 160; i++) { if (await evaluate(`!!(${expression})`)) return; await delay(100) } throw Error('Timeout: ' + expression + '\n' + await evaluate('document.body.innerText')) }
   await send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1200, deviceScaleFactor: 1, mobile: false })
-  const pointer = (type, x, y, extra = {}) => send('Input.dispatchMouseEvent', { type, x, y, ...extra })
+  const pointer = async (type, x, y, extra = {}) => {
+    // Only the document drawer is modal; the geometry properties panel stays open on canvas interaction.
+    if(type==='mousePressed')await evaluate(`(()=>{const d=document.querySelector('.universal-editor-document-drawer[open]');if(!d)return;const b=d.getBoundingClientRect();if(${x}<b.left||${x}>b.right||${y}<b.top||${y}>b.bottom)d.querySelector('header button')?.click()})()`)
+    return send('Input.dispatchMouseEvent', { type, x, y, ...extra })
+  }
   const box = selector => evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}})()`)
   const click = async selector => {
+    // Frame actions are now portaled into the keyboard-accessible context menu.
+    if(selector.includes('.visual-frame__actions'))selector=selector.replace(/\[data-frame-id="?([^"\]]+)"?\]/,'[data-frame-menu-owner="$1"]')
+    // Inspector fields are portaled outside VisualFrame without changing their editor ownership.
+    if(selector.includes('.geometry-3d-inspector'))selector=selector.slice(selector.indexOf('.geometry-3d-inspector'))
+    await evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}),d=document.querySelector('.universal-editor-document-drawer[open]');if(b&&d&&!d.contains(b))d.querySelector('header button')?.click()})()`)
+    await until(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}),d=document.querySelector('.universal-editor-document-drawer[open]');return !d||d.contains(b)})()`)
+    const closedPanel=await evaluate(`(()=>{const d=document.querySelector(${JSON.stringify(selector)})?.closest('.geometry-properties-dialog');return d&&!d.open?{owner:d.dataset.geometryPropertiesOwner}:null})()`)
+    if(closedPanel){
+      if(closedPanel.owner&&await evaluate(`!!document.querySelector('[data-frame-id="${closedPanel.owner}"]')`))await click(`[data-frame-menu-owner="${closedPanel.owner}"] .geometry-frame-menu__items > button`)
+      else await evaluate(`(()=>{const d=document.querySelector('.geometry-editor-local-chrome details');d.open=true;d.querySelector('button').click()})()`)
+      await until(`document.querySelector(${JSON.stringify(selector)}).closest('.geometry-properties-dialog').open`)
+    }
+    const owner=await evaluate(`document.querySelector(${JSON.stringify(selector)})?.closest('[data-frame-menu-owner]')?.dataset.frameMenuOwner`)
+    if(owner&&await evaluate(`document.querySelector('[data-frame-menu-owner="${owner}"]').hidden`)){
+      await evaluate(`document.querySelector('[data-frame-id="${owner}"]').focus({preventScroll:true})`)
+      await send('Input.dispatchKeyEvent',{type:'keyDown',key:'F10',code:'F10',modifiers:8,windowsVirtualKeyCode:121});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'F10',code:'F10',windowsVirtualKeyCode:121})
+      await until(`!document.querySelector('[data-frame-menu-owner="${owner}"]').hidden`)
+    }
+    await evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)});if(!b)throw Error('Missing '+${JSON.stringify(selector)});const dialog=b.closest('dialog');if(dialog&&!dialog.open)document.querySelector('header button[aria-haspopup="dialog"]').click();const ancestors=[];for(let n=b.parentElement;n;n=n.parentElement)if(n.tagName==='DETAILS'&&!(b.tagName==='SUMMARY'&&b.parentElement===n))ancestors.unshift(n);ancestors.forEach(d=>{if(!d.open)d.querySelector('summary').click()})})()`)
     await evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`)
+    await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
     const b = await box(selector), x = b.x + b.width / 2, y = b.y + b.height / 2
+    if(selector==='[data-test-click="yes"]')assert.ok(await evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}),hit=document.elementFromPoint(${x},${y});return b===hit||b.contains(hit)})()`),'Text action is reachable: '+await evaluate(`document.elementFromPoint(${x},${y})?.outerHTML`))
     await pointer('mouseMoved', x, y); await pointer('mousePressed', x, y, { button: 'left', clickCount: 1 }); await pointer('mouseReleased', x, y, { button: 'left', clickCount: 1 })
   }
   const textButton = async text => {
+    // Existing acceptance scripts explicitly create their old dimension through the new menu.
+    if(text==='Çərçivə əlavə et'||text==='3D səhnə əlavə et'){
+      await until(`document.querySelector('.universal-editor-geometry-ribbon > details > summary')?.getAttribute('aria-disabled')==='false'`)
+      await evaluate(`(()=>{const d=[...document.querySelectorAll('.universal-editor-geometry-ribbon > details')].find(d=>d.querySelector('summary').textContent.includes('Çərçivə əlavə et'));if(!d.open)d.querySelector('summary').click()})()`)
+      await until(`document.querySelector('.universal-editor-geometry-ribbon > details').open`)
+      text=text==='Çərçivə əlavə et'?'2D çərçivə':'3D çərçivə'
+    }
     await evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)}&&!b.disabled);if(!b)throw Error('Missing button '+${JSON.stringify(text)});b.dataset.testClick='yes'})()`)
     await click('[data-test-click="yes"]'); await evaluate(`document.querySelector('[data-test-click="yes"]')?.removeAttribute('data-test-click')`)
   }
@@ -142,7 +244,49 @@ try {
     await pointer('mouseReleased', x + dx, y + dy, { button: 'left', clickCount: 1 }); await delay(150)
   }
   await until('document.querySelector(".universal-question-canvas")')
-  if (process.argv.includes('--scene-3d-m3')) {
+  if (realContext) {
+    await runM5RealAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--solid-scale')) {
+    await runSolidScaleAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--solid-translation')) {
+    await runSolidTranslationAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--solid-rotation')) {
+    await runSolidRotationAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--edge-visibility')) {
+    await runEdgeVisibilityAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--pyramid-consumption')) {
+    await runPyramidConsumptionAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--base-alignment')) {
+    await runBaseAlignmentAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--scene-pyramid')) {
+    await runScenePyramidAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--planar')) {
+    await runPlanarAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--base-vertex')) {
+    await runBaseVertexAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--apex-apply')) {
+    await runApexApplyAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--apex-height')) {
+    await runApexHeightAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--apex-drag')) {
+    await runApexDragAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--menu-placement')) {
+    await runMenuPlacementAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--context-picking')) {
+    await runContextPickingAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--camera-sync')) {
+    await runCameraSyncAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--geometry-properties')) {
+    await runGeometryPropertiesAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--frame-context')) {
+    await runGeometryFrameContextAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--frame-controls')) {
+    await runGeometryFrameControlsAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--unified-menu')) {
+    await runUnifiedGeometryMenuAcceptance({evaluate,until,textButton,click,box,pointer,delay,send})
+  } else if (process.argv.includes('--scene-3d-m4')) {
+    await runGeometry3DM4Acceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--scene-3d-m3')) {
     await runGeometry3DM3Acceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--scene-3d-m2')) {
     await runGeometry3DM2Acceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
@@ -206,9 +350,8 @@ try {
   assert.equal(await evaluate('requests.filter(r=>r.method==="POST").length'), 1)
   assert.equal(await evaluate('savedRevision.blocks.length'), 1)
   assert.equal(await evaluate(`document.querySelectorAll('${frame} [data-handle]').length`), 8)
-  const frameBox = await box(frame), controlsBox = await box(`${frame} .geometry-editor__frame-controls`), actionsBox = await box(`${frame} .visual-frame__actions`)
-  assert.ok(controlsBox.y >= frameBox.y + frameBox.height, 'Description controls stay outside drawing area')
-  assert.ok(actionsBox.y + actionsBox.height <= frameBox.y, 'Save controls do not cover the description')
+  assert.equal(await evaluate(`document.querySelectorAll('${frame} textarea,${frame} .geometry-editor__frame-controls').length`),0,'Properties are outside the frame')
+  assert.equal(await evaluate(`document.querySelectorAll('${frame} .visual-frame__actions,${frame} .geometry-frame-menu').length`),0,'Frame actions are only in the context popup')
   assert.ok(await evaluate('savedRevision.blocks[0].payload.source_data.description.trim()'))
   await textButton('Nöqtə')
   const board = await box('.geometry-authoring-board')

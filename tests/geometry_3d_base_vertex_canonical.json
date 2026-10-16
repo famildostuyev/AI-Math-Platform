@@ -1,0 +1,4294 @@
+[
+  {
+    "name": "legacy_flat",
+    "source": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            2.3,
+            -0.2,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            0.3000000000000001,
+            1.8,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            -1.7,
+            -0.19999999999999976,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0.2999999999999996,
+            -2.2,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            0.2999999999999999,
+            -0.1999999999999999,
+            2.4
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0.3,
+              -0.2,
+              0.4
+            ],
+            "x_axis": [
+              1,
+              0,
+              0
+            ],
+            "y_axis": [
+              0,
+              1,
+              0
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "height": 2,
+            "radius": 2,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    },
+    "edited": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            2.3,
+            -0.2,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            0.4414213562373096,
+            1.9414213562373097,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            -1.7,
+            -0.19999999999999976,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0.2999999999999996,
+            -2.2,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            0.2999999999999999,
+            -0.1999999999999999,
+            2.4
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0.3,
+              -0.2,
+              0.4
+            ],
+            "x_axis": [
+              1,
+              0,
+              0
+            ],
+            "y_axis": [
+              0,
+              1,
+              0
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "apex_offset": [
+              -0.0035267280792930684,
+              0.04987546680538163
+            ],
+            "base": {
+              "kind": "polygon",
+              "vertices": [
+                [
+                  1.9999999999999998,
+                  0,
+                  0
+                ],
+                [
+                  0.14142135623730961,
+                  2.1414213562373097,
+                  0
+                ],
+                [
+                  -2,
+                  2.498001805406602e-16,
+                  0
+                ],
+                [
+                  -3.885780586188048e-16,
+                  -2,
+                  0
+                ]
+              ]
+            },
+            "height": 2,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    }
+  },
+  {
+    "name": "legacy_tilted",
+    "source": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            2.0057370639048866,
+            0.10076746636087058,
+            -0.5999999999999999
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            0.4014403494782582,
+            1.658464761578098,
+            1.1319963015413337
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            -1.4057370639048865,
+            -0.5007674663608703,
+            1.4
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0.19855965052174157,
+            -2.058464761578098,
+            -0.3319963015413334
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            1.3393127172891064,
+            -0.8750167858293041,
+            1.9697711344427913
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0.3,
+              -0.2,
+              0.4
+            ],
+            "x_axis": [
+              0.8528685319524433,
+              0.1503837331804353,
+              -0.49999999999999994
+            ],
+            "y_axis": [
+              0.05072017473912904,
+              0.929232380789049,
+              0.36599815077066683
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "height": 2,
+            "radius": 2,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    },
+    "edited": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            2.0057370639048866,
+            0.10076746636087058,
+            -0.5999999999999998
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            0.5292270898592969,
+            1.8111455366313167,
+            1.1130455782850142
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            -1.4057370639048863,
+            -0.5007674663608703,
+            1.3999999999999997
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0.19855965052174152,
+            -2.0584647615780987,
+            -0.3319963015413335
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            1.3393127172891064,
+            -0.8750167858293043,
+            1.9697711344427913
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0.3,
+              -0.2,
+              0.4
+            ],
+            "x_axis": [
+              0.8528685319524433,
+              0.1503837331804353,
+              -0.49999999999999994
+            ],
+            "y_axis": [
+              0.05072017473912904,
+              0.929232380789049,
+              0.36599815077066683
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "apex_offset": [
+              -0.0035267280792929644,
+              0.04987546680538153
+            ],
+            "base": {
+              "kind": "polygon",
+              "vertices": [
+                [
+                  2,
+                  5.551115123125784e-17,
+                  1.1102230246251568e-16
+                ],
+                [
+                  0.14142135623730964,
+                  2.1414213562373097,
+                  1.1102230246251568e-16
+                ],
+                [
+                  -1.9999999999999998,
+                  2.2204460492503136e-16,
+                  -2.2204460492503136e-16
+                ],
+                [
+                  -4.440892098500627e-16,
+                  -2.0000000000000004,
+                  0
+                ]
+              ]
+            },
+            "height": 2,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    }
+  },
+  {
+    "name": "template_flat",
+    "source": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            2.3,
+            -0.2,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            0.3000000000000001,
+            1.8,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            -1.7,
+            -0.19999999999999976,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0.2999999999999996,
+            -2.2,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            0.2999999999999999,
+            -0.1999999999999999,
+            2.4
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0.3,
+              -0.2,
+              0.4
+            ],
+            "x_axis": [
+              1,
+              0,
+              0
+            ],
+            "y_axis": [
+              0,
+              1,
+              0
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "apex_offset": [
+              0,
+              0
+            ],
+            "base": {
+              "kind": "template",
+              "radius": 2
+            },
+            "height": 2,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    },
+    "edited": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            2.3,
+            -0.2,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            0.4414213562373096,
+            1.9414213562373097,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            -1.7,
+            -0.19999999999999976,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0.2999999999999996,
+            -2.2,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            0.2999999999999999,
+            -0.1999999999999999,
+            2.4
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0.3,
+              -0.2,
+              0.4
+            ],
+            "x_axis": [
+              1,
+              0,
+              0
+            ],
+            "y_axis": [
+              0,
+              1,
+              0
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "apex_offset": [
+              -0.0035267280792930684,
+              0.04987546680538163
+            ],
+            "base": {
+              "kind": "polygon",
+              "vertices": [
+                [
+                  1.9999999999999998,
+                  0,
+                  0
+                ],
+                [
+                  0.14142135623730961,
+                  2.1414213562373097,
+                  0
+                ],
+                [
+                  -2,
+                  2.498001805406602e-16,
+                  0
+                ],
+                [
+                  -3.885780586188048e-16,
+                  -2,
+                  0
+                ]
+              ]
+            },
+            "height": 2,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    }
+  },
+  {
+    "name": "template_tilted",
+    "source": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            2.0057370639048866,
+            0.10076746636087058,
+            -0.5999999999999999
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            0.4014403494782582,
+            1.658464761578098,
+            1.1319963015413337
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            -1.4057370639048865,
+            -0.5007674663608703,
+            1.4
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0.19855965052174157,
+            -2.058464761578098,
+            -0.3319963015413334
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            1.3393127172891064,
+            -0.8750167858293041,
+            1.9697711344427913
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0.3,
+              -0.2,
+              0.4
+            ],
+            "x_axis": [
+              0.8528685319524433,
+              0.1503837331804353,
+              -0.49999999999999994
+            ],
+            "y_axis": [
+              0.05072017473912904,
+              0.929232380789049,
+              0.36599815077066683
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "apex_offset": [
+              0,
+              0
+            ],
+            "base": {
+              "kind": "template",
+              "radius": 2
+            },
+            "height": 2,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    },
+    "edited": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            2.0057370639048866,
+            0.10076746636087058,
+            -0.5999999999999998
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            0.5292270898592969,
+            1.8111455366313167,
+            1.1130455782850142
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            -1.4057370639048863,
+            -0.5007674663608703,
+            1.3999999999999997
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0.19855965052174152,
+            -2.0584647615780987,
+            -0.3319963015413335
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            1.3393127172891064,
+            -0.8750167858293043,
+            1.9697711344427913
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0.3,
+              -0.2,
+              0.4
+            ],
+            "x_axis": [
+              0.8528685319524433,
+              0.1503837331804353,
+              -0.49999999999999994
+            ],
+            "y_axis": [
+              0.05072017473912904,
+              0.929232380789049,
+              0.36599815077066683
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "apex_offset": [
+              -0.0035267280792929644,
+              0.04987546680538153
+            ],
+            "base": {
+              "kind": "polygon",
+              "vertices": [
+                [
+                  2,
+                  5.551115123125784e-17,
+                  1.1102230246251568e-16
+                ],
+                [
+                  0.14142135623730964,
+                  2.1414213562373097,
+                  1.1102230246251568e-16
+                ],
+                [
+                  -1.9999999999999998,
+                  2.2204460492503136e-16,
+                  -2.2204460492503136e-16
+                ],
+                [
+                  -4.440892098500627e-16,
+                  -2.0000000000000004,
+                  0
+                ]
+              ]
+            },
+            "height": 2,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    }
+  },
+  {
+    "name": "face_flat",
+    "source": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "b0",
+            "b1",
+            "b2",
+            "b3"
+          ],
+          "id": "base"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "b0",
+          "label": null,
+          "position": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "b1",
+          "label": null,
+          "position": [
+            3,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "b2",
+          "label": null,
+          "position": [
+            3,
+            3,
+            2
+          ]
+        },
+        {
+          "id": "b3",
+          "label": null,
+          "position": [
+            0,
+            3,
+            1
+          ]
+        },
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            0.3,
+            -0.2,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            3.3,
+            -0.2,
+            1.4
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            3.3,
+            2.8,
+            2.4
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0.3,
+            2.8,
+            1.4
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            2.4788217671756665,
+            2.0937152070046454,
+            -0.320237535510162
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0.3,
+              -0.2,
+              0.4
+            ],
+            "x_axis": [
+              1,
+              0,
+              0
+            ],
+            "y_axis": [
+              0,
+              1,
+              0
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "apex_offset": [
+              0.1,
+              0.2
+            ],
+            "base": {
+              "face_id": "base",
+              "kind": "face",
+              "point_ids": [
+                "b0",
+                "b1",
+                "b2",
+                "b3"
+              ]
+            },
+            "height": -2,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    },
+    "edited": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "b0",
+            "b1",
+            "b2",
+            "b3"
+          ],
+          "id": "base"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "b0",
+          "label": null,
+          "position": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "b1",
+          "label": null,
+          "position": [
+            3,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "b2",
+          "label": null,
+          "position": [
+            3,
+            3,
+            2
+          ]
+        },
+        {
+          "id": "b3",
+          "label": null,
+          "position": [
+            0,
+            3,
+            1
+          ]
+        },
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            0.3,
+            -0.2,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            3.3,
+            -0.3897366596101028,
+            1.3367544467966324
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            3.3,
+            2.8,
+            2.4
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0.3,
+            2.8,
+            1.4
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            2.478821767175666,
+            2.093715207004645,
+            -0.3202375355101613
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0.3,
+              -0.2,
+              0.4
+            ],
+            "x_axis": [
+              1,
+              0,
+              0
+            ],
+            "y_axis": [
+              0,
+              1,
+              0
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "apex_offset": [
+              0.08900530489213454,
+              0.25588631155884556
+            ],
+            "base": {
+              "kind": "polygon",
+              "vertices": [
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  3,
+                  -0.18973665961010278,
+                  0.9367544467966323
+                ],
+                [
+                  3,
+                  3,
+                  2
+                ],
+                [
+                  0,
+                  3,
+                  0.9999999999999999
+                ]
+              ]
+            },
+            "height": -1.9999999999999991,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    }
+  },
+  {
+    "name": "face_tilted",
+    "source": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "b0",
+            "b1",
+            "b2",
+            "b3"
+          ],
+          "id": "base"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "b0",
+          "label": null,
+          "position": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "b1",
+          "label": null,
+          "position": [
+            3,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "b2",
+          "label": null,
+          "position": [
+            3,
+            3,
+            2
+          ]
+        },
+        {
+          "id": "b3",
+          "label": null,
+          "position": [
+            0,
+            3,
+            1
+          ]
+        },
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            0.3,
+            -0.2,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            3.3782619545018826,
+            -0.08635719337334624,
+            -0.31511443277860407
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            4.050078837363823,
+            2.3638315560791487,
+            1.567765586754792
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0.9718168828619402,
+            2.250188749452495,
+            2.2828800195333963
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            1.9003101429958742,
+            2.5021400070664876,
+            -0.4152194060226091
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0.3,
+              -0.2,
+              0.4
+            ],
+            "x_axis": [
+              0.8528685319524433,
+              0.1503837331804353,
+              -0.49999999999999994
+            ],
+            "y_axis": [
+              0.05072017473912904,
+              0.929232380789049,
+              0.36599815077066683
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "apex_offset": [
+              0.1,
+              0.2
+            ],
+            "base": {
+              "face_id": "base",
+              "kind": "face",
+              "point_ids": [
+                "b0",
+                "b1",
+                "b2",
+                "b3"
+              ]
+            },
+            "height": -2,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    },
+    "edited": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "b0",
+            "b1",
+            "b2",
+            "b3"
+          ],
+          "id": "base"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "b0",
+          "label": null,
+          "position": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "b1",
+          "label": null,
+          "position": [
+            3,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "b2",
+          "label": null,
+          "position": [
+            3,
+            3,
+            2
+          ]
+        },
+        {
+          "id": "b3",
+          "label": null,
+          "position": [
+            0,
+            3,
+            1
+          ]
+        },
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            0.3,
+            -0.2,
+            0.4
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            3.3357725240939167,
+            -0.2413207362851369,
+            -0.43419822122956087
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            4.050078837363823,
+            2.3638315560791483,
+            1.5677655867547924
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0.9718168828619402,
+            2.2501887494524944,
+            2.2828800195333963
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            1.9003101429958742,
+            2.5021400070664868,
+            -0.41521940602260843
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0.3,
+              -0.2,
+              0.4
+            ],
+            "x_axis": [
+              0.8528685319524433,
+              0.1503837331804353,
+              -0.49999999999999994
+            ],
+            "y_axis": [
+              0.05072017473912904,
+              0.929232380789049,
+              0.36599815077066683
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "apex_offset": [
+              0.08900530489213476,
+              0.255886311558846
+            ],
+            "base": {
+              "kind": "polygon",
+              "vertices": [
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  2.999999999999999,
+                  -0.1897366596101028,
+                  0.9367544467966324
+                ],
+                [
+                  2.999999999999999,
+                  2.9999999999999996,
+                  1.9999999999999996
+                ],
+                [
+                  -1.1102230246251568e-16,
+                  2.9999999999999996,
+                  1
+                ]
+              ]
+            },
+            "height": -1.9999999999999993,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    }
+  },
+  {
+    "name": "face_coincident",
+    "source": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "b0",
+            "b1",
+            "b2",
+            "b3"
+          ],
+          "id": "base"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "b0",
+          "label": null,
+          "position": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "b1",
+          "label": null,
+          "position": [
+            3,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "b2",
+          "label": null,
+          "position": [
+            3,
+            3,
+            2
+          ]
+        },
+        {
+          "id": "b3",
+          "label": null,
+          "position": [
+            0,
+            3,
+            1
+          ]
+        },
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            3,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            3,
+            3,
+            2
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0,
+            3,
+            1
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            2.1788217671756667,
+            2.2937152070046456,
+            -0.720237535510162
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0,
+              0,
+              0
+            ],
+            "x_axis": [
+              1,
+              0,
+              0
+            ],
+            "y_axis": [
+              0,
+              1,
+              0
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "apex_offset": [
+              0.1,
+              0.2
+            ],
+            "base": {
+              "face_id": "base",
+              "kind": "face",
+              "point_ids": [
+                "b0",
+                "b1",
+                "b2",
+                "b3"
+              ]
+            },
+            "height": -2,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    },
+    "edited": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [
+        {
+          "end": "py_v_1",
+          "id": "py_e_0",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_2",
+          "id": "py_e_1",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_3",
+          "id": "py_e_2",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_0",
+          "id": "py_e_3",
+          "start": "py_v_3"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_4",
+          "start": "py_v_0"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_5",
+          "start": "py_v_1"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_6",
+          "start": "py_v_2"
+        },
+        {
+          "end": "py_v_4",
+          "id": "py_e_7",
+          "start": "py_v_3"
+        }
+      ],
+      "faces": [
+        {
+          "boundary": [
+            "b0",
+            "b1",
+            "b2",
+            "b3"
+          ],
+          "id": "base"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_2",
+            "py_v_1",
+            "py_v_0"
+          ],
+          "id": "py_f_0"
+        },
+        {
+          "boundary": [
+            "py_v_0",
+            "py_v_1",
+            "py_v_4"
+          ],
+          "id": "py_f_1"
+        },
+        {
+          "boundary": [
+            "py_v_1",
+            "py_v_2",
+            "py_v_4"
+          ],
+          "id": "py_f_2"
+        },
+        {
+          "boundary": [
+            "py_v_2",
+            "py_v_3",
+            "py_v_4"
+          ],
+          "id": "py_f_3"
+        },
+        {
+          "boundary": [
+            "py_v_3",
+            "py_v_0",
+            "py_v_4"
+          ],
+          "id": "py_f_4"
+        }
+      ],
+      "linear_objects": [],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "b0",
+          "label": null,
+          "position": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "b1",
+          "label": null,
+          "position": [
+            3,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "b2",
+          "label": null,
+          "position": [
+            3,
+            3,
+            2
+          ]
+        },
+        {
+          "id": "b3",
+          "label": null,
+          "position": [
+            0,
+            3,
+            1
+          ]
+        },
+        {
+          "id": "py_v_0",
+          "label": null,
+          "position": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "py_v_1",
+          "label": "B",
+          "position": [
+            3.0000000000000018,
+            -0.18973665961010067,
+            0.936754446796634
+          ]
+        },
+        {
+          "id": "py_v_2",
+          "label": null,
+          "position": [
+            3,
+            3,
+            2
+          ]
+        },
+        {
+          "id": "py_v_3",
+          "label": null,
+          "position": [
+            0,
+            3,
+            1
+          ]
+        },
+        {
+          "id": "py_v_4",
+          "label": null,
+          "position": [
+            2.1788217671756667,
+            2.2937152070046456,
+            -0.7202375355101618
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          10,
+          9,
+          12
+        ],
+        "projection": "orthographic",
+        "target": [
+          1,
+          1,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [
+        {
+          "features": [
+            {
+              "entity_id": "py_e_0",
+              "slot": "e_0"
+            },
+            {
+              "entity_id": "py_e_1",
+              "slot": "e_1"
+            },
+            {
+              "entity_id": "py_e_2",
+              "slot": "e_2"
+            },
+            {
+              "entity_id": "py_e_3",
+              "slot": "e_3"
+            },
+            {
+              "entity_id": "py_e_4",
+              "slot": "e_4"
+            },
+            {
+              "entity_id": "py_e_5",
+              "slot": "e_5"
+            },
+            {
+              "entity_id": "py_e_6",
+              "slot": "e_6"
+            },
+            {
+              "entity_id": "py_e_7",
+              "slot": "e_7"
+            },
+            {
+              "entity_id": "py_f_0",
+              "slot": "f_0"
+            },
+            {
+              "entity_id": "py_f_1",
+              "slot": "f_1"
+            },
+            {
+              "entity_id": "py_f_2",
+              "slot": "f_2"
+            },
+            {
+              "entity_id": "py_f_3",
+              "slot": "f_3"
+            },
+            {
+              "entity_id": "py_f_4",
+              "slot": "f_4"
+            },
+            {
+              "entity_id": "py_v_0",
+              "slot": "v_0"
+            },
+            {
+              "entity_id": "py_v_1",
+              "slot": "v_1"
+            },
+            {
+              "entity_id": "py_v_2",
+              "slot": "v_2"
+            },
+            {
+              "entity_id": "py_v_3",
+              "slot": "v_3"
+            },
+            {
+              "entity_id": "py_v_4",
+              "slot": "v_4"
+            }
+          ],
+          "frame": {
+            "origin": [
+              0,
+              0,
+              0
+            ],
+            "x_axis": [
+              1,
+              0,
+              0
+            ],
+            "y_axis": [
+              0,
+              1,
+              0
+            ]
+          },
+          "id": "py",
+          "kind": "pyramid",
+          "mode": "parametric",
+          "parameters": {
+            "apex_offset": [
+              0.0890053048921341,
+              0.2558863115588449
+            ],
+            "base": {
+              "kind": "polygon",
+              "vertices": [
+                [
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  3.0000000000000018,
+                  -0.18973665961010067,
+                  0.936754446796634
+                ],
+                [
+                  3,
+                  3,
+                  2
+                ],
+                [
+                  0,
+                  3,
+                  1
+                ]
+              ]
+            },
+            "height": -1.9999999999999996,
+            "sides": 4
+          }
+        }
+      ],
+      "surfaces": []
+    }
+  }
+]

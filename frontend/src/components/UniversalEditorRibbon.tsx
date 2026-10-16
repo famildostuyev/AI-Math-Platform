@@ -2,8 +2,7 @@ import { useContext, useEffect, useRef, useState } from 'react'
 import type { MathfieldElement } from 'mathlive'
 import MathContent from './MathContent'
 import MatrixMenu from './MatrixMenu'
-import { GEOMETRY_RIBBON, GEOMETRY_FUTURE_TITLE, type GeometryRibbonItem } from './geometryRibbonMenu'
-import { GEOMETRY_TOOLS_3D } from './geometry3dAuthoring'
+import { GEOMETRY_RIBBON, geometryRibbonTarget, geometryRibbonActionState, runGeometryRibbonAction, type GeometryRibbonItem } from './geometryRibbonMenu'
 import { Bold, Italic, Underline, Keyboard, Plus, Highlighter, List, ListOrdered, AlignLeft, AlignCenter, AlignRight, AlignJustify } from 'lucide-react'
 import { FORMULA_FONT_SIZES, UniversalEditorSessionContext, type ActiveContextCapability } from './universalEditorSession'
 import { getMathRibbonActions, getMoreMathRibbonActions, type MathRibbonAction } from './mathLiveRibbonMenu'
@@ -79,9 +78,10 @@ function NativeFormulaActions({ actions, disabled, onClose, ungrouped = false }:
     : <div key="commands" className="universal-editor-ribbon-commands">{buttons()}</div>)}</>
 }
 
-export default function UniversalEditorRibbon({ module, disabled, onCreateGeometryFrame, onCreateGeometryScene }: { module: string; disabled: boolean; onCreateGeometryFrame?: () => void; onCreateGeometryScene?: () => void }) {
+export default function UniversalEditorRibbon({ module, disabled, onCreateGeometryFrame, onCreateGeometryScene, geometryEditing=false }: { module: string; disabled: boolean; onCreateGeometryFrame?: () => void; onCreateGeometryScene?: () => void; geometryEditing?:boolean }) {
   const session = useContext(UniversalEditorSessionContext)
   const activeContext = session?.getActiveContext()
+  const geometryTarget=geometryRibbonTarget(activeContext,session?.geometryCommands,session?.geometry3DCommands)
   const activeText = activeContext?.kind === 'text'
   const activeMath = activeContext?.kind === 'formula' ? activeContext.field : null
   const textCommands = activeContext?.kind === 'text' ? activeContext.commands : null
@@ -97,8 +97,9 @@ export default function UniversalEditorRibbon({ module, disabled, onCreateGeomet
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [lastColor, setLastColor] = useState({ foreground: 'black', background: 'yellow' })
   const [clipboardNotice, setClipboardNotice] = useState('')
+  const [sceneRequest,setSceneRequest]=useState<string|null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; kind: 'text' | 'formula'; target: HTMLElement } | null>(null)
-  const context = `${module}:${disabled}:${!!activeMath}:${!!activeText}`
+  const context = `${module}:${disabled}:${!!activeMath}:${!!activeText}:${activeContext?.kind==='geometry'?activeContext.id:''}:${geometryTarget?.dimension??''}`
   const [menuContext, setMenuContext] = useState(context)
   if (menuContext !== context) {
     if (activeMenu) traceContext('ribbon-dropdown-close', { reason: 'context-change', targetKind: session?.activeContext.current?.kind ?? null, field: fieldTraceState(session?.math.current) })
@@ -314,13 +315,14 @@ export default function UniversalEditorRibbon({ module, disabled, onCreateGeomet
     const element = target instanceof Element ? target : null
     traceContext(`ribbon-${phase}`, { control: element?.closest('summary') ? 'summary' : element?.closest('button') ? 'button' : element?.closest('select') ? 'select' : 'other', targetKind: session?.activeContext.current?.kind ?? null, field: fieldTraceState(session?.math.current) })
   }
-  const geometry = activeContext?.kind === 'geometry' && session?.geometryCommands?.id === activeContext.id ? session.geometryCommands : null
-  const geometry3D = activeContext?.kind === 'geometry' && session?.geometry3DCommands?.id === activeContext.id ? session.geometry3DCommands : null
-  const geometryButton = (item: GeometryRibbonItem) => <button type="button" key={item.label}
-    disabled={disabled || !item.action || (item.action !== 'select' && (!geometry || geometry.disabled)) || (item.action === 'delete' && !geometry?.canDelete)}
-    aria-pressed={item.action && item.action !== 'delete' ? geometry?.tool === item.action : undefined}
-    title={!item.action ? [item.title, GEOMETRY_FUTURE_TITLE].filter(Boolean).join(' — ') : undefined}
-    onClick={() => { if (item.action && !disabled) geometry?.run(item.action); closeMenu() }}>{item.label}</button>
+  const geometryButton = (item: GeometryRibbonItem) => {
+    const state=geometryRibbonActionState(item,geometryTarget,disabled)
+    const request3D=geometryTarget?.dimension===2&&!item.action&&!!item.action3D&&!!onCreateGeometryScene&&!disabled&&!geometryTarget.commands.disabled
+    const solid=state.action&&['cube','cuboid','prism','pyramid'].includes(state.action)
+    return <button type="button" key={item.label} disabled={state.disabled&&!request3D} aria-pressed={state.action&&state.action!=='delete'?state.pressed:undefined}
+      data-geometry-action={item.action??item.action3D} data-tool-3d={geometryTarget?.dimension===3&&!solid?state.action:undefined} data-solid-3d={geometryTarget?.dimension===3&&solid?state.action:undefined} title={request3D?'Ayrıca 3D çərçivə yarat':state.title}
+      onClick={() => {if(request3D)setSceneRequest(item.label);else runGeometryRibbonAction(item,geometryRibbonTarget(session?.getActiveContext(),session?.geometryCommands,session?.geometry3DCommands),disabled);closeMenu()}}>{state.label}</button>
+  }
   return <div ref={ribbonRef} className="universal-editor-ribbon" data-editor-ribbon="" onPointerDownCapture={(event) => traceRibbonInteraction('pointerdown', event.target)} onClickCapture={(event) => traceRibbonInteraction('click', event.target)} onMouseDown={(event) => {
     if ((event.target as HTMLElement).closest('button')) event.preventDefault()
   }}>
@@ -395,10 +397,8 @@ export default function UniversalEditorRibbon({ module, disabled, onCreateGeomet
       <details open={activeMenu === 'Daha çox'}><summary {...trigger('Daha çox', !disabled)}>Daha çox ▾</summary><div className="universal-editor-ribbon-menu"><NativeFormulaActions actions={getMoreMathRibbonActions(mathActions)} disabled={disabled} onClose={closeMenu} /></div></details>
     </div>}
     <div className="universal-editor-geometry-ribbon" hidden={module !== 'geometry'} ref={session?.setGeometryToolbarHost} role="toolbar" aria-label="Həndəsə alətləri">
-      {module === 'geometry' && <button type="button" disabled={disabled || !onCreateGeometryScene} onClick={onCreateGeometryScene}>3D səhnə əlavə et</button>}
-      {module === 'geometry' && geometry3D && <>{GEOMETRY_TOOLS_3D.map(item=><button type="button" key={item.tool} data-tool-3d={item.tool} disabled={disabled||geometry3D.disabled} aria-pressed={geometry3D.tool===item.tool} onClick={()=>geometry3D.run(item.tool)}>{item.label}</button>)}<button type="button" disabled={disabled||geometry3D.disabled||!geometry3D.canDelete} onClick={()=>geometry3D.run('delete')}>3D seçiləni sil</button></>}
-      {module === 'geometry' && GEOMETRY_RIBBON.filter(item=>!geometry3D||item.create||item.label==='3D').map(item => item.create
-        ? <button key={item.label} type="button" disabled={disabled || !onCreateGeometryFrame} onClick={onCreateGeometryFrame}>{item.label}</button>
+      {module === 'geometry' && GEOMETRY_RIBBON.map(item => item.create
+        ? <details key={item.label} open={activeMenu==='geometry:create'}><summary {...trigger('geometry:create',!disabled&&(!!onCreateGeometryFrame||!!onCreateGeometryScene))}>{item.label} <span aria-hidden="true">▾</span></summary><div className="universal-editor-ribbon-menu"><section><button type="button" disabled={disabled||!onCreateGeometryFrame} onClick={()=>{onCreateGeometryFrame?.();closeMenu()}}>2D çərçivə</button><button type="button" disabled={disabled||!onCreateGeometryScene} onClick={()=>{onCreateGeometryScene?.();closeMenu()}}>3D çərçivə</button></section></div></details>
         : item.groups ? <details key={item.label} open={activeMenu === `geometry:${item.label}`}>
           <summary {...trigger(`geometry:${item.label}`, !disabled)}>{item.label} <span aria-hidden="true">▾</span></summary>
           <div className="universal-editor-ribbon-menu">{item.groups.map(group => <section key={group.label} aria-label={group.label || undefined}>
@@ -406,6 +406,11 @@ export default function UniversalEditorRibbon({ module, disabled, onCreateGeomet
           </section>)}</div>
         </details> : geometryButton(item))}
     </div>
+    {module==='geometry'&&sceneRequest&&<div role="status" data-geometry-scene-request="">
+      <span>{sceneRequest}: ayrıca 3D çərçivə tələb olunur. {geometryEditing?'Əvvəl cari çərçivədə “Tətbiq et” və ya “Ləğv et” seçin.':'2D məzmun dəyişdirilməyəcək.'}</span>
+      <button type="button" disabled={disabled||geometryEditing} onClick={()=>{onCreateGeometryScene?.();setSceneRequest(null)}}>3D çərçivə yarat</button>
+      <button type="button" onClick={()=>setSceneRequest(null)} aria-label="3D çərçivə təklifini bağla">Bağla</button>
+    </div>}
     <button className="universal-editor-global-keyboard" type="button" disabled={disabled || !activeContext || (activeContext.kind !== 'text' && activeContext.kind !== 'formula')} aria-pressed={session?.bottomPanel === 'keyboard'} title="Riyazi klaviatura" onClick={() => session?.toggleKeyboard()}><Keyboard size={15} /> Klaviatura</button>
     {contextMenu && <div className="universal-editor-context-menu" role="menu" aria-label="Redaktə menyusu" style={{ left: contextMenu.x, top: contextMenu.y }} onMouseDown={(event) => event.preventDefault()}>
       <button role="menuitem" type="button" disabled={disabled} onClick={() => { void runContextClipboard('cut') }}>Kəs <kbd>Ctrl+X</kbd></button>

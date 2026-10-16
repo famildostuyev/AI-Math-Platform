@@ -46,7 +46,7 @@ const occlusion={...source,print_camera:camera,constructions:[],planes:[],edges:
   {id:'a',position:[-2,0,-2],label:null},{id:'b',position:[2,0,-2],label:null},{id:'c',position:[2,0,2],label:null},{id:'e',position:[-2,0,2],label:null},{id:'f',position:[-4,1,0],label:null},{id:'g',position:[4,1,0],label:null},
 ]}
 assert.ok(geometrySceneSVG3D(occlusion).includes('stroke-dasharray="4 3"'),'SVG uses actual hidden intervals')
-assert.ok(!geometrySceneSVG3D({...occlusion,print_camera:{...camera,projection:'perspective'}}).includes('stroke-dasharray'),'M2 does not claim perspective hidden-edge resolution')
+assert.ok(geometrySceneSVG3D({...occlusion,print_camera:{...camera,projection:'perspective'}}).includes('stroke-dasharray'),'perspective uses geometric hidden-edge resolution')
 assert.throws(()=>createProjection3D({...camera,position:camera.target},600,300))
 assert.throws(()=>createProjection3D(camera,NaN,300))
 const scene={...source,print_camera:camera,planes:[],faces:[{id:'face_abc',boundary:['a','b','c']}],points:[...source.points.filter(p=>p.id!=='d'),{id:'d',position:[2,0,0],label:'<&'}]}

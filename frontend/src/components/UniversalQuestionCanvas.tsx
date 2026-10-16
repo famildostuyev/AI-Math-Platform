@@ -229,6 +229,7 @@ export default function UniversalQuestionCanvas({
   onCancelEdit, onSaveEdit, onDelete, onMove,
   framePlacements = {}, onFramePlacementChange, onSaveFrame,
 }: UniversalQuestionCanvasProps) {
+  const session=useContext(UniversalEditorSessionContext)
   const hasTextNode = document.nodes.some((node) => node.type === 'paragraph')
   return <section
     className="universal-question-canvas"
@@ -251,18 +252,18 @@ export default function UniversalQuestionCanvas({
         const placement = draft ?? defaultGeometryScenePlacement3D()
         return <article key={node.id} id={`universal-node-${node.id}`} className="universal-question-node--geometry">
           <VisualFrame id={node.id} placement={placement} floating={!!draft} selected={isSelected} disabled={disabled || (!!editingNodeId && editingNodeId !== node.id)}
-            minimum={{ width: 320, height: 260 }} onSelect={() => onSelectNode(node.id)} onChange={next => onFramePlacementChange?.(node.id, next)}>
-            {isEditing ? <GeometrySceneEditor key={node.id} value={scene} onChange={onEditingGeometryChange} targetId={node.id} disabled={disabled} /> : <GeometryScenePlaceholder scene={scene} />}
-            {isSelected && <div className="visual-frame__actions" data-frame-chrome="">
-              {isEditing ? <>
-                <button type="button" disabled={disabled} onClick={() => onSaveEdit(node.id)}><Save size={15} /> Yadda saxla</button>
+            minimum={{ width: 320, height: 260 }} onSelect={() => onSelectNode(node.id)} onChange={next => onFramePlacementChange?.(node.id, next)}
+            actions={isEditing ? <>
+                <button type="button" disabled={disabled} onClick={() => onSaveEdit(node.id)}><Save size={15} /> Tətbiq et</button>
                 <button type="button" onClick={onCancelEdit}><X size={15} /> Ləğv et</button>
               </> : <>
                 <button type="button" disabled={disabled} onClick={() => onStartEdit(node.id)}><Pencil size={15} /> Redaktə et</button>
-                <button type="button" disabled={disabled} onClick={() => onSaveFrame?.(node.id)}><Save size={15} /> Yadda saxla</button>
+                <button type="button" disabled={disabled} onClick={() => onSaveFrame?.(node.id)}><Save size={15} /> Tətbiq et</button>
                 <button type="button" disabled={disabled} onClick={() => onDelete(node.id)}><Trash2 size={15} /> Sil</button>
               </>}
-            </div>}
+            secondaryMenu={!isEditing&&<button type="button" disabled={disabled} onClick={()=>{if(session)session.geometryPropertiesRequest.current=node.id;onStartEdit(node.id)}}>Xassələri redaktə et</button>}>
+            {isEditing ? <GeometrySceneEditor key={node.id} value={scene} onChange={onEditingGeometryChange} targetId={node.id} disabled={disabled} /> : <GeometryScenePlaceholder scene={scene} targetId={node.id} />}
+
           </VisualFrame>
         </article>
       }
@@ -274,22 +275,22 @@ export default function UniversalQuestionCanvas({
         return <article key={node.id} id={`universal-node-${node.id}`} className="universal-question-node--geometry">
           <VisualFrame id={node.id} placement={placement} floating={!!draft} selected={isSelected} disabled={disabled || (!!editingNodeId && editingNodeId !== node.id)}
             minimum={geometryFrameMetrics(geometry).minimum} onSelect={() => onSelectNode(node.id)}
-            onChange={next => onFramePlacementChange?.(node.id, next)}>
+            onChange={next => onFramePlacementChange?.(node.id, next)}
+            actions={isEditing ? <>
+                <button type="button" disabled={disabled || !geometry.description.trim()} onClick={() => onSaveEdit(node.id)}><Save size={15} /> Tətbiq et</button>
+                <button type="button" onClick={onCancelEdit}><X size={15} /> Ləğv et</button>
+              </> : <>
+                <button type="button" disabled={disabled} onClick={() => onStartEdit(node.id)}><Pencil size={15} /> Redaktə et</button>
+                <button type="button" disabled={disabled} onClick={() => onSaveFrame?.(node.id)}><Save size={15} /> Tətbiq et</button>
+                <button type="button" disabled={disabled} onClick={() => onDelete(node.id)}><Trash2 size={15} /> Sil</button>
+              </>}
+            secondaryMenu={!isEditing&&<button type="button" disabled={disabled} onClick={()=>{if(session)session.geometryPropertiesRequest.current=node.id;onStartEdit(node.id)}}>Xassələri redaktə et</button>}>
             {isEditing ? <GeometryEditor key={node.id} value={geometry} onChange={next => {
               onEditingGeometryChange(next)
               if (draft) onFramePlacementChange?.(node.id, containGeometry(placement, next))
             }} disabled={disabled} targetId={node.id} frameSize={placement.size} />
               : <GeometryRenderer geometry={geometry} blockId={node.id} frameSize={placement.size} />}
-            {isSelected && <div className="visual-frame__actions" data-frame-chrome="">
-              {isEditing ? <>
-                <button type="button" disabled={disabled || !geometry.description.trim()} onClick={() => onSaveEdit(node.id)}><Save size={15} /> Yadda saxla</button>
-                <button type="button" onClick={onCancelEdit}><X size={15} /> Ləğv et</button>
-              </> : <>
-                <button type="button" disabled={disabled} onClick={() => onStartEdit(node.id)}><Pencil size={15} /> Redaktə et</button>
-                <button type="button" disabled={disabled} onClick={() => onSaveFrame?.(node.id)}><Save size={15} /> Yadda saxla</button>
-                <button type="button" disabled={disabled} onClick={() => onDelete(node.id)}><Trash2 size={15} /> Sil</button>
-              </>}
-            </div>}
+
           </VisualFrame>
         </article>
       }

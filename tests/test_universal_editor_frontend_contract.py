@@ -105,7 +105,7 @@ class UniversalEditorFrontendContractTest(unittest.TestCase):
     def test_geometry_tools_use_existing_engine_in_shared_ribbon(self) -> None:
         self.assertIn("setGeometryCommands({ id: targetId", self.geometry)
         self.assertIn("active.id !== targetId", self.geometry)
-        self.assertIn("geometry?.run(item.action)", self.ribbon)
+        self.assertIn("runGeometryRibbonAction(item,geometryRibbonTarget(session?.getActiveContext()", self.ribbon)
         self.assertIn("ref={session?.setGeometryToolbarHost}", self.ribbon)
         self.assertIn("<GeometryAuthoringBoard", self.geometry)
         self.assertIn("source_data: editingGeometry", self.editor)
@@ -120,8 +120,9 @@ class UniversalEditorFrontendContractTest(unittest.TestCase):
     def test_existing_authoring_engines_and_domain_sections_remain(self) -> None:
         for token in (
             "<UniversalEditorRibbon",
-            "const createGeometryFrame = () => {",
-            "onCreateGeometryFrame={createGeometryFrame}",
+            "const createGeometryFrame = (dimension: 2 | 3 = 2) => {",
+            "onCreateGeometryFrame={() => createGeometryFrame()}",
+            "onCreateGeometryScene={() => createGeometryFrame(3)}",
             "<AnswerEditorSection",
             "<SolutionEditorSection",
             "<AIAuthoringPanel",
@@ -133,8 +134,8 @@ class UniversalEditorFrontendContractTest(unittest.TestCase):
     def test_algebra_is_inline_ribbon_without_redundant_formula_form(self) -> None:
         self.assertIn("data-active-module={activeModule}", self.editor)
         self.assertIn("textAuthoringEnabled={activeModule === 'text' || activeModule === 'algebra'}", self.editor)
-        self.assertEqual(self.editor.count("const createGeometryFrame = () => {"), 1)
-        self.assertEqual(self.editor.count("onCreateGeometryFrame={createGeometryFrame}"), 1)
+        self.assertEqual(self.editor.count("const createGeometryFrame = (dimension: 2 | 3 = 2) => {"), 1)
+        self.assertEqual(self.editor.count("onCreateGeometryFrame={() => createGeometryFrame()}"), 1)
         self.assertNotIn("newFormula", self.editor)
         self.assertNotIn("createFormulaBlock", self.editor)
         for label in ("Əlavə et", "Kəsr", "Qüvvət", "Kök", "Mötərizə", "Funksiya", "Cəm/hasil", "İnteqral", "Limit", "Matris", "Simvollar", "Klaviatura"):
@@ -313,7 +314,8 @@ class UniversalEditorFrontendContractTest(unittest.TestCase):
         self.assertIn("restoreTextTarget", session)
         self.assertIn("session?.restoreMathTarget()", ribbon)
         self.assertIn("session?.activateGeometry(targetId, nextSelection)", geometry.replace("sessionRef.current?", "session?"))
-        self.assertIn("if (targetId) sessionRef.current?.unregisterGeometry(targetId)", geometry)
+        self.assertIn("if (!targetId) return", geometry)
+        self.assertIn("return () => sessionRef.current?.unregisterGeometry(targetId)", geometry)
         self.assertIn("onMouseDown={(event) => {", ribbon)
         self.assertIn("<summary {...trigger(label)} title={label}>", ribbon)
 
@@ -332,6 +334,17 @@ class UniversalEditorFrontendContractTest(unittest.TestCase):
         self.assertIn("session?.formatMath('bold')", ribbon)
         self.assertIn("session?.formatMath('italic')", ribbon)
         self.assertIn("session?.formatMath('font-size'", ribbon)
+
+
+    def test_document_drawer_keeps_metadata_without_geometry_properties(self) -> None:
+        drawer = self.editor.split("<dialog ref={documentDrawerRef}", 1)[1].split("</dialog>", 1)[0]
+        for field in ("Reviziya", "Status", "document-question-type", "Mənbə", "document-difficulty"):
+            self.assertIn(field, drawer)
+        self.assertNotIn("geometry-properties", drawer)
+        self.assertNotIn("setGeometryInspectorHost", self.editor)
+        panels = (ROOT / "frontend/src/components/GeometryEditorPanels.tsx").read_text(encoding="utf-8")
+        self.assertNotIn("setDocumentDrawerOpen", panels)
+        self.assertNotIn("showModal", panels)
 
 
 if __name__ == "__main__":

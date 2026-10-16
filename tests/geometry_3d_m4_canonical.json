@@ -1,0 +1,2177 @@
+{
+  "annotations": [],
+  "constructions": [],
+  "description": "3D həndəsə səhnəsi",
+  "dimension": 3,
+  "edges": [
+    {
+      "end": "concave_v_1",
+      "id": "concave_e_0",
+      "start": "concave_v_0"
+    },
+    {
+      "end": "concave_v_2",
+      "id": "concave_e_1",
+      "start": "concave_v_1"
+    },
+    {
+      "end": "concave_v_5",
+      "id": "concave_e_10",
+      "start": "concave_v_0"
+    },
+    {
+      "end": "concave_v_6",
+      "id": "concave_e_11",
+      "start": "concave_v_1"
+    },
+    {
+      "end": "concave_v_7",
+      "id": "concave_e_12",
+      "start": "concave_v_2"
+    },
+    {
+      "end": "concave_v_8",
+      "id": "concave_e_13",
+      "start": "concave_v_3"
+    },
+    {
+      "end": "concave_v_9",
+      "id": "concave_e_14",
+      "start": "concave_v_4"
+    },
+    {
+      "end": "concave_v_3",
+      "id": "concave_e_2",
+      "start": "concave_v_2"
+    },
+    {
+      "end": "concave_v_4",
+      "id": "concave_e_3",
+      "start": "concave_v_3"
+    },
+    {
+      "end": "concave_v_0",
+      "id": "concave_e_4",
+      "start": "concave_v_4"
+    },
+    {
+      "end": "concave_v_6",
+      "id": "concave_e_5",
+      "start": "concave_v_5"
+    },
+    {
+      "end": "concave_v_7",
+      "id": "concave_e_6",
+      "start": "concave_v_6"
+    },
+    {
+      "end": "concave_v_8",
+      "id": "concave_e_7",
+      "start": "concave_v_7"
+    },
+    {
+      "end": "concave_v_9",
+      "id": "concave_e_8",
+      "start": "concave_v_8"
+    },
+    {
+      "end": "concave_v_5",
+      "id": "concave_e_9",
+      "start": "concave_v_9"
+    },
+    {
+      "end": "cube_v_1",
+      "id": "cube_e_0",
+      "start": "cube_v_0"
+    },
+    {
+      "end": "cube_v_2",
+      "id": "cube_e_1",
+      "start": "cube_v_1"
+    },
+    {
+      "end": "cube_v_6",
+      "id": "cube_e_10",
+      "start": "cube_v_2"
+    },
+    {
+      "end": "cube_v_7",
+      "id": "cube_e_11",
+      "start": "cube_v_3"
+    },
+    {
+      "end": "cube_v_3",
+      "id": "cube_e_2",
+      "start": "cube_v_2"
+    },
+    {
+      "end": "cube_v_0",
+      "id": "cube_e_3",
+      "start": "cube_v_3"
+    },
+    {
+      "end": "cube_v_5",
+      "id": "cube_e_4",
+      "start": "cube_v_4"
+    },
+    {
+      "end": "cube_v_6",
+      "id": "cube_e_5",
+      "start": "cube_v_5"
+    },
+    {
+      "end": "cube_v_7",
+      "id": "cube_e_6",
+      "start": "cube_v_6"
+    },
+    {
+      "end": "cube_v_4",
+      "id": "cube_e_7",
+      "start": "cube_v_7"
+    },
+    {
+      "end": "cube_v_4",
+      "id": "cube_e_8",
+      "start": "cube_v_0"
+    },
+    {
+      "end": "cube_v_5",
+      "id": "cube_e_9",
+      "start": "cube_v_1"
+    },
+    {
+      "end": "cuboid_v_1",
+      "id": "cuboid_e_0",
+      "start": "cuboid_v_0"
+    },
+    {
+      "end": "cuboid_v_2",
+      "id": "cuboid_e_1",
+      "start": "cuboid_v_1"
+    },
+    {
+      "end": "cuboid_v_6",
+      "id": "cuboid_e_10",
+      "start": "cuboid_v_2"
+    },
+    {
+      "end": "cuboid_v_7",
+      "id": "cuboid_e_11",
+      "start": "cuboid_v_3"
+    },
+    {
+      "end": "cuboid_v_3",
+      "id": "cuboid_e_2",
+      "start": "cuboid_v_2"
+    },
+    {
+      "end": "cuboid_v_0",
+      "id": "cuboid_e_3",
+      "start": "cuboid_v_3"
+    },
+    {
+      "end": "cuboid_v_5",
+      "id": "cuboid_e_4",
+      "start": "cuboid_v_4"
+    },
+    {
+      "end": "cuboid_v_6",
+      "id": "cuboid_e_5",
+      "start": "cuboid_v_5"
+    },
+    {
+      "end": "cuboid_v_7",
+      "id": "cuboid_e_6",
+      "start": "cuboid_v_6"
+    },
+    {
+      "end": "cuboid_v_4",
+      "id": "cuboid_e_7",
+      "start": "cuboid_v_7"
+    },
+    {
+      "end": "cuboid_v_4",
+      "id": "cuboid_e_8",
+      "start": "cuboid_v_0"
+    },
+    {
+      "end": "cuboid_v_5",
+      "id": "cuboid_e_9",
+      "start": "cuboid_v_1"
+    },
+    {
+      "end": "existing_pyramid_v_1",
+      "id": "existing_pyramid_e_0",
+      "start": "existing_pyramid_v_0"
+    },
+    {
+      "end": "existing_pyramid_v_2",
+      "id": "existing_pyramid_e_1",
+      "start": "existing_pyramid_v_1"
+    },
+    {
+      "end": "existing_pyramid_v_3",
+      "id": "existing_pyramid_e_2",
+      "start": "existing_pyramid_v_2"
+    },
+    {
+      "end": "existing_pyramid_v_4",
+      "id": "existing_pyramid_e_3",
+      "start": "existing_pyramid_v_3"
+    },
+    {
+      "end": "existing_pyramid_v_0",
+      "id": "existing_pyramid_e_4",
+      "start": "existing_pyramid_v_4"
+    },
+    {
+      "end": "existing_pyramid_v_5",
+      "id": "existing_pyramid_e_5",
+      "start": "existing_pyramid_v_0"
+    },
+    {
+      "end": "existing_pyramid_v_5",
+      "id": "existing_pyramid_e_6",
+      "start": "existing_pyramid_v_1"
+    },
+    {
+      "end": "existing_pyramid_v_5",
+      "id": "existing_pyramid_e_7",
+      "start": "existing_pyramid_v_2"
+    },
+    {
+      "end": "existing_pyramid_v_5",
+      "id": "existing_pyramid_e_8",
+      "start": "existing_pyramid_v_3"
+    },
+    {
+      "end": "existing_pyramid_v_5",
+      "id": "existing_pyramid_e_9",
+      "start": "existing_pyramid_v_4"
+    },
+    {
+      "end": "negative_prism_v_1",
+      "id": "negative_prism_e_0",
+      "start": "negative_prism_v_0"
+    },
+    {
+      "end": "negative_prism_v_2",
+      "id": "negative_prism_e_1",
+      "start": "negative_prism_v_1"
+    },
+    {
+      "end": "negative_prism_v_0",
+      "id": "negative_prism_e_2",
+      "start": "negative_prism_v_2"
+    },
+    {
+      "end": "negative_prism_v_4",
+      "id": "negative_prism_e_3",
+      "start": "negative_prism_v_3"
+    },
+    {
+      "end": "negative_prism_v_5",
+      "id": "negative_prism_e_4",
+      "start": "negative_prism_v_4"
+    },
+    {
+      "end": "negative_prism_v_3",
+      "id": "negative_prism_e_5",
+      "start": "negative_prism_v_5"
+    },
+    {
+      "end": "negative_prism_v_3",
+      "id": "negative_prism_e_6",
+      "start": "negative_prism_v_0"
+    },
+    {
+      "end": "negative_prism_v_4",
+      "id": "negative_prism_e_7",
+      "start": "negative_prism_v_1"
+    },
+    {
+      "end": "negative_prism_v_5",
+      "id": "negative_prism_e_8",
+      "start": "negative_prism_v_2"
+    },
+    {
+      "end": "negative_pyramid_v_1",
+      "id": "negative_pyramid_e_0",
+      "start": "negative_pyramid_v_0"
+    },
+    {
+      "end": "negative_pyramid_v_2",
+      "id": "negative_pyramid_e_1",
+      "start": "negative_pyramid_v_1"
+    },
+    {
+      "end": "negative_pyramid_v_3",
+      "id": "negative_pyramid_e_2",
+      "start": "negative_pyramid_v_2"
+    },
+    {
+      "end": "negative_pyramid_v_0",
+      "id": "negative_pyramid_e_3",
+      "start": "negative_pyramid_v_3"
+    },
+    {
+      "end": "negative_pyramid_v_4",
+      "id": "negative_pyramid_e_4",
+      "start": "negative_pyramid_v_0"
+    },
+    {
+      "end": "negative_pyramid_v_4",
+      "id": "negative_pyramid_e_5",
+      "start": "negative_pyramid_v_1"
+    },
+    {
+      "end": "negative_pyramid_v_4",
+      "id": "negative_pyramid_e_6",
+      "start": "negative_pyramid_v_2"
+    },
+    {
+      "end": "negative_pyramid_v_4",
+      "id": "negative_pyramid_e_7",
+      "start": "negative_pyramid_v_3"
+    },
+    {
+      "end": "pyramid_v_1",
+      "id": "pyramid_e_0",
+      "start": "pyramid_v_0"
+    },
+    {
+      "end": "pyramid_v_2",
+      "id": "pyramid_e_1",
+      "start": "pyramid_v_1"
+    },
+    {
+      "end": "pyramid_v_3",
+      "id": "pyramid_e_2",
+      "start": "pyramid_v_2"
+    },
+    {
+      "end": "pyramid_v_0",
+      "id": "pyramid_e_3",
+      "start": "pyramid_v_3"
+    },
+    {
+      "end": "pyramid_v_4",
+      "id": "pyramid_e_4",
+      "start": "pyramid_v_0"
+    },
+    {
+      "end": "pyramid_v_4",
+      "id": "pyramid_e_5",
+      "start": "pyramid_v_1"
+    },
+    {
+      "end": "pyramid_v_4",
+      "id": "pyramid_e_6",
+      "start": "pyramid_v_2"
+    },
+    {
+      "end": "pyramid_v_4",
+      "id": "pyramid_e_7",
+      "start": "pyramid_v_3"
+    }
+  ],
+  "faces": [
+    {
+      "boundary": [
+        "b0",
+        "b1",
+        "b2",
+        "b3",
+        "b4"
+      ],
+      "id": "base"
+    },
+    {
+      "boundary": [
+        "concave_v_4",
+        "concave_v_3",
+        "concave_v_2",
+        "concave_v_1",
+        "concave_v_0"
+      ],
+      "id": "concave_f_0"
+    },
+    {
+      "boundary": [
+        "concave_v_5",
+        "concave_v_6",
+        "concave_v_7",
+        "concave_v_8",
+        "concave_v_9"
+      ],
+      "id": "concave_f_1"
+    },
+    {
+      "boundary": [
+        "concave_v_0",
+        "concave_v_1",
+        "concave_v_6",
+        "concave_v_5"
+      ],
+      "id": "concave_f_2"
+    },
+    {
+      "boundary": [
+        "concave_v_1",
+        "concave_v_2",
+        "concave_v_7",
+        "concave_v_6"
+      ],
+      "id": "concave_f_3"
+    },
+    {
+      "boundary": [
+        "concave_v_2",
+        "concave_v_3",
+        "concave_v_8",
+        "concave_v_7"
+      ],
+      "id": "concave_f_4"
+    },
+    {
+      "boundary": [
+        "concave_v_3",
+        "concave_v_4",
+        "concave_v_9",
+        "concave_v_8"
+      ],
+      "id": "concave_f_5"
+    },
+    {
+      "boundary": [
+        "concave_v_4",
+        "concave_v_0",
+        "concave_v_5",
+        "concave_v_9"
+      ],
+      "id": "concave_f_6"
+    },
+    {
+      "boundary": [
+        "cube_v_3",
+        "cube_v_2",
+        "cube_v_1",
+        "cube_v_0"
+      ],
+      "id": "cube_f_0"
+    },
+    {
+      "boundary": [
+        "cube_v_4",
+        "cube_v_5",
+        "cube_v_6",
+        "cube_v_7"
+      ],
+      "id": "cube_f_1"
+    },
+    {
+      "boundary": [
+        "cube_v_0",
+        "cube_v_1",
+        "cube_v_5",
+        "cube_v_4"
+      ],
+      "id": "cube_f_2"
+    },
+    {
+      "boundary": [
+        "cube_v_1",
+        "cube_v_2",
+        "cube_v_6",
+        "cube_v_5"
+      ],
+      "id": "cube_f_3"
+    },
+    {
+      "boundary": [
+        "cube_v_2",
+        "cube_v_3",
+        "cube_v_7",
+        "cube_v_6"
+      ],
+      "id": "cube_f_4"
+    },
+    {
+      "boundary": [
+        "cube_v_3",
+        "cube_v_0",
+        "cube_v_4",
+        "cube_v_7"
+      ],
+      "id": "cube_f_5"
+    },
+    {
+      "boundary": [
+        "cuboid_v_3",
+        "cuboid_v_2",
+        "cuboid_v_1",
+        "cuboid_v_0"
+      ],
+      "id": "cuboid_f_0"
+    },
+    {
+      "boundary": [
+        "cuboid_v_4",
+        "cuboid_v_5",
+        "cuboid_v_6",
+        "cuboid_v_7"
+      ],
+      "id": "cuboid_f_1"
+    },
+    {
+      "boundary": [
+        "cuboid_v_0",
+        "cuboid_v_1",
+        "cuboid_v_5",
+        "cuboid_v_4"
+      ],
+      "id": "cuboid_f_2"
+    },
+    {
+      "boundary": [
+        "cuboid_v_1",
+        "cuboid_v_2",
+        "cuboid_v_6",
+        "cuboid_v_5"
+      ],
+      "id": "cuboid_f_3"
+    },
+    {
+      "boundary": [
+        "cuboid_v_2",
+        "cuboid_v_3",
+        "cuboid_v_7",
+        "cuboid_v_6"
+      ],
+      "id": "cuboid_f_4"
+    },
+    {
+      "boundary": [
+        "cuboid_v_3",
+        "cuboid_v_0",
+        "cuboid_v_4",
+        "cuboid_v_7"
+      ],
+      "id": "cuboid_f_5"
+    },
+    {
+      "boundary": [
+        "existing_pyramid_v_4",
+        "existing_pyramid_v_3",
+        "existing_pyramid_v_2",
+        "existing_pyramid_v_1",
+        "existing_pyramid_v_0"
+      ],
+      "id": "existing_pyramid_f_0"
+    },
+    {
+      "boundary": [
+        "existing_pyramid_v_0",
+        "existing_pyramid_v_1",
+        "existing_pyramid_v_5"
+      ],
+      "id": "existing_pyramid_f_1"
+    },
+    {
+      "boundary": [
+        "existing_pyramid_v_1",
+        "existing_pyramid_v_2",
+        "existing_pyramid_v_5"
+      ],
+      "id": "existing_pyramid_f_2"
+    },
+    {
+      "boundary": [
+        "existing_pyramid_v_2",
+        "existing_pyramid_v_3",
+        "existing_pyramid_v_5"
+      ],
+      "id": "existing_pyramid_f_3"
+    },
+    {
+      "boundary": [
+        "existing_pyramid_v_3",
+        "existing_pyramid_v_4",
+        "existing_pyramid_v_5"
+      ],
+      "id": "existing_pyramid_f_4"
+    },
+    {
+      "boundary": [
+        "existing_pyramid_v_4",
+        "existing_pyramid_v_0",
+        "existing_pyramid_v_5"
+      ],
+      "id": "existing_pyramid_f_5"
+    },
+    {
+      "boundary": [
+        "negative_prism_v_2",
+        "negative_prism_v_1",
+        "negative_prism_v_0"
+      ],
+      "id": "negative_prism_f_0"
+    },
+    {
+      "boundary": [
+        "negative_prism_v_3",
+        "negative_prism_v_4",
+        "negative_prism_v_5"
+      ],
+      "id": "negative_prism_f_1"
+    },
+    {
+      "boundary": [
+        "negative_prism_v_0",
+        "negative_prism_v_1",
+        "negative_prism_v_4",
+        "negative_prism_v_3"
+      ],
+      "id": "negative_prism_f_2"
+    },
+    {
+      "boundary": [
+        "negative_prism_v_1",
+        "negative_prism_v_2",
+        "negative_prism_v_5",
+        "negative_prism_v_4"
+      ],
+      "id": "negative_prism_f_3"
+    },
+    {
+      "boundary": [
+        "negative_prism_v_2",
+        "negative_prism_v_0",
+        "negative_prism_v_3",
+        "negative_prism_v_5"
+      ],
+      "id": "negative_prism_f_4"
+    },
+    {
+      "boundary": [
+        "negative_pyramid_v_3",
+        "negative_pyramid_v_2",
+        "negative_pyramid_v_1",
+        "negative_pyramid_v_0"
+      ],
+      "id": "negative_pyramid_f_0"
+    },
+    {
+      "boundary": [
+        "negative_pyramid_v_0",
+        "negative_pyramid_v_1",
+        "negative_pyramid_v_4"
+      ],
+      "id": "negative_pyramid_f_1"
+    },
+    {
+      "boundary": [
+        "negative_pyramid_v_1",
+        "negative_pyramid_v_2",
+        "negative_pyramid_v_4"
+      ],
+      "id": "negative_pyramid_f_2"
+    },
+    {
+      "boundary": [
+        "negative_pyramid_v_2",
+        "negative_pyramid_v_3",
+        "negative_pyramid_v_4"
+      ],
+      "id": "negative_pyramid_f_3"
+    },
+    {
+      "boundary": [
+        "negative_pyramid_v_3",
+        "negative_pyramid_v_0",
+        "negative_pyramid_v_4"
+      ],
+      "id": "negative_pyramid_f_4"
+    },
+    {
+      "boundary": [
+        "pyramid_v_3",
+        "pyramid_v_2",
+        "pyramid_v_1",
+        "pyramid_v_0"
+      ],
+      "id": "pyramid_f_0"
+    },
+    {
+      "boundary": [
+        "pyramid_v_0",
+        "pyramid_v_1",
+        "pyramid_v_4"
+      ],
+      "id": "pyramid_f_1"
+    },
+    {
+      "boundary": [
+        "pyramid_v_1",
+        "pyramid_v_2",
+        "pyramid_v_4"
+      ],
+      "id": "pyramid_f_2"
+    },
+    {
+      "boundary": [
+        "pyramid_v_2",
+        "pyramid_v_3",
+        "pyramid_v_4"
+      ],
+      "id": "pyramid_f_3"
+    },
+    {
+      "boundary": [
+        "pyramid_v_3",
+        "pyramid_v_0",
+        "pyramid_v_4"
+      ],
+      "id": "pyramid_f_4"
+    }
+  ],
+  "linear_objects": [
+    {
+      "a": "b0",
+      "b": "b1",
+      "id": "segment0",
+      "kind": "segment"
+    },
+    {
+      "a": "b1",
+      "b": "b2",
+      "id": "segment1",
+      "kind": "segment"
+    },
+    {
+      "a": "b2",
+      "b": "b3",
+      "id": "segment2",
+      "kind": "segment"
+    },
+    {
+      "a": "b3",
+      "b": "b4",
+      "id": "segment3",
+      "kind": "segment"
+    },
+    {
+      "a": "b4",
+      "b": "b0",
+      "id": "segment4",
+      "kind": "segment"
+    }
+  ],
+  "markings": [],
+  "planes": [],
+  "points": [
+    {
+      "id": "b0",
+      "label": null,
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "b1",
+      "label": null,
+      "position": [
+        3,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "b2",
+      "label": null,
+      "position": [
+        3,
+        3,
+        0
+      ]
+    },
+    {
+      "id": "b3",
+      "label": null,
+      "position": [
+        1.5,
+        1.5,
+        0
+      ]
+    },
+    {
+      "id": "b4",
+      "label": null,
+      "position": [
+        0,
+        3,
+        0
+      ]
+    },
+    {
+      "id": "concave_v_0",
+      "label": null,
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "concave_v_1",
+      "label": null,
+      "position": [
+        3,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "concave_v_2",
+      "label": null,
+      "position": [
+        3,
+        3,
+        0
+      ]
+    },
+    {
+      "id": "concave_v_3",
+      "label": null,
+      "position": [
+        1.5,
+        1.5,
+        0
+      ]
+    },
+    {
+      "id": "concave_v_4",
+      "label": null,
+      "position": [
+        0,
+        3,
+        0
+      ]
+    },
+    {
+      "id": "concave_v_5",
+      "label": null,
+      "position": [
+        0,
+        0,
+        2
+      ]
+    },
+    {
+      "id": "concave_v_6",
+      "label": null,
+      "position": [
+        3,
+        0,
+        2
+      ]
+    },
+    {
+      "id": "concave_v_7",
+      "label": null,
+      "position": [
+        3,
+        3,
+        2
+      ]
+    },
+    {
+      "id": "concave_v_8",
+      "label": null,
+      "position": [
+        1.5,
+        1.5,
+        2
+      ]
+    },
+    {
+      "id": "concave_v_9",
+      "label": null,
+      "position": [
+        0,
+        3,
+        2
+      ]
+    },
+    {
+      "id": "cube_v_0",
+      "label": null,
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "cube_v_1",
+      "label": null,
+      "position": [
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "cube_v_2",
+      "label": null,
+      "position": [
+        2,
+        2,
+        0
+      ]
+    },
+    {
+      "id": "cube_v_3",
+      "label": null,
+      "position": [
+        0,
+        2,
+        0
+      ]
+    },
+    {
+      "id": "cube_v_4",
+      "label": null,
+      "position": [
+        0,
+        0,
+        2
+      ]
+    },
+    {
+      "id": "cube_v_5",
+      "label": null,
+      "position": [
+        2,
+        0,
+        2
+      ]
+    },
+    {
+      "id": "cube_v_6",
+      "label": null,
+      "position": [
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "id": "cube_v_7",
+      "label": null,
+      "position": [
+        0,
+        2,
+        2
+      ]
+    },
+    {
+      "id": "cuboid_v_0",
+      "label": null,
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "cuboid_v_1",
+      "label": null,
+      "position": [
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "cuboid_v_2",
+      "label": null,
+      "position": [
+        2,
+        3,
+        0
+      ]
+    },
+    {
+      "id": "cuboid_v_3",
+      "label": null,
+      "position": [
+        0,
+        3,
+        0
+      ]
+    },
+    {
+      "id": "cuboid_v_4",
+      "label": null,
+      "position": [
+        0,
+        0,
+        2
+      ]
+    },
+    {
+      "id": "cuboid_v_5",
+      "label": null,
+      "position": [
+        2,
+        0,
+        2
+      ]
+    },
+    {
+      "id": "cuboid_v_6",
+      "label": null,
+      "position": [
+        2,
+        3,
+        2
+      ]
+    },
+    {
+      "id": "cuboid_v_7",
+      "label": null,
+      "position": [
+        0,
+        3,
+        2
+      ]
+    },
+    {
+      "id": "existing_pyramid_v_0",
+      "label": null,
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "existing_pyramid_v_1",
+      "label": null,
+      "position": [
+        3,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "existing_pyramid_v_2",
+      "label": null,
+      "position": [
+        3,
+        3,
+        0
+      ]
+    },
+    {
+      "id": "existing_pyramid_v_3",
+      "label": null,
+      "position": [
+        1.5,
+        1.5,
+        0
+      ]
+    },
+    {
+      "id": "existing_pyramid_v_4",
+      "label": null,
+      "position": [
+        0,
+        3,
+        0
+      ]
+    },
+    {
+      "id": "existing_pyramid_v_5",
+      "label": null,
+      "position": [
+        1.5,
+        1.5,
+        2
+      ]
+    },
+    {
+      "id": "negative_prism_v_0",
+      "label": null,
+      "position": [
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "negative_prism_v_1",
+      "label": null,
+      "position": [
+        -0.9999999999999996,
+        1.7320508075688774,
+        0
+      ]
+    },
+    {
+      "id": "negative_prism_v_2",
+      "label": null,
+      "position": [
+        -1.0000000000000009,
+        -1.732050807568877,
+        0
+      ]
+    },
+    {
+      "id": "negative_prism_v_3",
+      "label": null,
+      "position": [
+        2,
+        0,
+        -1.9999999999999998
+      ]
+    },
+    {
+      "id": "negative_prism_v_4",
+      "label": null,
+      "position": [
+        -0.9999999999999996,
+        1.7320508075688774,
+        -1.9999999999999998
+      ]
+    },
+    {
+      "id": "negative_prism_v_5",
+      "label": null,
+      "position": [
+        -1.0000000000000009,
+        -1.732050807568877,
+        -1.9999999999999998
+      ]
+    },
+    {
+      "id": "negative_pyramid_v_0",
+      "label": null,
+      "position": [
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "negative_pyramid_v_1",
+      "label": null,
+      "position": [
+        1.2246467991473532e-16,
+        2,
+        0
+      ]
+    },
+    {
+      "id": "negative_pyramid_v_2",
+      "label": null,
+      "position": [
+        -2,
+        2.4492935982947064e-16,
+        0
+      ]
+    },
+    {
+      "id": "negative_pyramid_v_3",
+      "label": null,
+      "position": [
+        -3.6739403974420594e-16,
+        -2,
+        0
+      ]
+    },
+    {
+      "id": "negative_pyramid_v_4",
+      "label": null,
+      "position": [
+        -9.184850993605148e-17,
+        1.1102230246251565e-16,
+        -2
+      ]
+    },
+    {
+      "id": "pyramid_v_0",
+      "label": null,
+      "position": [
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "pyramid_v_1",
+      "label": null,
+      "position": [
+        1.2246467991473532e-16,
+        2,
+        0
+      ]
+    },
+    {
+      "id": "pyramid_v_2",
+      "label": null,
+      "position": [
+        -2,
+        2.4492935982947064e-16,
+        0
+      ]
+    },
+    {
+      "id": "pyramid_v_3",
+      "label": null,
+      "position": [
+        -3.6739403974420594e-16,
+        -2,
+        0
+      ]
+    },
+    {
+      "id": "pyramid_v_4",
+      "label": null,
+      "position": [
+        -9.184850993605148e-17,
+        1.1102230246251565e-16,
+        2
+      ]
+    }
+  ],
+  "print_camera": {
+    "far": 1000,
+    "fov_degrees": 45,
+    "near": 0.01,
+    "position": [
+      4,
+      3,
+      5
+    ],
+    "projection": "orthographic",
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ],
+    "vertical_span": 10
+  },
+  "schema_version": 2,
+  "solids": [
+    {
+      "features": [
+        {
+          "entity_id": "concave_e_0",
+          "slot": "e_0"
+        },
+        {
+          "entity_id": "concave_e_1",
+          "slot": "e_1"
+        },
+        {
+          "entity_id": "concave_e_10",
+          "slot": "e_10"
+        },
+        {
+          "entity_id": "concave_e_11",
+          "slot": "e_11"
+        },
+        {
+          "entity_id": "concave_e_12",
+          "slot": "e_12"
+        },
+        {
+          "entity_id": "concave_e_13",
+          "slot": "e_13"
+        },
+        {
+          "entity_id": "concave_e_14",
+          "slot": "e_14"
+        },
+        {
+          "entity_id": "concave_e_2",
+          "slot": "e_2"
+        },
+        {
+          "entity_id": "concave_e_3",
+          "slot": "e_3"
+        },
+        {
+          "entity_id": "concave_e_4",
+          "slot": "e_4"
+        },
+        {
+          "entity_id": "concave_e_5",
+          "slot": "e_5"
+        },
+        {
+          "entity_id": "concave_e_6",
+          "slot": "e_6"
+        },
+        {
+          "entity_id": "concave_e_7",
+          "slot": "e_7"
+        },
+        {
+          "entity_id": "concave_e_8",
+          "slot": "e_8"
+        },
+        {
+          "entity_id": "concave_e_9",
+          "slot": "e_9"
+        },
+        {
+          "entity_id": "concave_f_0",
+          "slot": "f_0"
+        },
+        {
+          "entity_id": "concave_f_1",
+          "slot": "f_1"
+        },
+        {
+          "entity_id": "concave_f_2",
+          "slot": "f_2"
+        },
+        {
+          "entity_id": "concave_f_3",
+          "slot": "f_3"
+        },
+        {
+          "entity_id": "concave_f_4",
+          "slot": "f_4"
+        },
+        {
+          "entity_id": "concave_f_5",
+          "slot": "f_5"
+        },
+        {
+          "entity_id": "concave_f_6",
+          "slot": "f_6"
+        },
+        {
+          "entity_id": "concave_v_0",
+          "slot": "v_0"
+        },
+        {
+          "entity_id": "concave_v_1",
+          "slot": "v_1"
+        },
+        {
+          "entity_id": "concave_v_2",
+          "slot": "v_2"
+        },
+        {
+          "entity_id": "concave_v_3",
+          "slot": "v_3"
+        },
+        {
+          "entity_id": "concave_v_4",
+          "slot": "v_4"
+        },
+        {
+          "entity_id": "concave_v_5",
+          "slot": "v_5"
+        },
+        {
+          "entity_id": "concave_v_6",
+          "slot": "v_6"
+        },
+        {
+          "entity_id": "concave_v_7",
+          "slot": "v_7"
+        },
+        {
+          "entity_id": "concave_v_8",
+          "slot": "v_8"
+        },
+        {
+          "entity_id": "concave_v_9",
+          "slot": "v_9"
+        }
+      ],
+      "frame": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ]
+      },
+      "id": "concave",
+      "kind": "prism",
+      "mode": "parametric",
+      "parameters": {
+        "base": {
+          "face_id": "base",
+          "kind": "face",
+          "point_ids": [
+            "b0",
+            "b1",
+            "b2",
+            "b3",
+            "b4"
+          ]
+        },
+        "direction": [
+          0,
+          0,
+          1
+        ],
+        "height": 2,
+        "sides": 5
+      }
+    },
+    {
+      "features": [
+        {
+          "entity_id": "cube_e_0",
+          "slot": "e_0"
+        },
+        {
+          "entity_id": "cube_e_1",
+          "slot": "e_1"
+        },
+        {
+          "entity_id": "cube_e_10",
+          "slot": "e_10"
+        },
+        {
+          "entity_id": "cube_e_11",
+          "slot": "e_11"
+        },
+        {
+          "entity_id": "cube_e_2",
+          "slot": "e_2"
+        },
+        {
+          "entity_id": "cube_e_3",
+          "slot": "e_3"
+        },
+        {
+          "entity_id": "cube_e_4",
+          "slot": "e_4"
+        },
+        {
+          "entity_id": "cube_e_5",
+          "slot": "e_5"
+        },
+        {
+          "entity_id": "cube_e_6",
+          "slot": "e_6"
+        },
+        {
+          "entity_id": "cube_e_7",
+          "slot": "e_7"
+        },
+        {
+          "entity_id": "cube_e_8",
+          "slot": "e_8"
+        },
+        {
+          "entity_id": "cube_e_9",
+          "slot": "e_9"
+        },
+        {
+          "entity_id": "cube_f_0",
+          "slot": "f_0"
+        },
+        {
+          "entity_id": "cube_f_1",
+          "slot": "f_1"
+        },
+        {
+          "entity_id": "cube_f_2",
+          "slot": "f_2"
+        },
+        {
+          "entity_id": "cube_f_3",
+          "slot": "f_3"
+        },
+        {
+          "entity_id": "cube_f_4",
+          "slot": "f_4"
+        },
+        {
+          "entity_id": "cube_f_5",
+          "slot": "f_5"
+        },
+        {
+          "entity_id": "cube_v_0",
+          "slot": "v_0"
+        },
+        {
+          "entity_id": "cube_v_1",
+          "slot": "v_1"
+        },
+        {
+          "entity_id": "cube_v_2",
+          "slot": "v_2"
+        },
+        {
+          "entity_id": "cube_v_3",
+          "slot": "v_3"
+        },
+        {
+          "entity_id": "cube_v_4",
+          "slot": "v_4"
+        },
+        {
+          "entity_id": "cube_v_5",
+          "slot": "v_5"
+        },
+        {
+          "entity_id": "cube_v_6",
+          "slot": "v_6"
+        },
+        {
+          "entity_id": "cube_v_7",
+          "slot": "v_7"
+        }
+      ],
+      "frame": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ]
+      },
+      "id": "cube",
+      "kind": "cube",
+      "mode": "parametric",
+      "parameters": {
+        "side": 2
+      }
+    },
+    {
+      "features": [
+        {
+          "entity_id": "cuboid_e_0",
+          "slot": "e_0"
+        },
+        {
+          "entity_id": "cuboid_e_1",
+          "slot": "e_1"
+        },
+        {
+          "entity_id": "cuboid_e_10",
+          "slot": "e_10"
+        },
+        {
+          "entity_id": "cuboid_e_11",
+          "slot": "e_11"
+        },
+        {
+          "entity_id": "cuboid_e_2",
+          "slot": "e_2"
+        },
+        {
+          "entity_id": "cuboid_e_3",
+          "slot": "e_3"
+        },
+        {
+          "entity_id": "cuboid_e_4",
+          "slot": "e_4"
+        },
+        {
+          "entity_id": "cuboid_e_5",
+          "slot": "e_5"
+        },
+        {
+          "entity_id": "cuboid_e_6",
+          "slot": "e_6"
+        },
+        {
+          "entity_id": "cuboid_e_7",
+          "slot": "e_7"
+        },
+        {
+          "entity_id": "cuboid_e_8",
+          "slot": "e_8"
+        },
+        {
+          "entity_id": "cuboid_e_9",
+          "slot": "e_9"
+        },
+        {
+          "entity_id": "cuboid_f_0",
+          "slot": "f_0"
+        },
+        {
+          "entity_id": "cuboid_f_1",
+          "slot": "f_1"
+        },
+        {
+          "entity_id": "cuboid_f_2",
+          "slot": "f_2"
+        },
+        {
+          "entity_id": "cuboid_f_3",
+          "slot": "f_3"
+        },
+        {
+          "entity_id": "cuboid_f_4",
+          "slot": "f_4"
+        },
+        {
+          "entity_id": "cuboid_f_5",
+          "slot": "f_5"
+        },
+        {
+          "entity_id": "cuboid_v_0",
+          "slot": "v_0"
+        },
+        {
+          "entity_id": "cuboid_v_1",
+          "slot": "v_1"
+        },
+        {
+          "entity_id": "cuboid_v_2",
+          "slot": "v_2"
+        },
+        {
+          "entity_id": "cuboid_v_3",
+          "slot": "v_3"
+        },
+        {
+          "entity_id": "cuboid_v_4",
+          "slot": "v_4"
+        },
+        {
+          "entity_id": "cuboid_v_5",
+          "slot": "v_5"
+        },
+        {
+          "entity_id": "cuboid_v_6",
+          "slot": "v_6"
+        },
+        {
+          "entity_id": "cuboid_v_7",
+          "slot": "v_7"
+        }
+      ],
+      "frame": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ]
+      },
+      "id": "cuboid",
+      "kind": "cuboid",
+      "mode": "parametric",
+      "parameters": {
+        "depth": 3,
+        "height": 2,
+        "width": 2
+      }
+    },
+    {
+      "features": [
+        {
+          "entity_id": "existing_pyramid_e_0",
+          "slot": "e_0"
+        },
+        {
+          "entity_id": "existing_pyramid_e_1",
+          "slot": "e_1"
+        },
+        {
+          "entity_id": "existing_pyramid_e_2",
+          "slot": "e_2"
+        },
+        {
+          "entity_id": "existing_pyramid_e_3",
+          "slot": "e_3"
+        },
+        {
+          "entity_id": "existing_pyramid_e_4",
+          "slot": "e_4"
+        },
+        {
+          "entity_id": "existing_pyramid_e_5",
+          "slot": "e_5"
+        },
+        {
+          "entity_id": "existing_pyramid_e_6",
+          "slot": "e_6"
+        },
+        {
+          "entity_id": "existing_pyramid_e_7",
+          "slot": "e_7"
+        },
+        {
+          "entity_id": "existing_pyramid_e_8",
+          "slot": "e_8"
+        },
+        {
+          "entity_id": "existing_pyramid_e_9",
+          "slot": "e_9"
+        },
+        {
+          "entity_id": "existing_pyramid_f_0",
+          "slot": "f_0"
+        },
+        {
+          "entity_id": "existing_pyramid_f_1",
+          "slot": "f_1"
+        },
+        {
+          "entity_id": "existing_pyramid_f_2",
+          "slot": "f_2"
+        },
+        {
+          "entity_id": "existing_pyramid_f_3",
+          "slot": "f_3"
+        },
+        {
+          "entity_id": "existing_pyramid_f_4",
+          "slot": "f_4"
+        },
+        {
+          "entity_id": "existing_pyramid_f_5",
+          "slot": "f_5"
+        },
+        {
+          "entity_id": "existing_pyramid_v_0",
+          "slot": "v_0"
+        },
+        {
+          "entity_id": "existing_pyramid_v_1",
+          "slot": "v_1"
+        },
+        {
+          "entity_id": "existing_pyramid_v_2",
+          "slot": "v_2"
+        },
+        {
+          "entity_id": "existing_pyramid_v_3",
+          "slot": "v_3"
+        },
+        {
+          "entity_id": "existing_pyramid_v_4",
+          "slot": "v_4"
+        },
+        {
+          "entity_id": "existing_pyramid_v_5",
+          "slot": "v_5"
+        }
+      ],
+      "frame": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ]
+      },
+      "id": "existing_pyramid",
+      "kind": "pyramid",
+      "mode": "parametric",
+      "parameters": {
+        "apex_offset": [
+          0,
+          0
+        ],
+        "base": {
+          "face_id": "base",
+          "kind": "face",
+          "point_ids": [
+            "b0",
+            "b1",
+            "b2",
+            "b3",
+            "b4"
+          ]
+        },
+        "height": 2,
+        "sides": 5
+      }
+    },
+    {
+      "features": [
+        {
+          "entity_id": "negative_prism_e_0",
+          "slot": "e_0"
+        },
+        {
+          "entity_id": "negative_prism_e_1",
+          "slot": "e_1"
+        },
+        {
+          "entity_id": "negative_prism_e_2",
+          "slot": "e_2"
+        },
+        {
+          "entity_id": "negative_prism_e_3",
+          "slot": "e_3"
+        },
+        {
+          "entity_id": "negative_prism_e_4",
+          "slot": "e_4"
+        },
+        {
+          "entity_id": "negative_prism_e_5",
+          "slot": "e_5"
+        },
+        {
+          "entity_id": "negative_prism_e_6",
+          "slot": "e_6"
+        },
+        {
+          "entity_id": "negative_prism_e_7",
+          "slot": "e_7"
+        },
+        {
+          "entity_id": "negative_prism_e_8",
+          "slot": "e_8"
+        },
+        {
+          "entity_id": "negative_prism_f_0",
+          "slot": "f_0"
+        },
+        {
+          "entity_id": "negative_prism_f_1",
+          "slot": "f_1"
+        },
+        {
+          "entity_id": "negative_prism_f_2",
+          "slot": "f_2"
+        },
+        {
+          "entity_id": "negative_prism_f_3",
+          "slot": "f_3"
+        },
+        {
+          "entity_id": "negative_prism_f_4",
+          "slot": "f_4"
+        },
+        {
+          "entity_id": "negative_prism_v_0",
+          "slot": "v_0"
+        },
+        {
+          "entity_id": "negative_prism_v_1",
+          "slot": "v_1"
+        },
+        {
+          "entity_id": "negative_prism_v_2",
+          "slot": "v_2"
+        },
+        {
+          "entity_id": "negative_prism_v_3",
+          "slot": "v_3"
+        },
+        {
+          "entity_id": "negative_prism_v_4",
+          "slot": "v_4"
+        },
+        {
+          "entity_id": "negative_prism_v_5",
+          "slot": "v_5"
+        }
+      ],
+      "frame": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ]
+      },
+      "id": "negative_prism",
+      "kind": "prism",
+      "mode": "parametric",
+      "parameters": {
+        "base": {
+          "kind": "template",
+          "radius": 2
+        },
+        "direction": [
+          0,
+          0,
+          -1
+        ],
+        "height": 2,
+        "sides": 3
+      }
+    },
+    {
+      "features": [
+        {
+          "entity_id": "negative_pyramid_e_0",
+          "slot": "e_0"
+        },
+        {
+          "entity_id": "negative_pyramid_e_1",
+          "slot": "e_1"
+        },
+        {
+          "entity_id": "negative_pyramid_e_2",
+          "slot": "e_2"
+        },
+        {
+          "entity_id": "negative_pyramid_e_3",
+          "slot": "e_3"
+        },
+        {
+          "entity_id": "negative_pyramid_e_4",
+          "slot": "e_4"
+        },
+        {
+          "entity_id": "negative_pyramid_e_5",
+          "slot": "e_5"
+        },
+        {
+          "entity_id": "negative_pyramid_e_6",
+          "slot": "e_6"
+        },
+        {
+          "entity_id": "negative_pyramid_e_7",
+          "slot": "e_7"
+        },
+        {
+          "entity_id": "negative_pyramid_f_0",
+          "slot": "f_0"
+        },
+        {
+          "entity_id": "negative_pyramid_f_1",
+          "slot": "f_1"
+        },
+        {
+          "entity_id": "negative_pyramid_f_2",
+          "slot": "f_2"
+        },
+        {
+          "entity_id": "negative_pyramid_f_3",
+          "slot": "f_3"
+        },
+        {
+          "entity_id": "negative_pyramid_f_4",
+          "slot": "f_4"
+        },
+        {
+          "entity_id": "negative_pyramid_v_0",
+          "slot": "v_0"
+        },
+        {
+          "entity_id": "negative_pyramid_v_1",
+          "slot": "v_1"
+        },
+        {
+          "entity_id": "negative_pyramid_v_2",
+          "slot": "v_2"
+        },
+        {
+          "entity_id": "negative_pyramid_v_3",
+          "slot": "v_3"
+        },
+        {
+          "entity_id": "negative_pyramid_v_4",
+          "slot": "v_4"
+        }
+      ],
+      "frame": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ]
+      },
+      "id": "negative_pyramid",
+      "kind": "pyramid",
+      "mode": "parametric",
+      "parameters": {
+        "apex_offset": [
+          0,
+          0
+        ],
+        "base": {
+          "kind": "template",
+          "radius": 2
+        },
+        "height": -2,
+        "sides": 4
+      }
+    },
+    {
+      "features": [
+        {
+          "entity_id": "pyramid_e_0",
+          "slot": "e_0"
+        },
+        {
+          "entity_id": "pyramid_e_1",
+          "slot": "e_1"
+        },
+        {
+          "entity_id": "pyramid_e_2",
+          "slot": "e_2"
+        },
+        {
+          "entity_id": "pyramid_e_3",
+          "slot": "e_3"
+        },
+        {
+          "entity_id": "pyramid_e_4",
+          "slot": "e_4"
+        },
+        {
+          "entity_id": "pyramid_e_5",
+          "slot": "e_5"
+        },
+        {
+          "entity_id": "pyramid_e_6",
+          "slot": "e_6"
+        },
+        {
+          "entity_id": "pyramid_e_7",
+          "slot": "e_7"
+        },
+        {
+          "entity_id": "pyramid_f_0",
+          "slot": "f_0"
+        },
+        {
+          "entity_id": "pyramid_f_1",
+          "slot": "f_1"
+        },
+        {
+          "entity_id": "pyramid_f_2",
+          "slot": "f_2"
+        },
+        {
+          "entity_id": "pyramid_f_3",
+          "slot": "f_3"
+        },
+        {
+          "entity_id": "pyramid_f_4",
+          "slot": "f_4"
+        },
+        {
+          "entity_id": "pyramid_v_0",
+          "slot": "v_0"
+        },
+        {
+          "entity_id": "pyramid_v_1",
+          "slot": "v_1"
+        },
+        {
+          "entity_id": "pyramid_v_2",
+          "slot": "v_2"
+        },
+        {
+          "entity_id": "pyramid_v_3",
+          "slot": "v_3"
+        },
+        {
+          "entity_id": "pyramid_v_4",
+          "slot": "v_4"
+        }
+      ],
+      "frame": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x_axis": [
+          1,
+          0,
+          0
+        ],
+        "y_axis": [
+          0,
+          1,
+          0
+        ]
+      },
+      "id": "pyramid",
+      "kind": "pyramid",
+      "mode": "parametric",
+      "parameters": {
+        "apex_offset": [
+          0,
+          0
+        ],
+        "base": {
+          "kind": "template",
+          "radius": 2
+        },
+        "height": 2,
+        "sides": 4
+      }
+    }
+  ],
+  "surfaces": []
+}

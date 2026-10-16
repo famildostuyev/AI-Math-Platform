@@ -34,7 +34,7 @@ export async function runGeometryCircleAcceptance({evaluate,until,textButton,cli
   const circleBefore=await box(shape('circle'));await drag(`${board} [data-geometry-point-id]`,12,8)
   const circleAfter=await box(shape('circle'));assert.ok(Math.abs(circleBefore.width-circleAfter.width)<.01)
   assert.ok(Math.abs(circleAfter.x-circleBefore.x)>5)
-  await menu('2D fiqurlar');await action('Kvadrat');await at(70,245);await at(130,255)
+  await menu('Müstəvi fiqurları');await action('Kvadrat');await at(70,245);await at(130,255)
   await action('Nöqtə');await at(240,260);await at(320,280)
   await menu('Xətt');await action('Parça')
   for (const offset of [2,1]) {

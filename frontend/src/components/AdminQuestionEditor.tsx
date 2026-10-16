@@ -544,6 +544,7 @@ export default function AdminQuestionEditor({
           <div className="admin-editor-header__identity"><h1>Universal Sual Redaktoru</h1></div>
           <div className="admin-editor-header__status" aria-label="Cari sənəd statusu">
             {revision ? <><span>{statusLabels[revision.status]}</span><small>Reviziya #{revision.revision_number}</small></> : <small>Sənəd açılmayıb</small>}
+            <small className="universal-editor-geometry-status" ref={session.setGeometryStatusHost}/>
           </div>
           <UniversalEditorHistoryControls disabled={!revision || mutationDisabled || activeSection !== 'question'} />
           <button ref={documentButtonRef} data-editor-ribbon="" type="button" aria-haspopup="dialog" aria-expanded={documentDrawerOpen} onClick={() => setDocumentDrawerOpen(true)}><FileText size={16} /> Sənəd</button>
@@ -640,7 +641,7 @@ export default function AdminQuestionEditor({
               )
             })}
           </div>
-          {activeSection === 'question' && <UniversalEditorRibbon module={activeModule} disabled={mutationDisabled} onCreateGeometryFrame={() => createGeometryFrame()} onCreateGeometryScene={() => createGeometryFrame(3)} />}
+          {activeSection === 'question' && <UniversalEditorRibbon module={activeModule} disabled={mutationDisabled} geometryEditing={!!editingBlockId} onCreateGeometryFrame={() => createGeometryFrame()} onCreateGeometryScene={() => createGeometryFrame(3)} />}
           <div className={`admin-authoring-workspace-grid universal-editor-layout${leftPanelCollapsed ? ' is-left-collapsed' : ''}`}>
             <aside className="admin-authoring-source universal-editor-sidebar universal-editor-sidebar--left" aria-label="Sənəd naviqasiyası">
               <div className="universal-editor-pages-header">

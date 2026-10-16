@@ -29,7 +29,8 @@ def fixtures():
         if kind == "polyhedron":
             continue
         data = copy.deepcopy(FIXTURES["scene"])
-        parameter_spec = CONTRACT["definitions"][spec["object"]["parameters"]]["object"]
+        parameter_shape = CONTRACT["definitions"][spec["object"]["parameters"]]
+        parameter_spec = parameter_shape.get("anyOf", [parameter_shape])[0]["object"]
         parameters = {k: (3 if v == "side_count" else 1 if isinstance(v, str) else v["enum"][0]) for k, v in parameter_spec.items()}
         solid = dict(id="solid", kind=kind, mode="parametric", frame=dict(origin=[0, 0, 0], x_axis=[1, 0, 0], y_axis=[0, 1, 0]), parameters=parameters, features=[dict(slot="v_0", entity_id="a")])
         data["solids"] = [solid]

@@ -1,0 +1,674 @@
+[
+  {
+    "name": "XY-orthographic",
+    "scene": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [],
+      "faces": [
+        {
+          "boundary": [
+            "p_b9f3725e218549ca95c810bc3a4cde4b",
+            "p_0daa0e2f306b41bf82bd5a603bc66785",
+            "p_3cfa740e32d2499ca34464fbd7bab96b",
+            "p_83a909289e33418a8d19a2271696f321"
+          ],
+          "id": "face_8e1ffd01f2fa4dfdaa47427f9fb1a0a9"
+        }
+      ],
+      "linear_objects": [
+        {
+          "a": "p_b9f3725e218549ca95c810bc3a4cde4b",
+          "b": "p_0daa0e2f306b41bf82bd5a603bc66785",
+          "id": "face_8e1ffd01f2fa4dfdaa47427f9fb1a0a9_e0",
+          "kind": "segment"
+        },
+        {
+          "a": "p_0daa0e2f306b41bf82bd5a603bc66785",
+          "b": "p_3cfa740e32d2499ca34464fbd7bab96b",
+          "id": "face_8e1ffd01f2fa4dfdaa47427f9fb1a0a9_e1",
+          "kind": "segment"
+        },
+        {
+          "a": "p_3cfa740e32d2499ca34464fbd7bab96b",
+          "b": "p_83a909289e33418a8d19a2271696f321",
+          "id": "face_8e1ffd01f2fa4dfdaa47427f9fb1a0a9_e2",
+          "kind": "segment"
+        },
+        {
+          "a": "p_83a909289e33418a8d19a2271696f321",
+          "b": "p_b9f3725e218549ca95c810bc3a4cde4b",
+          "id": "face_8e1ffd01f2fa4dfdaa47427f9fb1a0a9_e3",
+          "kind": "segment"
+        }
+      ],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "p_0daa0e2f306b41bf82bd5a603bc66785",
+          "label": null,
+          "position": [
+            1.9999999999999991,
+            -2.000000000000001,
+            0
+          ]
+        },
+        {
+          "id": "p_3cfa740e32d2499ca34464fbd7bab96b",
+          "label": null,
+          "position": [
+            1.9999999999999996,
+            2,
+            0
+          ]
+        },
+        {
+          "id": "p_83a909289e33418a8d19a2271696f321",
+          "label": null,
+          "position": [
+            -2,
+            2.0000000000000004,
+            0
+          ]
+        },
+        {
+          "id": "p_b9f3725e218549ca95c810bc3a4cde4b",
+          "label": null,
+          "position": [
+            -2.0000000000000018,
+            -1.9999999999999998,
+            0
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          4,
+          3,
+          5
+        ],
+        "projection": "orthographic",
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [],
+      "surfaces": []
+    }
+  },
+  {
+    "name": "XY-perspective",
+    "scene": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [],
+      "faces": [
+        {
+          "boundary": [
+            "p_775cd1ea8b154a28aab80ac7af0d5be7",
+            "p_f4ace386f9c34ec994db675c3eaba059",
+            "p_137cc6fa2a10430da336e6ee98ccefd6",
+            "p_f9a0ddb008ed4a788d127c6e46a6e0ff"
+          ],
+          "id": "face_c2d138313c484f56bebf01e10d8606e2"
+        }
+      ],
+      "linear_objects": [
+        {
+          "a": "p_775cd1ea8b154a28aab80ac7af0d5be7",
+          "b": "p_f4ace386f9c34ec994db675c3eaba059",
+          "id": "face_c2d138313c484f56bebf01e10d8606e2_e0",
+          "kind": "segment"
+        },
+        {
+          "a": "p_f4ace386f9c34ec994db675c3eaba059",
+          "b": "p_137cc6fa2a10430da336e6ee98ccefd6",
+          "id": "face_c2d138313c484f56bebf01e10d8606e2_e1",
+          "kind": "segment"
+        },
+        {
+          "a": "p_137cc6fa2a10430da336e6ee98ccefd6",
+          "b": "p_f9a0ddb008ed4a788d127c6e46a6e0ff",
+          "id": "face_c2d138313c484f56bebf01e10d8606e2_e2",
+          "kind": "segment"
+        },
+        {
+          "a": "p_f9a0ddb008ed4a788d127c6e46a6e0ff",
+          "b": "p_775cd1ea8b154a28aab80ac7af0d5be7",
+          "id": "face_c2d138313c484f56bebf01e10d8606e2_e3",
+          "kind": "segment"
+        }
+      ],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "p_137cc6fa2a10430da336e6ee98ccefd6",
+          "label": null,
+          "position": [
+            2,
+            2,
+            0
+          ]
+        },
+        {
+          "id": "p_775cd1ea8b154a28aab80ac7af0d5be7",
+          "label": null,
+          "position": [
+            -2,
+            -1.9999999999999991,
+            0
+          ]
+        },
+        {
+          "id": "p_f4ace386f9c34ec994db675c3eaba059",
+          "label": null,
+          "position": [
+            2,
+            -2,
+            0
+          ]
+        },
+        {
+          "id": "p_f9a0ddb008ed4a788d127c6e46a6e0ff",
+          "label": null,
+          "position": [
+            -2.0000000000000044,
+            1.9999999999999987,
+            0
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          4,
+          3,
+          5
+        ],
+        "projection": "orthographic",
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [],
+      "surfaces": []
+    }
+  },
+  {
+    "name": "XZ-orthographic",
+    "scene": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [],
+      "faces": [
+        {
+          "boundary": [
+            "p_4ab793b1ef2c4ee8b628b9e4523d88bd",
+            "p_f5fef37a8caa4e37be4257cb1bda34e9",
+            "p_53033eac26e943079c10a77321fd46c6",
+            "p_e490d252756942b4a682d8dfb2f99f50"
+          ],
+          "id": "face_e5f58a5f1c4f4b95a2339a50a8e71675"
+        }
+      ],
+      "linear_objects": [
+        {
+          "a": "p_4ab793b1ef2c4ee8b628b9e4523d88bd",
+          "b": "p_f5fef37a8caa4e37be4257cb1bda34e9",
+          "id": "face_e5f58a5f1c4f4b95a2339a50a8e71675_e0",
+          "kind": "segment"
+        },
+        {
+          "a": "p_f5fef37a8caa4e37be4257cb1bda34e9",
+          "b": "p_53033eac26e943079c10a77321fd46c6",
+          "id": "face_e5f58a5f1c4f4b95a2339a50a8e71675_e1",
+          "kind": "segment"
+        },
+        {
+          "a": "p_53033eac26e943079c10a77321fd46c6",
+          "b": "p_e490d252756942b4a682d8dfb2f99f50",
+          "id": "face_e5f58a5f1c4f4b95a2339a50a8e71675_e2",
+          "kind": "segment"
+        },
+        {
+          "a": "p_e490d252756942b4a682d8dfb2f99f50",
+          "b": "p_4ab793b1ef2c4ee8b628b9e4523d88bd",
+          "id": "face_e5f58a5f1c4f4b95a2339a50a8e71675_e3",
+          "kind": "segment"
+        }
+      ],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "p_4ab793b1ef2c4ee8b628b9e4523d88bd",
+          "label": null,
+          "position": [
+            -2,
+            0,
+            -2
+          ]
+        },
+        {
+          "id": "p_53033eac26e943079c10a77321fd46c6",
+          "label": null,
+          "position": [
+            2.0000000000000004,
+            0,
+            1.9999999999999996
+          ]
+        },
+        {
+          "id": "p_e490d252756942b4a682d8dfb2f99f50",
+          "label": null,
+          "position": [
+            -1.9999999999999996,
+            0,
+            2
+          ]
+        },
+        {
+          "id": "p_f5fef37a8caa4e37be4257cb1bda34e9",
+          "label": null,
+          "position": [
+            2,
+            0,
+            -2
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          4,
+          3,
+          5
+        ],
+        "projection": "orthographic",
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [],
+      "surfaces": []
+    }
+  },
+  {
+    "name": "XZ-perspective",
+    "scene": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [],
+      "faces": [
+        {
+          "boundary": [
+            "p_9a812451b26b410d9abb2acd1c45159f",
+            "p_02049373f25f4ec1a7e3c7f9b5063b3c",
+            "p_498ce5783ff74ed5b3d90ce3c506a619",
+            "p_c5f4f0849c0040fbb2dcf01148efd2ed"
+          ],
+          "id": "face_046cd5c352e546a49d539dc5860da018"
+        }
+      ],
+      "linear_objects": [
+        {
+          "a": "p_9a812451b26b410d9abb2acd1c45159f",
+          "b": "p_02049373f25f4ec1a7e3c7f9b5063b3c",
+          "id": "face_046cd5c352e546a49d539dc5860da018_e0",
+          "kind": "segment"
+        },
+        {
+          "a": "p_02049373f25f4ec1a7e3c7f9b5063b3c",
+          "b": "p_498ce5783ff74ed5b3d90ce3c506a619",
+          "id": "face_046cd5c352e546a49d539dc5860da018_e1",
+          "kind": "segment"
+        },
+        {
+          "a": "p_498ce5783ff74ed5b3d90ce3c506a619",
+          "b": "p_c5f4f0849c0040fbb2dcf01148efd2ed",
+          "id": "face_046cd5c352e546a49d539dc5860da018_e2",
+          "kind": "segment"
+        },
+        {
+          "a": "p_c5f4f0849c0040fbb2dcf01148efd2ed",
+          "b": "p_9a812451b26b410d9abb2acd1c45159f",
+          "id": "face_046cd5c352e546a49d539dc5860da018_e3",
+          "kind": "segment"
+        }
+      ],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "p_02049373f25f4ec1a7e3c7f9b5063b3c",
+          "label": null,
+          "position": [
+            2.0000000000000036,
+            0,
+            -1.999999999999993
+          ]
+        },
+        {
+          "id": "p_498ce5783ff74ed5b3d90ce3c506a619",
+          "label": null,
+          "position": [
+            1.9999999999999996,
+            0,
+            1.9999999999999996
+          ]
+        },
+        {
+          "id": "p_9a812451b26b410d9abb2acd1c45159f",
+          "label": null,
+          "position": [
+            -2,
+            0,
+            -2
+          ]
+        },
+        {
+          "id": "p_c5f4f0849c0040fbb2dcf01148efd2ed",
+          "label": null,
+          "position": [
+            -2,
+            0,
+            2
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          4,
+          3,
+          5
+        ],
+        "projection": "orthographic",
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [],
+      "surfaces": []
+    }
+  },
+  {
+    "name": "YZ-orthographic",
+    "scene": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [],
+      "faces": [
+        {
+          "boundary": [
+            "p_112b1d91dc17429d8aed603cf7e49b97",
+            "p_a2db46fa0155453284345591cb9a8ca1",
+            "p_b7e42bade8e4489eaedfd0efc5d11fc1",
+            "p_87a2e7430835436995ed9de007aac849"
+          ],
+          "id": "face_e1d6635e3cfe4b4699578ffafb9adb92"
+        }
+      ],
+      "linear_objects": [
+        {
+          "a": "p_112b1d91dc17429d8aed603cf7e49b97",
+          "b": "p_a2db46fa0155453284345591cb9a8ca1",
+          "id": "face_e1d6635e3cfe4b4699578ffafb9adb92_e0",
+          "kind": "segment"
+        },
+        {
+          "a": "p_a2db46fa0155453284345591cb9a8ca1",
+          "b": "p_b7e42bade8e4489eaedfd0efc5d11fc1",
+          "id": "face_e1d6635e3cfe4b4699578ffafb9adb92_e1",
+          "kind": "segment"
+        },
+        {
+          "a": "p_b7e42bade8e4489eaedfd0efc5d11fc1",
+          "b": "p_87a2e7430835436995ed9de007aac849",
+          "id": "face_e1d6635e3cfe4b4699578ffafb9adb92_e2",
+          "kind": "segment"
+        },
+        {
+          "a": "p_87a2e7430835436995ed9de007aac849",
+          "b": "p_112b1d91dc17429d8aed603cf7e49b97",
+          "id": "face_e1d6635e3cfe4b4699578ffafb9adb92_e3",
+          "kind": "segment"
+        }
+      ],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "p_112b1d91dc17429d8aed603cf7e49b97",
+          "label": null,
+          "position": [
+            0,
+            -2,
+            -2.000000000000001
+          ]
+        },
+        {
+          "id": "p_87a2e7430835436995ed9de007aac849",
+          "label": null,
+          "position": [
+            0,
+            -2,
+            2.000000000000001
+          ]
+        },
+        {
+          "id": "p_a2db46fa0155453284345591cb9a8ca1",
+          "label": null,
+          "position": [
+            0,
+            2,
+            -2.0000000000000004
+          ]
+        },
+        {
+          "id": "p_b7e42bade8e4489eaedfd0efc5d11fc1",
+          "label": null,
+          "position": [
+            0,
+            2,
+            1.9999999999999996
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          4,
+          3,
+          5
+        ],
+        "projection": "orthographic",
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [],
+      "surfaces": []
+    }
+  },
+  {
+    "name": "YZ-perspective",
+    "scene": {
+      "annotations": [],
+      "constructions": [],
+      "description": "3D həndəsə səhnəsi",
+      "dimension": 3,
+      "edges": [],
+      "faces": [
+        {
+          "boundary": [
+            "p_68f4646f9b0f40e59984c78371fb9399",
+            "p_53efd44cfa174801bfb5ea76fa42b6ee",
+            "p_4d5f974816f2431da8af69e794352808",
+            "p_2d5185831ea84410b8f4feabd0238f68"
+          ],
+          "id": "face_64d247b0b4574904a2676cae76be3e3c"
+        }
+      ],
+      "linear_objects": [
+        {
+          "a": "p_68f4646f9b0f40e59984c78371fb9399",
+          "b": "p_53efd44cfa174801bfb5ea76fa42b6ee",
+          "id": "face_64d247b0b4574904a2676cae76be3e3c_e0",
+          "kind": "segment"
+        },
+        {
+          "a": "p_53efd44cfa174801bfb5ea76fa42b6ee",
+          "b": "p_4d5f974816f2431da8af69e794352808",
+          "id": "face_64d247b0b4574904a2676cae76be3e3c_e1",
+          "kind": "segment"
+        },
+        {
+          "a": "p_4d5f974816f2431da8af69e794352808",
+          "b": "p_2d5185831ea84410b8f4feabd0238f68",
+          "id": "face_64d247b0b4574904a2676cae76be3e3c_e2",
+          "kind": "segment"
+        },
+        {
+          "a": "p_2d5185831ea84410b8f4feabd0238f68",
+          "b": "p_68f4646f9b0f40e59984c78371fb9399",
+          "id": "face_64d247b0b4574904a2676cae76be3e3c_e3",
+          "kind": "segment"
+        }
+      ],
+      "markings": [],
+      "planes": [],
+      "points": [
+        {
+          "id": "p_2d5185831ea84410b8f4feabd0238f68",
+          "label": null,
+          "position": [
+            0,
+            -1.9999999999999982,
+            2.000000000000002
+          ]
+        },
+        {
+          "id": "p_4d5f974816f2431da8af69e794352808",
+          "label": null,
+          "position": [
+            0,
+            2.0000000000000004,
+            2.0000000000000018
+          ]
+        },
+        {
+          "id": "p_53efd44cfa174801bfb5ea76fa42b6ee",
+          "label": null,
+          "position": [
+            0,
+            1.9999999999999991,
+            -1.9999999999999964
+          ]
+        },
+        {
+          "id": "p_68f4646f9b0f40e59984c78371fb9399",
+          "label": null,
+          "position": [
+            0,
+            -1.9999999999999956,
+            -1.9999999999999947
+          ]
+        }
+      ],
+      "print_camera": {
+        "far": 1000,
+        "fov_degrees": 45,
+        "near": 0.01,
+        "position": [
+          4,
+          3,
+          5
+        ],
+        "projection": "orthographic",
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "up": [
+          0,
+          0,
+          1
+        ],
+        "vertical_span": 10
+      },
+      "schema_version": 2,
+      "solids": [],
+      "surfaces": []
+    }
+  }
+]

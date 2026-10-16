@@ -51,7 +51,7 @@ export async function runGeometryArcAcceptance({evaluate,until,textButton,click,
     const after=await box(`${board} [data-geometry-kind=${kind}]`)
     assert.ok(Math.abs(after.width-before.width)<.1&&Math.abs(after.height-before.height)<.1&&Math.abs(after.x-before.x-12)<1&&Math.abs(after.y-before.y-8)<1,kind+' center translates without distortion')
   }
-  await menu('2D fiqurlar');await action('Kvadrat');await at(60,330);await at(110,340)
+  await menu('Müstəvi fiqurları');await action('Kvadrat');await at(60,330);await at(110,340)
   await action('Nöqtə');await at(210,340);await at(310,365)
   await menu('Xətt');await action('Parça')
   for(const offset of [2,1]) {

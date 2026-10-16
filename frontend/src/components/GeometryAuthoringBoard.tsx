@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef } from 'react'
+import { useContext, useEffect, useId, useRef } from 'react'
+import { GeometryFrameMenuContext } from './GeometryEditorPanels'
 import JXG from 'jsxgraph'
 import { canClosePolyline, clipInfiniteLine, isLineTool, type GeometryVertex } from './geometryLineModel'
 import { isTemplateTool } from './geometryTemplateContract'
@@ -34,6 +35,7 @@ type GeometryAuthoringBoardProps = {
   disabled: boolean
   onChange: (geometry: GeometrySourceDataV1) => void
   onObjectClick: (selection: GeometrySelection) => void
+  onContextSelect?: (selection: GeometrySelection|null) => void
 }
 
 const POINT_ATTRIBUTES = Object.freeze({ size: 4, face: 'o', fillColor: '#ffffff', strokeColor: '#1f2937', highlightFillColor: '#dbeafe', highlightStrokeColor: '#1d4ed8' })
@@ -41,10 +43,12 @@ const SEGMENT_ATTRIBUTES = Object.freeze({ strokeColor: '#374151', strokeWidth: 
 const POLYGON_ATTRIBUTES: Readonly<JXG.PolygonAttributes> = Object.freeze({ fillColor: 'none', fillOpacity: 0, strokeColor: '#374151', highlightFillColor: 'none', highlightStrokeColor: '#1d4ed8', hasInnerPoints: true, borders: { strokeColor: '#374151', layer: 5 } })
 const TEXT_ATTRIBUTES = Object.freeze({ display: 'internal' as const, parse: false, useMathJax: false, fontSize: 16, color: '#111827', highlightColor: '#1d4ed8', dragArea: 'all' as const })
 
-export default function GeometryAuthoringBoard({ geometry, tool, disabled, onChange, onObjectClick, frameSize, lineDraft, regularSides, midpointSource, linearSource, onLineClick, onFinishLine, onCancelLine, onAnnotationCreate, onPointTargets, retargetPointId, annotationPicking, annotationTarget, onAnnotationTargets }: GeometryAuthoringBoardProps) {
+export default function GeometryAuthoringBoard({ geometry, tool, disabled, onChange, onObjectClick, onContextSelect, frameSize, lineDraft, regularSides, midpointSource, linearSource, onLineClick, onFinishLine, onCancelLine, onAnnotationCreate, onPointTargets, retargetPointId, annotationPicking, annotationTarget, onAnnotationTargets }: GeometryAuthoringBoardProps) {
   const reactId = useId()
   const boardId = `geometry-board-${reactId.replace(/:/g, '')}`
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const selectAt=useContext(GeometryFrameMenuContext)?.selectAt,contextCallback=useRef(onContextSelect)
+  contextCallback.current=onContextSelect
   const annotationTargetRef=useRef(annotationTarget)
   annotationTargetRef.current=annotationTarget
   const refreshAnnotationHighlight=useRef<(()=>void)|null>(null)
@@ -72,6 +76,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
     window.addEventListener('scroll', refreshScreenOrigin, true)
     container.addEventListener('pointerdown', refreshScreenOrigin, true)
     const pointElements = new Map<string, JXG.Point>()
+    const selections=new Map<JXG.GeometryElement,GeometrySelection>()
     const annotationElements: {target:AnnotationTarget;elements:JXG.GeometryElement[]}[]=[]
     let activeConstraintDrag:string|null=null
     const restorePoints=()=>{for(const p of geometry.points)pointElements.get(p.id)?.setPosition(JXG.COORDS_BY_USER,[p.x,boardYFromGeometry(geometry,p.y)]);board.update()}
@@ -121,6 +126,10 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
         }
       })
       pointElements.set(point.id, element)
+      if(!hiddenSupportIds.has(point.id)){
+        selections.set(element,{kind:'point',id:point.id})
+        if(element.label)selections.set(element.label,{kind:'point',id:point.id})
+      }
     })
     const boundary = framed
       ? { x: metrics.originX + 4, y: metrics.originY + 4, width: frameWidth / GEOMETRY_FRAME_SCALE - 8, height: frameHeight / GEOMETRY_FRAME_SCALE - 8 }
@@ -145,11 +154,11 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
     for (const line of geometry.lines ?? []) {
       const a = geometry.points.find(p => p.id === line.start_point_id), b = geometry.points.find(p => p.id === line.end_point_id)
       const element = a && b ? drawLine(a,b,line.kind) : null
-      if(element){linearElements.set(line.id,element);element.rendNode?.setAttribute('data-geometry-line-id',line.id);element.on('down',event=>selectBoundary({kind:'line',id:line.id},event))}
+      if(element){linearElements.set(line.id,element);selections.set(element,{kind:'line',id:line.id});element.rendNode?.setAttribute('data-geometry-line-id',line.id);element.on('down',event=>selectBoundary({kind:'line',id:line.id},event))}
     }
     for (const polyline of geometry.polylines ?? []) {
       const vertices = polyline.point_ids.map(id => geometry.points.find(p => p.id === id)!)
-      vertices.slice(1).forEach((b, i) => drawLine(vertices[i], b, 'polyline')?.on('down', () => onObjectClick({ kind: 'polyline', id: polyline.id })))
+      vertices.slice(1).forEach((b, i) => {const element=drawLine(vertices[i],b,'polyline');if(element){selections.set(element,{kind:'polyline',id:polyline.id});element.on('down',()=>onObjectClick({kind:'polyline',id:polyline.id}))}})
     }
     const draft = lineDraft ?? []
     const draftPoints = draft.map(p => {
@@ -189,6 +198,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       if (!center) continue
       const { element, outline } = drawArc(center, arc)
       const arcTargets: JXG.GeometryElement[]=outline?[element,outline]:[element]
+      arcTargets.forEach(e=>selections.set(e,{kind:'arc',id:arc.id}))
       annotationElements.push({target:{target_kind:'arc',target_id:arc.id},elements:arcTargets})
       element.rendNode?.setAttribute('data-geometry-id', arc.id)
       element.on('down', () => onObjectClick({ kind: 'arc', id: arc.id }))
@@ -204,6 +214,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
         circleTargets.push(board.create('circle', [center, circle.radius], { ...circleAttributes('circle'), layer: 5, highlight: false }))
       } else element.setAttribute({ layer: 5 })
       annotationElements.push({target:{target_kind:'circle',target_id:circle.id},elements:circleTargets})
+      circleTargets.forEach(e=>selections.set(e,{kind:'circle',id:circle.id}))
       element.rendNode?.setAttribute('data-geometry-kind', circle.kind)
       element.rendNode?.setAttribute('data-geometry-id', circle.id)
       element.on('down', () => onObjectClick({ kind: 'circle', id: circle.id }))
@@ -257,6 +268,8 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       const element = board.create('polygon', vertices, { ...POLYGON_ATTRIBUTES, fixed: true })
       const borders=(element as JXG.Polygon & {borders:JXG.Line[]}).borders
       polygonElements.set(polygon.id,element)
+      selections.set(element,{kind:'polygon',id:polygon.id})
+      borders.forEach(edge=>selections.set(edge,{kind:'polygon',id:polygon.id}))
       borders.forEach((edge,i)=>annotationElements.push({target:{target_kind:'polygon_edge',target_id:polygon.id,start_point_id:polygon.point_ids[i],end_point_id:polygon.point_ids[(i+1)%polygon.point_ids.length]},elements:[edge]}))
       borders.forEach((edge,i)=>edgeElements.push({element:edge,parent:{kind:'polygon_edge',polygon_id:polygon.id,start_point_id:polygon.point_ids[i],end_point_id:polygon.point_ids[(i+1)%polygon.point_ids.length]}}))
       element.on('down', event => selectBoundary({ kind: 'polygon', id: polygon.id }, event))
@@ -268,6 +281,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       if (!start || !end) return
       const element = board.create('segment', [start, end], { ...SEGMENT_ATTRIBUTES, fixed: true })
       segmentElements.set(segment.id, element)
+      selections.set(element,{kind:'segment',id:segment.id})
       annotationElements.push({target:{target_kind:'segment',target_id:segment.id},elements:[element]})
       edgeElements.push({element,parent:{kind:'segment',segment_id:segment.id}})
       element.rendNode?.setAttribute('data-geometry-segment-id', segment.id)
@@ -284,6 +298,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       })
       let dragged = false
       element.on('down', () => { dragged = false; onObjectClick({ kind: 'text', id: text.id }) })
+      selections.set(element,{kind:'text',id:text.id})
       element.on('drag', () => { dragged = true })
       element.on('up', () => {
         if (dragged && !disabled && tool === 'select') onChange(moveGeometryText(geometry, text.id, element.X(), geometryYFromBoard(geometry, element.Y())))
@@ -428,8 +443,23 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
         onObjectClick({ kind: 'text', id: updated.texts[updated.texts.length - 1].id })
       }
     })
+    const contextPick=(event:MouseEvent)=>{
+      if(disabled)return
+      const annotation=event.target instanceof Element?event.target.closest('[data-annotation-id]')?.getAttribute('data-annotation-id'):null
+      if(annotation&&geometry.texts.some(t=>t.id===annotation)){contextCallback.current?.({kind:'text',id:annotation});return}
+      refreshScreenOrigin()
+      const hits=container.contains(event.target as Node)?board.getAllObjectsUnderMouse(event) as JXG.GeometryElement[]:[]
+      const candidates=hits.map(e=>selections.get(e)).filter((s):s is GeometrySelection=>!!s)
+      // Replay selection priority only: JSXGraph dispatches down handlers in object order,
+      // while selectBoundary defers lines/segments/polygons to explicit vertices.
+      const vertex=geometry.points.some(p=>p.role!=='implicit'&&hits.includes(pointElements.get(p.id)!))
+      const eligible=candidates.filter(s=>!vertex||!['line','segment','polygon'].includes(s.kind))
+      contextCallback.current?.(eligible.at(-1)??null)
+    }
+    if(selectAt)selectAt.current=contextPick
     if ((tool === 'midpoint' || tool === 'altitude' || tool === 'median' || isLinearConstructionTool(tool)) && !disabled) container.focus({ preventScroll: true })
     return () => {
+      if(selectAt?.current===contextPick)selectAt.current=null
       window.removeEventListener('scroll', refreshScreenOrigin, true)
       container.removeEventListener('pointerdown', refreshScreenOrigin, true)
       container.removeEventListener('pointercancel',cancelConstraintDrag,true)
@@ -438,7 +468,7 @@ export default function GeometryAuthoringBoard({ geometry, tool, disabled, onCha
       refreshAnnotationHighlight.current=null
       JXG.JSXGraph.freeBoard(board)
     }
-  }, [disabled, geometry, tool, frameWidth, frameHeight, lineDraft, regularSides, midpointSource, linearSource, retargetPointId, annotationPicking])
+  }, [disabled, geometry, tool, frameWidth, frameHeight, lineDraft, regularSides, midpointSource, linearSource, retargetPointId, annotationPicking,selectAt])
   useEffect(()=>{refreshAnnotationHighlight.current?.()},[annotationTarget])
 
   return <div id={boardId} ref={containerRef} tabIndex={0} onKeyDown={event => {

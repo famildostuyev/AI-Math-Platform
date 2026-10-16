@@ -3,6 +3,7 @@ import type { GeometryRibbonAction } from './geometryRibbonMenu'
 import { UniversalEditorSessionContext } from './universalEditorSession'
 import type { GeometrySourceDataV1, GeometryLinearSourceV1, GeometryTextV1, GeometryPointParent } from '../api/questionEditor'
 import GeometryAuthoringBoard from './GeometryAuthoringBoard'
+import GeometryEditorPanels from './GeometryEditorPanels'
 import { canClosePolyline, commitGeometryLine, isLineTool, type GeometryVertex } from './geometryLineModel'
 import { isTemplateTool, parseRegularSides, REGULAR_POLYGON_LIMITS } from './geometryTemplateContract'
 import { commitGeometryTemplate } from './geometryTemplateModel'
@@ -402,7 +403,14 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
     else if(targets.length>1)setAttachmentTargets(targets)
     else {setAttachmentTargets([]);setMessage('Uyğun həndəsə obyekti seçin.')}
   }
-  const attachmentBoardProps={annotationPicking:attachmentPicking!==null,annotationTarget:selectedText?.attachment,onAnnotationTargets}
+  const contextSelect=(next:GeometrySelection|null)=>{
+    if(disabled||editingAnnotation!==null)return
+    const shape=next?geometryShapes(value).find(s=>s.boundary.some(e=>e.kind===next.kind&&e.id===next.id)):null
+    const selected=shape?{kind:'shape' as const,id:shape.id}:next
+    setSelection(selected)
+    if(targetId)sessionRef.current?.activateGeometry(targetId,selected??undefined)
+  }
+  const attachmentBoardProps={annotationPicking:attachmentPicking!==null,annotationTarget:selectedText?.attachment,onAnnotationTargets,onContextSelect:contextSelect}
   const createAnnotation=(x:number,y:number)=>{
     const candidate=addGeometryText(value,x,y)
     if(candidate===value)return
@@ -430,42 +438,33 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
     return () => setGeometryCommands(current => current?.id === targetId ? null : current)
   }, [targetId, tool, disabled, selection, setGeometryCommands])
 
+  const hasConstruction=lineDraft.length>0||pendingPointIds.length>0||linearSource!==null||attachmentPicking!==null||retargetPointId!==null||pointTargets!==null
+  const cancelConstruction=()=>{cancelLine();cancelAttachmentPicking();setRetargetPointId(null);setPointTargets(null)}
+  const hint=message??(TOOL_LABELS[tool]+(tool==='segment'?' · Nöqtə '+(pendingPointIds.length+1)+'/2':tool==='polygon'?' · '+pendingPointIds.length+' nöqtə seçilib':isLinearConstructionTool(tool)?' · '+(linearSource?'Mövcud nöqtəni seçin':'Mənbə xətti seçin'):tool==='midpoint'?' · İki nöqtə və ya parça seçin':isLineTool(tool)||isTemplateTool(tool)||isCircleTool(tool)||isArcTool(tool)?' · '+(lineDraft.length?'Növbəti yeri seçin':'Başlanğıcı seçin'):''))
   const toolbar = <div className="geometry-editor__toolbar" role="toolbar" aria-label="Həndəsə alətləri">
       {(Object.keys(TOOL_LABELS) as GeometryTool[]).map((item) => <button key={item} type="button" className={tool === item ? 'active' : undefined} aria-pressed={tool === item} disabled={disabled} onClick={() => chooseTool(item)}>{TOOL_LABELS[item]}</button>)}
       <button type="button" className="danger" disabled={disabled || selection === null} onClick={deleteSelected}>Seçiləni sil</button>
     </div>
-  return <div className={`geometry-editor${frameSize ? ' geometry-editor--framed' : ''}`} onKeyDown={e=>{if(e.key==='Escape'&&attachmentPicking){e.preventDefault();cancelAttachmentPicking()}else if(e.key==='Escape'&&(retargetPointId||pointTargets)){e.preventDefault();setRetargetPointId(null);setPointTargets(null);setMessage(null)}}}>
+  return <div className={`geometry-editor${frameSize ? ' geometry-editor--framed' : ''}`} onKeyDown={e=>{if(e.key==='Escape'&&attachmentPicking){e.preventDefault();cancelAttachmentPicking()}else if(e.key==='Escape'&&(retargetPointId||pointTargets)){e.preventDefault();setRetargetPointId(null);setPointTargets(null);setMessage(null)}else if(e.key==='Escape'&&hasConstruction){e.preventDefault();cancelConstruction()}}}>
+    {!session?.geometryToolbarHost && toolbar}
+    {frameSize && <div style={{position:'relative'}}><GeometryAuthoringBoard {...attachmentBoardProps} onPointTargets={onPointTargets} retargetPointId={retargetPointId??undefined} onAnnotationCreate={createAnnotation} linearSource={linearSource} midpointSource={pendingPointIds[0]} geometry={value} tool={tool} disabled={disabled||editingAnnotation!==null} onChange={onChange} onObjectClick={handleObjectClick} frameSize={frameSize} lineDraft={lineDraft} regularSides={regularSides ?? undefined} onLineClick={lineClick} onFinishLine={finishLine} onCancelLine={cancelLine} />{selectedShape && <GeometryShapeControls geometry={value} shape={selectedShape} frameSize={frameSize} disabled={disabled} onChange={onChange} />}{annotationLayer(frameSize)}</div>}
+    {!frameSize && <div style={{position:'relative'}}><GeometryAuthoringBoard {...attachmentBoardProps} onPointTargets={onPointTargets} retargetPointId={retargetPointId??undefined} onAnnotationCreate={createAnnotation} linearSource={linearSource} midpointSource={pendingPointIds[0]} geometry={value} tool={tool} disabled={disabled||editingAnnotation!==null} onChange={onChange} onObjectClick={handleObjectClick} lineDraft={lineDraft} regularSides={regularSides ?? undefined} onLineClick={lineClick} onFinishLine={finishLine} onCancelLine={cancelLine} />{selectedShape && <GeometryShapeControls geometry={value} shape={selectedShape} disabled={disabled} onChange={onChange} />}{annotationLayer()}</div>}
+    <GeometryEditorPanels targetId={targetId} autoOpenKey={editingAnnotation?.id??(pointTargets?'point-targets':attachmentTargets.length?'attachment-targets':null)} status={<span role="status" title={hint}>{hint}</span>} menu={<>
+      {hasConstruction&&<button type="button" disabled={disabled} onClick={cancelConstruction}>Qurmanı ləğv et</button>}
+      {(selection||tool==='polygon'&&pendingPointIds.length>0)&&<button type="button" onClick={()=>{setSelection(null);if(tool==='polygon')setPendingPointIds([]);if(targetId)sessionRef.current?.activateGeometry(targetId)}}>Seçimi təmizlə</button>}
+      {tool==='polyline'&&lineDraft.length>=2&&<button type="button" disabled={disabled} onClick={finishLine}>Sınıq xətti tamamla</button>}
+      {tool==='polygon'&&pendingPointIds.length>=3&&<button type="button" disabled={disabled} onClick={finishPolygon}>Çoxbucaqlını tamamla</button>}
+    {tool === 'regular_polygon' && <div data-frame-chrome="" className="geometry-editor__regular-parameter" onPointerDown={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') cancelLine() }}>
+      <label>Tərəflərin sayı (n) <input aria-label="Tərəflərin sayı (n)" inputMode="numeric" value={regularSidesText} disabled={disabled} aria-invalid={regularSides === null} style={{ width: 60 }} onChange={event => { setRegularSidesText(event.target.value); setLineDraft([]) }} /></label>
+      {regularSides === null && <div role="status">{REGULAR_POLYGON_LIMITS.minSides}–{REGULAR_POLYGON_LIMITS.maxSides} arası tam ədəd daxil edin.</div>}
+    </div>}
+    </>} properties={<>
     {attachmentPicking&&<div data-frame-chrome="" role="group" aria-label="Bağlantı hədəfi">{attachmentTargets.map((target,i)=><button type="button" key={i} data-attachment-target-kind={target.target_kind} data-attachment-target-id={target.target_id} disabled={disabled} onClick={()=>acceptAttachmentTarget(target)}>{annotationTargetLabel(value,target)} ({i+1})</button>)}<button type="button" onClick={cancelAttachmentPicking}>Bağlamanı ləğv et</button></div>}
     {pointTargets&&<div data-frame-chrome="" role="group" aria-label="Tərəfi seçin">{pointTargets.parents.map((parent,i)=><button key={i} type="button" disabled={disabled} onClick={()=>acceptPointTarget(parent,pointTargets.x,pointTargets.y)}>{parent.kind==='line'?'Düz xətt':parent.kind==='segment'?'Parça':'Çoxbucaqlı tərəfi'}: {parentLabel(parent)} ({i+1})</button>)}<button type="button" onClick={()=>{setPointTargets(null);setRetargetPointId(null);setMessage(null)}}>Ləğv et</button></div>}
     {selectedConstraint&&<div data-frame-chrome=""><span>Yerləşmə: {parentLabel(selectedConstraint.parent)} üzərində</span><button type="button" disabled={disabled} onClick={()=>onChange(detachPointConstraint(value,selectedConstraint.output_point_id))}>Sərbəst et</button><button type="button" disabled={disabled} onClick={()=>{setRetargetPointId(selectedConstraint.output_point_id);setPointTargets(null);setMessage('Yeni düz xətt, parça və ya çoxbucaqlı tərəfini seçin.')}}>{selectedConstraint.kind==='point_on_line'?'Başqa xəttə bağla':'Başqa tərəfə bağla'}</button></div>}
     {retargetPointId&&<button type="button" onClick={()=>{setRetargetPointId(null);setPointTargets(null);setMessage(null)}}>Bağlamanı ləğv et</button>}
-    {tool === 'regular_polygon' && <div data-frame-chrome="" className="geometry-editor__regular-parameter" style={{ position: 'absolute', top: 8, right: 8, zIndex: 4, background: 'white', padding: 8, border: '1px solid #d1d5db', borderRadius: 6 }} onPointerDown={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') cancelLine() }}>
-      <label>Tərəflərin sayı (n) <input aria-label="Tərəflərin sayı (n)" inputMode="numeric" value={regularSidesText} disabled={disabled} aria-invalid={regularSides === null} style={{ width: 60 }} onChange={event => { setRegularSidesText(event.target.value); setLineDraft([]) }} /></label>
-      {regularSides === null && <div role="status">{REGULAR_POLYGON_LIMITS.minSides}–{REGULAR_POLYGON_LIMITS.maxSides} arası tam ədəd daxil edin.</div>}
-    </div>}
-    {!session?.geometryToolbarHost && toolbar}
-    {frameSize && <div style={{position:'relative'}}><GeometryAuthoringBoard {...attachmentBoardProps} onPointTargets={onPointTargets} retargetPointId={retargetPointId??undefined} onAnnotationCreate={createAnnotation} linearSource={linearSource} midpointSource={pendingPointIds[0]} geometry={value} tool={tool} disabled={disabled||editingAnnotation!==null} onChange={onChange} onObjectClick={handleObjectClick} frameSize={frameSize} lineDraft={lineDraft} regularSides={regularSides ?? undefined} onLineClick={lineClick} onFinishLine={finishLine} onCancelLine={cancelLine} />{selectedShape && <GeometryShapeControls geometry={value} shape={selectedShape} frameSize={frameSize} disabled={disabled} onChange={onChange} />}{annotationLayer(frameSize)}</div>}
-    <div className={frameSize ? 'geometry-editor__frame-controls' : undefined} data-frame-chrome={frameSize ? '' : undefined}>
+
     <label className="geometry-editor__description"><span>Əlçatan təsvir</span><textarea value={value.description} required disabled={disabled} onBlur={() => history.endGroup()} onChange={(event) => onChange({ ...value, description: event.target.value }, 'description')} /></label>
-    {!isLineTool(tool) && !isTemplateTool(tool) && !isCircleTool(tool) && !isArcTool(tool) && <p className="geometry-editor__hint">{isLinearConstructionTool(tool) ? (linearSource ? 'Xəttin keçəcəyi mövcud nöqtəni seçin. Escape ilə ləğv edin.' : 'Mənbə xətt, parça və ya vektor seçin.') : tool === 'midpoint' ? 'İki mövcud nöqtə və ya bir parça seçin. Escape ilə ləğv edin.' : tool === 'point' ? 'Lövhədə boş yerə klikləyin.' : tool === 'text' ? 'Mətnin yerləşəcəyi boş yerə klikləyin.' : tool === 'segment' ? `İki nöqtə seçin (${pendingPointIds.length}/2).` : tool === 'polygon' ? `Nöqtələri sıra ilə seçin (${pendingPointIds.length} seçilib).` : 'Nöqtəni və ya mətni sürükləyin; silmək üçün obyekti seçin.'}</p>}
-    {isArcTool(tool) && <div className="geometry-editor__line-actions">
-      <p>Mərkəzi, sonra radius və başlanğıcı seçin. Son istiqaməti üçüncü kliklə təsdiqləyin. Qövs saat istiqamətində çəkilir. Escape ilə ləğv edin.</p>
-      <button type="button" disabled={disabled || lineDraft.length === 0} onClick={cancelLine}>Çəkilişi ləğv et</button>
-    </div>}
-    {(isTemplateTool(tool) || isCircleTool(tool)) && <div className="geometry-editor__line-actions">
-      <p>Başlanğıcı seçin, ölçü və istiqaməti ikinci kliklə təsdiqləyin. Escape ilə ləğv edin.</p>
-      <button type="button" disabled={disabled || lineDraft.length === 0} onClick={cancelLine}>Çəkilişi ləğv et</button>
-    </div>}
-    {isLineTool(tool) && <div className="geometry-editor__line-actions">
-      <p>{tool === 'polyline' ? 'Kliklə təpələr əlavə edin. Enter ilə tamamlayın; bağlamaq üçün başlanğıca yaxın klikləyin. Escape ilə cari çəkilişi ləğv edin.' : 'İki nöqtə və ya yer seçin. Escape ilə cari çəkilişi ləğv edin.'}</p>
-      {tool === 'polyline' && <button type="button" disabled={disabled || lineDraft.length < 2} onClick={finishLine}>Sınıq xətti tamamla</button>}
-      <button type="button" disabled={disabled || lineDraft.length === 0} onClick={cancelLine}>Çəkilişi ləğv et</button>
-    </div>}
-    {tool === 'polygon' && <div className="geometry-editor__polygon-actions">
-      <button type="button" disabled={disabled || pendingPointIds.length < 3} onClick={finishPolygon}>Çoxbucaqlını tamamla</button>
-      <button type="button" className="secondary" disabled={disabled || pendingPointIds.length === 0} onClick={() => setPendingPointIds([])}>Seçimi təmizlə</button>
-    </div>}
-    {!frameSize && <div style={{position:'relative'}}><GeometryAuthoringBoard {...attachmentBoardProps} onPointTargets={onPointTargets} retargetPointId={retargetPointId??undefined} onAnnotationCreate={createAnnotation} linearSource={linearSource} midpointSource={pendingPointIds[0]} geometry={value} tool={tool} disabled={disabled||editingAnnotation!==null} onChange={onChange} onObjectClick={handleObjectClick} lineDraft={lineDraft} regularSides={regularSides ?? undefined} onLineClick={lineClick} onFinishLine={finishLine} onCancelLine={cancelLine} />{selectedShape && <GeometryShapeControls geometry={value} shape={selectedShape} disabled={disabled} onChange={onChange} />}{annotationLayer()}</div>}
     {selectedPoint && <label className="geometry-editor__label"><span>Seçilmiş nöqtənin nişanı</span><input value={selectedPoint.label ?? ''} maxLength={100} disabled={disabled} onBlur={() => history.endGroup()} onChange={(event) => onChange(renameGeometryPoint(value, selectedPoint.id, event.target.value.trim() || null), `label:${selectedPoint.id}`)} /></label>}
     {selectedText && !editingAnnotation && <div data-frame-chrome=""><button type="button" disabled={disabled||attachmentPicking!==null} onClick={()=>setEditingAnnotation(selectedText)}>Edit annotation</button>
       <button type="button" disabled={disabled||attachmentPicking!==null} onClick={()=>{history.endGroup();setRetargetPointId(null);setPointTargets(null);setAttachmentPicking(selectedText.id);setAttachmentTargets([])}}>{selectedText.attachment?'Dəyiş':'Bağla'}</button>
@@ -477,7 +476,6 @@ export default function GeometryEditor({ value, onChange: publish, disabled, tar
       if(!normalizeGeometrySourceDataV1(candidate))return false
       onChange(candidate);setEditingAnnotation(null);setSelection({kind:'text',id:text.id});if(targetId)sessionRef.current?.activateGeometry(targetId,{kind:'text',id:text.id});return true
     }}/>}
-    {message && <p className="geometry-editor__message" role="status">{message}</p>}
-    </div>
+    </>}/>
   </div>
 }

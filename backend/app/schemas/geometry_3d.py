@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator, model_serializer
+from .geometry_3d_solids import SUPPORTED, validate_solid_topology
 
 CONTRACT = json.loads(Path(__file__).with_name("geometry_3d_contract.json").read_text())
 COLLECTIONS = ("points", "linear_objects", "planes", "edges", "faces", "surfaces", "solids", "constructions", "annotations", "markings")
@@ -40,6 +41,13 @@ def _shape(value, spec, depth=1):
         if any(0xD800 <= ord(c) <= 0xDFFF for c in value):
             raise ValueError("Invalid Unicode scalar")
         return value
+    if "anyOf" in spec:
+        for variant in spec["anyOf"]:
+            try:
+                return _shape(value, variant, depth)
+            except ValueError:
+                pass
+        raise ValueError("Unsupported parameter definition")
     if "nullable" in spec:
         return None if value is None else _shape(value, spec["nullable"], depth)
     if "literal" in spec:
@@ -260,12 +268,16 @@ def normalize_scene_3d(value):
         if abs(_dot(x, x)-1) > 1e-9 or abs(_dot(y, y)-1) > 1e-9 or abs(_dot(x, y)) > 1e-9:
             raise ValueError("Solid frame must be orthonormal")
         slots = set()
+        if e["parameters"].get("base", {}).get("kind") == "face":
+            ref(e["id"], e["parameters"]["base"]["face_id"], "faces")
         for feature in e["features"]:
             slot, target = feature["slot"], feature["entity_id"]
             if slot in slots or category.get(target) != _feature_group(e, slot):
                 raise ValueError("Invalid solid feature map")
             slots.add(slot)
             own(target, e["id"])
+        if e["kind"] in SUPPORTED:
+            validate_solid_topology(scene, e)
     for eid, owner in owners.items():
         if category[eid] in ("edges", "faces"):
             feature = index[eid]
@@ -366,6 +378,8 @@ def _type(spec, name):
                 _models[spec] = _type(CONTRACT["definitions"][spec], "Geometry3D_" + spec)
             return _models[spec]
         return {"id": str, "text": str, "number": float, "positive": float, "side_count": int}[spec]
+    if "anyOf" in spec:
+        return Union[tuple(_type(v, name + "_variant" + str(i)) for i, v in enumerate(spec["anyOf"]))]
     if "literal" in spec:
         return Literal[spec["literal"]]
     if "enum" in spec:

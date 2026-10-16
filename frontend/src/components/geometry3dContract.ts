@@ -24,8 +24,8 @@ export type GeometrySurface3D = { id: Geometry3DId; kind: 'sphere' | 'cylinder' 
 export type GeometrySolidParameters3D = {
   cube: { side: number }
   cuboid: { width: number; depth: number; height: number }
-  prism: { sides: number; radius: number; height: number }
-  pyramid: { sides: number; radius: number; height: number }
+  prism: { sides: number; radius: number; height: number } | { sides:number; height:number; base:GeometrySolidBase3D; direction:Vec3 }
+  pyramid: { sides: number; radius: number; height: number } | { sides:number; height:number; base:GeometryPyramidBase3D; apex_offset:Vec2 }
   truncated_pyramid: { sides: number; bottom_radius: number; top_radius: number; height: number }
   regular_polyhedron: { family: 'tetrahedron' | 'cube' | 'octahedron' | 'dodecahedron' | 'icosahedron'; edge_length: number }
   cylinder: { radius: number; height: number }
@@ -33,6 +33,8 @@ export type GeometrySolidParameters3D = {
   frustum: { bottom_radius: number; top_radius: number; height: number }
   sphere: { radius: number }
 }
+export type GeometrySolidBase3D = {kind:'template';radius:number} | {kind:'face';face_id:string;point_ids:string[]}
+export type GeometryPyramidBase3D = GeometrySolidBase3D | {kind:'polygon';vertices:Vec3[]}
 export type GeometryParametricSolid3D = {
   [K in keyof GeometrySolidParameters3D]: {
     id: Geometry3DId; kind: K; mode: 'parametric'

@@ -1,7 +1,8 @@
 import contractJson from '../../../backend/app/schemas/geometry_3d_contract.json?raw'
 import type { GeometryCamera3D, GeometryScene3D, Vec3 } from './geometry3dContract'
+import { solidSupported3D, hasSolidTopology3D, solidTopology3D, solidFeatureIds3D, evaluateSolid3D } from './geometry3dSolids'
 
-type Spec = string | { nullable?: Spec; literal?: string | number; enum?: string[]; discriminator?: string; variants?: Record<string, Spec>; object?: Record<string, Spec>; tuple?: Spec[]; array?: Spec; min?: number }
+type Spec = string | { anyOf?:Spec[]; nullable?: Spec; literal?: string | number; enum?: string[]; discriminator?: string; variants?: Record<string, Spec>; object?: Record<string, Spec>; tuple?: Spec[]; array?: Spec; min?: number }
 const contract = JSON.parse(contractJson) as { definitions: Record<string, Spec>; max_depth: number; max_bytes: number; max_items: number; feature_limits: Record<string, (number | number[])[] | Record<string, number[]>> }
 const collections = ['points', 'linear_objects', 'planes', 'edges', 'faces', 'surfaces', 'solids', 'constructions', 'annotations', 'markings'] as const
 function fail(): never { throw new Error('Invalid semantic 3D scene') }
@@ -24,6 +25,7 @@ function shape(value: unknown, spec: Spec, depth = 1): unknown {
     if (spec === 'id' && !/^[A-Za-z][A-Za-z0-9_-]*$/.test(value)) fail()
     return value
   }
+  if(spec.anyOf){for(const variant of spec.anyOf){try{return shape(value,variant,depth)}catch{/* Try the next strict shape. */}}fail()}
   if (spec.nullable) return value === null ? null : shape(value, spec.nullable, depth)
   if (spec.literal !== undefined) { if (value !== spec.literal) fail(); return value }
   if (spec.enum) { if (typeof value !== 'string' || !spec.enum.includes(value)) fail(); return value }
@@ -182,9 +184,14 @@ export function normalizeGeometryScene3D(value: unknown): GeometryScene3D | null
       const x = e.frame.x_axis, y = e.frame.y_axis
       if (Math.abs(dot(x, x)-1) > 1e-9 || Math.abs(dot(y, y)-1) > 1e-9 || Math.abs(dot(x, y)) > 1e-9) fail()
       const slots = new Set<string>()
+      if('base'in e.parameters&&e.parameters.base.kind==='face')ref(e.id,e.parameters.base.face_id,'faces')
       for (const f of e.features) {
         if (slots.has(f.slot) || category.get(f.entity_id) !== featureGroup(e, f.slot)) fail()
         slots.add(f.slot); own(f.entity_id, e.id)
+      }
+      if(solidSupported3D(e)&&(hasSolidTopology3D(e)||'base'in e.parameters)){
+        const topology=solidTopology3D(scene,e)
+        solidFeatureIds3D(e,topology);evaluateSolid3D(structuredClone(scene),e)
       }
     }
     for (const [id, owner] of owners) if (['edges', 'faces'].includes(category.get(id)!)) {

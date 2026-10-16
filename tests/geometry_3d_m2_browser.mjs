@@ -34,8 +34,9 @@ export async function runGeometry3DM2Acceptance({evaluate,until,textButton,click
   await drag(`${viewport} canvas`,70,35)
   assert.notDeepEqual(await camera(),original,'real pointer orbit')
   const orbited=await camera(), b=await box(`${viewport} canvas`), x=b.x+b.width/2,y=b.y+b.height/2
-  await pointer('mousePressed',x,y,{button:'right',buttons:2,clickCount:1})
-  await pointer('mouseMoved',x+20,y+20,{button:'right',buttons:2});await pointer('mouseReleased',x+20,y+20,{button:'right',clickCount:1});await delay(100)
+  // Phase 2.1 reserves right-click for the frame menu; Ctrl-left is camera pan.
+  await pointer('mousePressed',x,y,{button:'left',buttons:1,modifiers:2,clickCount:1})
+  await pointer('mouseMoved',x+20,y+20,{button:'left',buttons:1,modifiers:2});await pointer('mouseReleased',x+20,y+20,{button:'left',modifiers:2,clickCount:1});await delay(100)
   assert.notDeepEqual((await camera()).target,orbited.target,'real pointer pan')
   const span=(await camera()).vertical_span
   await pointer('mouseWheel',x,y,{deltaY:-120,deltaX:0});await delay(150)

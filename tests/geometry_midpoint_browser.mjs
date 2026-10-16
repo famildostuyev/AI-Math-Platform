@@ -38,7 +38,7 @@ export async function runGeometryMidpointAcceptance({evaluate,until,textButton,c
   await action('Seç');await click(`${board} [data-geometry-segment-id]`);await remove();assert.equal(await count(),6)
   await action('Seç');await drag(point('point-2'),8,0);await screenMidpoint('point-2','point-3','point-6')
   await menu('Çevrə');await action('Çevrə');await at(310,230);await at(345,230)
-  await menu('2D fiqurlar');await action('Kvadrat');await at(260,330);await at(310,340)
+  await menu('Müstəvi fiqurları');await action('Kvadrat');await at(260,330);await at(310,340)
   await pair('point-7','point-8');await action('Seç');await drag(point('point-7'),8,4);await screenMidpoint('point-7','point-8','point-12');await drag(point('point-8'),4,8);await screenMidpoint('point-7','point-8','point-12')
   // Saving a pending draft must not add a point or recipe.
   await tool();await pclick('point-1');await hover(point('point-3'))

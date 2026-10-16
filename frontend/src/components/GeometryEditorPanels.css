@@ -1,0 +1,29 @@
+.visual-frame__context { position:absolute; right:0; bottom:calc(100% + 8px); z-index:6; }
+.geometry-frame-menu { position:relative; font-size:12px; }
+.geometry-frame-menu > summary { list-style:none; cursor:pointer; border:1px solid #ddd9eb; border-radius:6px; background:white; padding:3px 9px; font-size:19px; line-height:24px; }
+.geometry-frame-menu > summary::-webkit-details-marker { display:none; }
+.geometry-frame-menu__items { position:absolute; right:0; top:100%; min-width:220px; max-height:65vh; overflow:auto; padding:8px; border:1px solid #ddd9eb; border-radius:6px; background:white; box-shadow:0 5px 18px #0002; z-index:10; }
+.geometry-frame-menu__items button { display:block; width:100%; text-align:left; padding:6px; font-size:12px; }
+.geometry-frame-menu__items label { display:block; padding:6px 0; }
+.geometry-frame-menu__items details > summary { cursor:pointer; padding:6px; }
+.geometry-frame-context-menu { position:fixed; z-index:1000; box-sizing:border-box; width:min(260px,calc(100vw - 16px)); max-height:calc(100vh - 16px); overflow:auto; padding:6px; border:1px solid #ddd9eb; border-radius:6px; background:white; box-shadow:0 5px 18px #0002; font-size:12px; }
+.geometry-frame-context-menu[hidden] { display:none; }
+.geometry-frame-context-menu .geometry-frame-menu__items { position:static; min-width:0; max-height:none; padding:0; border:0; box-shadow:none; overflow:visible; }
+.geometry-frame-context-menu button { display:block; width:100%; text-align:left; padding:6px; font-size:12px; }
+.geometry-frame-context-menu :focus-visible { outline:2px solid #9383b7; outline-offset:-2px; }
+@media print { .geometry-frame-context-menu { display:none!important; } }
+.geometry-properties-content { display:grid; gap:8px; font-size:12px; }
+.geometry-properties-content textarea,.geometry-properties-content select { box-sizing:border-box; width:100%; }
+.geometry-properties-content input { max-width:100%; box-sizing:border-box; }
+.geometry-properties-content fieldset { min-width:0; display:flex; flex-wrap:wrap; gap:6px; }
+.geometry-properties-content label { display:grid; gap:4px; max-width:100%; }
+.geometry-properties-content input[type=number] { width:80px; }
+.geometry-properties-content .geometry-3d-metadata > label > input { width:100%; max-width:none; }
+.geometry-properties-content button { font-size:12px; }
+.geometry-properties-dialog { position:fixed; box-sizing:border-box; left:auto; right:auto; top:70px; width:min(340px,calc(100vw - 16px)); max-height:calc(100vh - 16px); overflow:auto; margin:0; padding:12px; border:1px solid #ddd9eb; border-radius:8px; background:white; box-shadow:0 5px 20px #0003; z-index:100; }
+.geometry-properties-dialog header { display:flex; justify-content:space-between; gap:8px; margin-bottom:8px; position:sticky; top:-12px; background:white; z-index:1; }
+.geometry-editor-local-chrome { position:absolute; right:0; top:-38px; z-index:6; }
+.geometry-editor:not(.geometry-editor--framed) { position:relative; }
+.geometry-editor-local-status { position:absolute; left:0; top:-30px; max-width:75%; font-size:12px; }
+.universal-editor-geometry-status { max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+@media print { .geometry-frame-menu,.geometry-editor-local-chrome,.geometry-editor-local-status,.geometry-properties-dialog,.universal-editor-geometry-status {display:none!important} }

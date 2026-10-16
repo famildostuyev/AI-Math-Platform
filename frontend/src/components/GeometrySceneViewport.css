@@ -6,6 +6,10 @@
 .geometry-3d-static svg { display: block; width: 100%; height: 100%; min-height: 0 !important; max-height: none !important; }
 .geometry-3d-static.is-print-only { visibility: hidden; }
 .geometry-3d-labels { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+.geometry-3d-construction-preview { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.geometry-3d-viewport .geometry-3d-solid-bounds { position:absolute; inset:0; width:100%; height:100%; min-height:0 !important; max-height:none !important; border:0; background:transparent; pointer-events:none; z-index:2; }
+@media print { .geometry-3d-solid-bounds { display:none !important; } }
+@media print { .geometry-3d-construction-preview { display: none; } }
 .geometry-3d-labels span { position: absolute; font-size: 12px; color: #334155; white-space: nowrap; }
 .geometry-3d-view > p { position: absolute; left: 8px; bottom: 8px; margin: 0; padding: 4px; background: #ffffffdd; font-size: 12px; }
 .geometry-3d-editor { position:relative; height: 100%; min-height: 260px; display: flex; flex-direction: column; }
@@ -17,13 +21,14 @@
 .geometry-3d-working-plane { display:flex; gap:4px; align-items:center; background:white; font-size:12px; }
 .geometry-3d-working-plane button { font-size:11px; padding:3px; }
 .geometry-3d-authoring-state { font-size:11px; margin:0; background:white; max-height:34px; overflow:auto; }
-.geometry-3d-inspector { position:absolute; left:0; top:calc(100% + 50px); width:100%; background:white; z-index:3; font-size:12px; max-height:320px; overflow:auto; box-shadow:0 2px 8px #0002; }
+.geometry-3d-inspector { background:white; font-size:12px; }
 .geometry-3d-inspector select { max-width:100%; }
 .geometry-3d-inspector input { max-width:90px; }
 .geometry-3d-inspector fieldset { display:flex; flex-wrap:wrap; gap:4px; }
 .geometry-3d-notice { font-size:12px; margin:0; background:white; }
 .geometry-3d-viewport[data-interaction-tool="point"], .geometry-3d-viewport[data-interaction-tool="line"], .geometry-3d-viewport[data-interaction-tool="ray"], .geometry-3d-viewport[data-interaction-tool="segment"], .geometry-3d-viewport[data-interaction-tool="vector"], .geometry-3d-viewport[data-interaction-tool="plane"] { cursor:crosshair; }
 @media print {
+  .geometry-3d-screen { display: none; }
   .geometry-3d-viewport canvas, .geometry-3d-labels, .geometry-3d-controls, .geometry-3d-metadata, .geometry-3d-view > p { display: none !important; }
   .geometry-3d-static.is-print-only { visibility: visible; }
 }

@@ -2,6 +2,7 @@ import type { GeometryAttachmentLoss3D, GeometryCamera3D, GeometryScene3D, Vec3 
 import { normalizeGeometryEditingCamera3D, normalizeGeometryScene3D } from './geometry3d'
 import type { EditorHistoryProvider } from './universalEditorHistory'
 import type { PersistedVisualPlacement } from './visualPlacement'
+import { solidSupported3D, hasSolidTopology3D, evaluateSolid3D } from './geometry3dSolids'
 
 export function defaultGeometryScenePlacement3D(y = 0): PersistedVisualPlacement {
   return { version: 1, layoutMode: 'floating', anchor: { kind: 'document' }, position: { x: 24, y: Math.max(24, y), unit: 'px' }, size: { width: 520, height: 400, unit: 'px' } }
@@ -30,7 +31,7 @@ export function evaluateGeometryScene3D(value: unknown): GeometryEvaluation3D {
   const scene = normalizeGeometryScene3D(value)
   if (!scene) return { status: 'invalid', scene: null }
   const capabilities = [...new Set([
-    ...scene.solids.filter(s => s.mode === 'parametric').map(s => 'solid:' + s.kind),
+    ...scene.solids.filter(s => s.mode === 'parametric'&&!hasSolidTopology3D(s)).map(s => 'solid:' + s.kind),
     ...scene.constructions.filter(c => c.kind === 'point_on_surface').map(() => 'point_on_surface'),
   ])].sort()
   if (capabilities.length) return { status: 'unavailable', scene, capabilities }
@@ -45,11 +46,19 @@ export function evaluateGeometryScene3D(value: unknown): GeometryEvaluation3D {
       throw Error('Unavailable recipe')
     }
     const pending = new Map(scene.constructions.map(c => [c.id, c]))
+    const pendingSolids=new Map(scene.solids.filter(solidSupported3D).map(s=>[s.id,s]))
+    const solidOwners=new Map(scene.solids.filter(solidSupported3D).flatMap(s=>s.features.map(f=>[f.entity_id,s.id] as const)))
     const complete = new Set<string>()
-    while (pending.size) {
+    const waiting=(p:string)=>producers.has(p)&&!complete.has(producers.get(p)!.id)||solidOwners.has(p)&&!complete.has(solidOwners.get(p)!)
+    while (pending.size||pendingSolids.size) {
       let progressed = false
+      for(const [id,s] of pendingSolids){
+        const p=s.parameters,faceId='base'in p&&p.base.kind==='face'?p.base.face_id:null,face=scene.faces.find(f=>f.id===faceId)
+        if(face&&face.boundary.some(waiting))continue
+        evaluateSolid3D(scene,s);pendingSolids.delete(id);complete.add(id);progressed=true
+      }
       for (const [id, c] of pending) {
-        if (dependencies(c).some(p => producers.has(p) && !complete.has(producers.get(p)!.id))) continue
+        if (dependencies(c).some(waiting)) continue
         const position = (id: string) => points.get(id)!.position
         let result: Vec3
         if (c.kind === 'midpoint') result = interpolate(position(c.a), position(c.b), 0.5)
@@ -89,24 +98,31 @@ export function moveGeometryPoint3D(source: GeometryScene3D, id: string, positio
 }
 
 export function deleteGeometryTarget3D(source: GeometryScene3D, id: string): { scene: GeometryScene3D; losses: GeometryAttachmentLoss3D[] } | null {
+  return deleteGeometryTargets3D(source,[id])
+}
+/** M4 solid topology uses one deletion transaction, sharing M1 attachment-loss rules. */
+export function deleteGeometryTargets3D(source:GeometryScene3D,ids:string[]):{scene:GeometryScene3D;losses:GeometryAttachmentLoss3D[]}|null{
   const result = evaluateGeometryScene3D(source)
   if (result.status !== 'ok') return null // Recovery from unverified solid/surface snapshots is deferred.
   const draft = result.scene
-  const group = (['linear_objects', 'edges', 'faces', 'planes'] as const).find(k => draft[k].some(e => e.id === id))
-  if (!group) return null
+  const targets=new Set(ids),groups=['linear_objects','edges','faces','planes'] as const
+  if(!ids.length||targets.size!==ids.length||ids.some(id=>!groups.some(k=>draft[k].some(e=>e.id===id))))return null
+  if(draft.solids.some(s=>s.mode==='parametric'&&s.features.some(f=>targets.has(f.entity_id))))return null
   // A freeform solid's topology must be edited as a future atomic topology command.
-  if (draft.solids.some(s => s.mode === 'freeform' && [...s.edge_ids, ...s.face_ids].includes(id))) return null
+  if (draft.solids.some(s => s.mode === 'freeform' && [...s.edge_ids, ...s.face_ids].some(id=>targets.has(id)))) return null
   const losses: GeometryAttachmentLoss3D[] = []
   const targetOf = (c: GeometryScene3D['constructions'][number]) => c.kind === 'point_on_linear' ? c.linear_id : c.kind === 'point_on_edge' ? c.edge_id : c.kind === 'point_on_face' ? c.face_id : c.kind === 'point_on_surface' ? c.surface_id : null
   draft.constructions = draft.constructions.filter(c => {
-    if (targetOf(c) !== id) return true
+    const id=targetOf(c)
+    if(!id||!targets.has(id))return true
     const position = draft.points.find(p => p.id === c.output_point_id)!.position
     losses.push({ subject_id: c.output_point_id, parent_id: id, reason: 'parent_deleted', preserved_world_position: [...position] })
     return false
   })
   for (const annotation of draft.annotations) {
     const a = annotation.anchor
-    if ((a.kind === 'edge' && a.edge_id === id) || (a.kind === 'face' && a.face_id === id)) {
+    const id=a.kind==='edge'?a.edge_id:a.kind==='face'?a.face_id:null
+    if (id&&targets.has(id)&&(a.kind==='edge'||a.kind==='face')) {
       let position: Vec3
       if (a.kind === 'edge') {
         const edge = draft.edges.find(e => e.id === id)!
@@ -120,7 +136,7 @@ export function deleteGeometryTarget3D(source: GeometryScene3D, id: string): { s
       losses.push({ subject_id: annotation.id, parent_id: id, reason: 'parent_deleted', preserved_world_position: position })
     }
   }
-  draft[group] = draft[group].filter(e => e.id !== id) as never
+  for(const group of groups)draft[group]=draft[group].filter(e=>!targets.has(e.id)) as never
   const evaluated = evaluateGeometryScene3D(draft)
   return evaluated.status === 'ok' ? { scene: evaluated.scene, losses } : null
 }

@@ -6,9 +6,9 @@ import ts from '../frontend/node_modules/typescript/lib/typescript.js'
 const source = await fs.readFile(new URL('../frontend/src/components/geometryRibbonMenu.ts', import.meta.url), 'utf8')
 const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText
 const { GEOMETRY_RIBBON: catalogue } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'))
-assert.deepEqual(catalogue.map(x => x.label), ['Çərçivə əlavə et', 'Seç', 'Nöqtə', 'Xətt', '2D fiqurlar', 'Çevrə', 'Konstruksiya', 'Ölçü', '3D', 'Mətn', 'Düstur', 'Qələm', 'Daha çox'])
+assert.deepEqual(catalogue.map(x => x.label), ['Çərçivə əlavə et', 'Seç', 'Fiquru fırlat', 'Fiquru hərəkət etdir', 'Nöqtə', 'Xətt', 'Müstəvi fiqurları', 'Çevrə', 'Konstruksiya', 'Ölçü', '3D', 'Mətn', 'Düstur', 'Qələm', 'Daha çox'])
 assert.deepEqual(catalogue.find(x => x.label === 'Xətt').groups[0].items.map(x => x.label), ['Düz xətt', 'İstiqamətlənmiş düz xətt', 'Parça', 'Vektor', 'Sınıq xətt'])
-assert.deepEqual(catalogue.filter(x => x.groups).map(x => x.groups.reduce((n, g) => n + g.items.length, 0)), [5, 11, 14, 7, 5, 15, 3, 13])
+assert.deepEqual(catalogue.filter(x => x.groups).map(x => x.groups.reduce((n, g) => n + g.items.length, 0)), [5, 11, 14, 7, 5, 16, 3, 13])
 assert.deepEqual(catalogue.flatMap(x => x.groups ? x.groups.flatMap(g => g.items) : [x]).filter(x => x.action).map(x => x.action), ['select', 'point', 'line', 'directed_line', 'segment', 'vector', 'polyline', 'triangle', 'right_triangle', 'rectangle', 'square', 'parallelogram', 'rhombus', 'trapezoid', 'regular_pentagon', 'regular_hexagon', 'regular_polygon', 'polygon', 'circle', 'disk', 'arc', 'sector', 'midpoint', 'parallel', 'perpendicular', 'intersection', 'angle_bisector', 'altitude', 'median', 'text', 'delete'])
 assert.equal(catalogue.find(x => x.label === '3D').groups.flatMap(x => x.items).filter(x => x.title === 'Oturacağın tərəflərinin sayı (n)').length, 3)
 
@@ -16,6 +16,7 @@ export async function runGeometryRibbonAcceptance({ evaluate, until, textButton,
   const ribbon = '.universal-editor-geometry-ribbon'
   const frame = '[data-frame-id="frame-1"]'
   const domButton = async (label) => {
+    if(label==='Çərçivə əlavə et'){await menu(label);await domButton('2D çərçivə');return}
     await evaluate(`(()=>{const b=[...document.querySelectorAll('${ribbon} button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!b||b.disabled)throw Error('Unavailable '+${JSON.stringify(label)});b.click()})()`)
     await delay(100)
   }
@@ -28,8 +29,8 @@ export async function runGeometryRibbonAcceptance({ evaluate, until, textButton,
   const formula = await evaluate('document.querySelector("math-field").value')
   await textButton('Həndəsə')
   assert.deepEqual(await evaluate(`[...document.querySelector('${ribbon}').children].map(x=>(x.tagName==='DETAILS'?x.querySelector('summary'):x).textContent.trim().replace(/\\s*▾$/,''))`), catalogue.map(x => x.label))
-  assert.equal(await evaluate(`[...document.querySelectorAll('${ribbon} > button')].filter(b=>b.textContent==='Çərçivə əlavə et'&&!b.disabled).length`), 1)
-  assert.equal(await evaluate(`[...document.querySelectorAll('${ribbon} > button')].find(b=>b.textContent==='Seç').disabled`), false)
+  assert.equal(await evaluate(`[...document.querySelectorAll('${ribbon} > details > summary')].filter(b=>b.textContent.trim().replace(/\\s*▾$/,'')==='Çərçivə əlavə et').length`), 1)
+  assert.equal(await evaluate(`[...document.querySelectorAll('${ribbon} > button')].find(b=>b.textContent==='Seç').disabled`), true)
   assert.equal(await evaluate(`[...document.querySelectorAll('${ribbon} > button')].find(b=>b.textContent==='Nöqtə').disabled`), true)
   const layout = async () => evaluate(`(()=>{const r=document.querySelector('${ribbon}').getBoundingClientRect(),c=document.querySelector('.universal-question-canvas').getBoundingClientRect();return [r.height,c.x,c.y]})()`)
   const before = await layout()
@@ -66,14 +67,16 @@ export async function runGeometryRibbonAcceptance({ evaluate, until, textButton,
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
   const point = async index => click(`.geometry-authoring-board svg ellipse:nth-of-type(${index})`)
   await menu('Xətt'); await domButton('Parça'); await point(1); await point(2)
-  await menu('2D fiqurlar'); await domButton('Sərbəst fiqur'); await point(1); await point(2); await point(3)
+  await menu('Müstəvi fiqurları'); await domButton('Sərbəst fiqur'); await point(1); await point(2); await point(3)
   await textButton('Çoxbucaqlını tamamla')
   await domButton('Mətn')
   await evaluate(`document.querySelector('${frame}').scrollIntoView({block:'center'})`)
   const textBoard = await box('.geometry-authoring-board')
   await pointer('mousePressed', textBoard.x + 250, textBoard.y + 250, { button: 'left', clickCount: 1 })
   await pointer('mouseReleased', textBoard.x + 250, textBoard.y + 250, { button: 'left', clickCount: 1 })
-  await until('document.querySelector(".geometry-editor__annotation input")')
+  await until('document.querySelector("[data-geometry-annotation-editor]")')
+  await evaluate(`(()=>{const e=document.querySelector('[aria-label="Annotation text 1"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Note');e.dispatchEvent(new Event('input',{bubbles:true}))})()`)
+  await delay(100);await textButton('Apply annotation');await until('!document.querySelector("[data-geometry-annotation-editor]")')
   await click(`${frame} .visual-frame__actions button`)
   await until(`document.querySelector('${frame} .geometry-renderer') || !document.querySelector('${frame} .geometry-authoring-board')`)
   const geometry = await evaluate('structuredClone(savedRevision.blocks.find(b=>b.id==="frame-1").payload.source_data)')
