@@ -1,0 +1,13 @@
+.saved-pdf-workflow .saved-print-blocked { display: none; }
+.saved-pdf-workflow .pdf-export-document { overflow-x: auto; }
+.saved-revision-pages .ksq-paper { display: flex; flex-direction: column; box-sizing: border-box; width: 210mm; height: 297mm; min-height: 297mm; padding: 6mm 7mm 5mm; flex-shrink: 0; }
+.saved-revision-pages .ksq-columns { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+.saved-revision-pages .ksq-column { min-height: 0; }
+.saved-revision-pages .print-question { overflow: visible; }
+.saved-revision-pages .measured-solution-space { height: 18px; box-sizing: border-box; }
+.saved-revision-pages .ksq-paper-footer { margin-top: auto; }
+@media print {
+  .saved-pdf-workflow .pdf-export-document { overflow: visible; }
+  .saved-pdf-workflow:not([data-print-authorized="true"]) .pdf-export-document { display: none !important; }
+  .saved-pdf-workflow:not([data-print-authorized="true"]) .saved-print-blocked { display: block !important; visibility: visible !important; position: absolute; top: 0; left: 0; padding: 10mm; color: #111; }
+}

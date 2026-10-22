@@ -40,6 +40,7 @@ type AdminQuestionBankProps = {
   onQueryChange: (query: QuestionBankListQuery) => void
   onOpenQuestion: (revisionId: string) => void
   onCreateQuestion: () => void
+  onPreparePdf?: () => void
 }
 
 function formatUpdatedAt(value: string): { date: string; time: string } {
@@ -149,6 +150,7 @@ export default function AdminQuestionBank({
   onQueryChange,
   onOpenQuestion,
   onCreateQuestion,
+  onPreparePdf,
 }: AdminQuestionBankProps) {
   const runAuthenticatedRequest = useEffectEvent(authenticatedRequest)
   const requestGeneration = useRef(0)
@@ -243,9 +245,10 @@ export default function AdminQuestionBank({
             <h1>Sual bazası</h1>
             <p>Sualları axtarın, filtrləyin və redaktə edin.</p>
           </div>
-          <button type="button" onClick={onCreateQuestion}>
-            + Yeni sual tərtib et
-          </button>
+          <div className="admin-question-bank-header-actions">
+            {onPreparePdf && <button className="admin-question-bank-pdf" type="button" onClick={onPreparePdf}>Saxlanmış sualların PDF hazırlığı</button>}
+            <button type="button" onClick={onCreateQuestion}>+ Yeni sual tərtib et</button>
+          </div>
         </header>
 
         <section className="admin-question-bank-tools" aria-label="Sual bazası axtarış və filtrləri">

@@ -4,6 +4,8 @@ import LoginScreen from './components/LoginScreen'
 import AdminDashboard from './components/AdminDashboard'
 import AdminQuestionEditor from './components/AdminQuestionEditor'
 import AdminQuestionBank from './components/AdminQuestionBank'
+import SavedRevisionPdfPreparation from './components/SavedRevisionPdfPreparation'
+import type { SnapshotState } from './components/printableRevisionSnapshot'
 import AdminSources from './components/AdminSources'
 import AdminSourceDetail from './components/AdminSourceDetail'
 import AdminQuestionExtraction from './components/AdminQuestionExtraction'
@@ -1200,6 +1202,8 @@ function ClockIcon() {
 }
 
 function TestBuilder({
+  authenticatedRequest,
+  canPrepareSavedRevisions,
   onBack,
   onOpenOnlineTests,
   purposes,
@@ -1212,6 +1216,8 @@ function TestBuilder({
   onRetryGrades,
   startInOnlineMode = false,
 }: {
+  authenticatedRequest: <T>(request: (accessToken: string) => Promise<T>) => Promise<T>
+  canPrepareSavedRevisions: boolean
   onBack: () => void
   onOpenOnlineTests: () => void
   purposes: PurposeCatalogResponse[]
@@ -1224,7 +1230,8 @@ function TestBuilder({
   onRetryGrades: () => void
   startInOnlineMode?: boolean
 }) {
-  const [builderStep, setBuilderStep] = useState<BuilderStep>('purpose')
+  const [printableSnapshot, setPrintableSnapshot] = useState<SnapshotState>({ status: 'idle', snapshot: null })
+  const [builderStep, setBuilderStep] = useState<BuilderStep>(canPrepareSavedRevisions ? 'review' : 'purpose')
   const [preparationStage, setPreparationStage] =
     useState<PreparationStage>('review')
   const [selectedPurposeId, setSelectedPurposeId] = useState<string | null>(null)
@@ -2187,9 +2194,13 @@ function TestBuilder({
     (purpose) => purpose.parent_id === null,
   )
 
+  if (canPrepareSavedRevisions) return <SavedRevisionPdfPreparation authenticatedRequest={authenticatedRequest}
+    state={printableSnapshot} onChange={setPrintableSnapshot} onBack={onBack} />
+
   return (
     <main className="workspace builder-workspace">
       <div className="builder-content refined-builder">
+        <p className="demo-content-notice" role="status">DEMO — nümunə suallar. Saxlanmış real reviziyaların PDF hazırlığı yalnız Admin sual bazasında mövcuddur.</p>
         {!(builderStep === 'review' && preparationStage !== 'review') && (
           <StepIndicator
             currentStep={builderStep}
@@ -4690,7 +4701,7 @@ function TestBuilder({
               {printPages.map((page, pageIndex) => (
                 <article className="ksq-paper" key={pageIndex}>
                   <div className="ksq-watermark">
-                    AI Riyaziyyat Platforması
+                    DEMO — AI Riyaziyyat Platforması
                   </div>
 
                   {pageIndex === 0 ? (
@@ -5036,7 +5047,7 @@ function TestBuilder({
                 {printPages.map((page, pageIndex) => (
                   <article className="ksq-paper" key={pageIndex}>
                     <div className="ksq-watermark">
-                      AI Riyaziyyat Platforması
+                      DEMO — AI Riyaziyyat Platforması
                     </div>
 
                     {pageIndex === 0 ? (
@@ -5441,7 +5452,7 @@ function App() {
     || screen === 'admin-question-bank'
     || screen === 'admin-question-editor'
   const activeScreen = isAdmin
-    ? (isAdminScreen ? screen : 'admin-dashboard')
+    ? (isAdminScreen || screen === 'test-builder' ? screen : 'admin-dashboard')
     : (isAdminScreen ? 'dashboard' : screen)
 
   const openDashboard = () => {
@@ -5558,7 +5569,9 @@ function App() {
 
       {activeScreen === 'test-builder' && (
         <TestBuilder
-          onBack={openDashboard}
+          authenticatedRequest={authenticatedRequest}
+          canPrepareSavedRevisions={isAdmin}
+          onBack={isAdmin ? openQuestionBank : openDashboard}
           onOpenOnlineTests={openOnlineTests}
           purposes={purposes}
           purposesLoading={purposesLoading}
@@ -5623,6 +5636,7 @@ function App() {
           onQueryChange={setQuestionBankQuery}
           onOpenQuestion={editQuestion}
           onCreateQuestion={createQuestionFromQuestionBank}
+          onPreparePdf={openTestBuilder}
         />
       )}
     </div>
