@@ -69,7 +69,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix='geometry-m5-') as temp:
             result_path = str(Path(temp) / 'result.json')
             env = dict(os.environ, M5_REAL_CONTEXT=json.dumps(dict(backend=f'http://127.0.0.1:{port}', revision_id=draft['revision_id'], token=token)), M5_REAL_OUTPUT=result_path)
-            subprocess.run(['node', 'tests/geometry_frame_browser.mjs', '--m5-real'], cwd=ROOT, env=env, check=True)
+            subprocess.run(['node', 'tests/geometry_frame_browser.mjs', '--m5-real'] + [flag for flag in ('--edge-points', '--face-points', '--cylinder-authoring', '--cylinder-centers') if flag in sys.argv], cwd=ROOT, env=env, check=True)
             result = json.loads(Path(result_path).read_text(encoding='utf-8'))
         loaded = client.get('/api/v1/question-editor/revisions/' + draft['revision_id'])
         assert loaded.status_code == 200

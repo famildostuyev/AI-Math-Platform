@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 export async function runUnifiedGeometryMenuAcceptance({evaluate,until,textButton,click,box,pointer,delay,send}){
   const ribbon='.universal-editor-geometry-ribbon',f2='[data-frame-id="frame-1"]',f3='[data-frame-id="frame-2"]'
-  const menu=async label=>{await evaluate(`(()=>{const d=[...document.querySelectorAll('${ribbon} > details')].find(d=>d.querySelector('summary').textContent.trim().replace(/\\s*▾$/,'')===${JSON.stringify(label)});if(!d)throw Error('Missing menu');if(!d.open)d.querySelector('summary').click()})()`);await until(`!![...document.querySelectorAll('${ribbon} > details[open]')].find(d=>d.querySelector('summary').textContent.includes(${JSON.stringify(label)}))`)}
+  const menu=async label=>{await until(`(()=>{const d=[...document.querySelectorAll('${ribbon} > details')].find(d=>d.querySelector('summary').textContent.trim().replace(/\\s*▾$/,'')===${JSON.stringify(label)});return d&&d.querySelector('summary').getAttribute('aria-disabled')!=='true'})()`);await evaluate(`(()=>{const d=[...document.querySelectorAll('${ribbon} > details')].find(d=>d.querySelector('summary').textContent.trim().replace(/\\s*▾$/,'')===${JSON.stringify(label)});if(!d)throw Error('Missing menu');if(!d.open)d.querySelector('summary').click()})()`);await until(`!![...document.querySelectorAll('${ribbon} > details[open]')].find(d=>d.querySelector('summary').textContent.includes(${JSON.stringify(label)}))`)}
   const action=async(code,group)=>{if(group)await menu(group);await click(`${ribbon} [data-geometry-action="${code}"]`);await until(`document.querySelector('${ribbon} [data-geometry-action="${code}"]').getAttribute('aria-pressed')==='true'`)}
   const choose=async id=>{await evaluate(`(()=>{const s=document.querySelector('[aria-label="3D obyekt seç"]');s.value='${id}';s.dispatchEvent(new Event('change',{bubbles:true}))})()`);await delay(50)}
   const input=async(name,value)=>{await click(`[aria-label="${name}"]`);await send('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',modifiers:2,windowsVirtualKeyCode:65});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',modifiers:2,windowsVirtualKeyCode:65});await send('Input.insertText',{text:String(value)})}
@@ -25,7 +25,7 @@ export async function runUnifiedGeometryMenuAcceptance({evaluate,until,textButto
   await menu('Çərçivə əlavə et');await textButton('3D çərçivə');await until(`document.querySelector('${f3} .geometry-3d-viewport canvas')`)
   assert.equal(await evaluate('savedRevision.blocks[1].payload.source_data.schema_version'),2)
   assert.equal(await evaluate(`document.querySelectorAll('${ribbon} [data-geometry-action="point"]').length`),1)
-  assert.equal(await evaluate(`document.querySelectorAll('${ribbon} > button[data-tool-3d]').length`),2,'only shared Select and Point remain direct actions')
+  assert.equal(await evaluate(`document.querySelectorAll('${ribbon} > button[data-tool-3d]').length`),4,'shared Select/Point and accepted M5 rotation/translation remain direct actions')
   assert.equal(await evaluate(`document.querySelectorAll('${ribbon} > button[data-solid-3d]').length`),0)
   await action('point');await click(`${f3} .geometry-3d-inspector summary`)
   const ids=[]
@@ -35,7 +35,9 @@ export async function runUnifiedGeometryMenuAcceptance({evaluate,until,textButto
   await action('plane','3D');for(const id of ids)await choose(id)
   for(const code of ['cube','cuboid','prism']){await menu('3D');await click(`${ribbon} [data-solid-3d="${code}"]`);await until('document.querySelector(".geometry-3d-solid-properties")');await textButton('Cisim panelini bağla')}
   await menu('3D');await click(`${ribbon} [data-solid-3d="pyramid"]`);await until(`document.querySelector('${f3} .geometry-3d-editor').dataset.activeTool==='pyramid'`);assert.equal(await evaluate('!!document.querySelector(".geometry-3d-solid-properties")'),false)
-  await menu('3D');for(const label of ['Silindr','Konus','Sfera','Düzgün n-bucaqlı kəsik piramida'])assert.equal(await evaluate(`[...document.querySelectorAll('${ribbon} button')].find(b=>b.textContent===${JSON.stringify(label)}).disabled`),true)
+  await menu('3D');assert.equal(await evaluate(`document.querySelector('${ribbon} [data-geometry-action="cylinder"]').disabled`),false)
+  assert.equal(await evaluate(`document.querySelector('${ribbon} [data-geometry-action="cone"]').disabled`),false,'implemented cone authoring remains enabled')
+  for(const label of ['Sfera','Düzgün n-bucaqlı kəsik piramida'])assert.equal(await evaluate(`[...document.querySelectorAll('${ribbon} button')].find(b=>b.textContent===${JSON.stringify(label)}).disabled`),true)
   await click(`${ribbon} [data-solid-3d="cube"]`);await until('document.querySelector(".geometry-3d-solid-properties")');await textButton('Cisim yarat')
   await save(f3);const three=await evaluate('structuredClone(savedRevision.blocks[1].payload.source_data)');assert.deepEqual(three.linear_objects.map(l=>l.kind).sort(),['line','ray','segment','vector']);assert.equal(three.planes.length,1);assert.equal(three.solids[0].kind,'cube');assert.deepEqual(await evaluate('savedRevision.blocks[0].payload.source_data'),two,'3D tools never mutate 2D data')
   await click(f2);await click(`${f2} .visual-frame__actions button`);await until(`document.querySelector('${f2} .geometry-authoring-board')`)

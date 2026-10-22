@@ -1,3 +1,7 @@
+import {runCylinderAuthoringAcceptance} from './geometry_cylinder_authoring_browser.mjs'
+import {runFacePointsAcceptance} from './geometry_face_points_browser.mjs'
+import {runCylinderRenderAcceptance} from './geometry_cylinder_render_browser.mjs'
+import {runEdgePointsAcceptance} from './geometry_edge_points_browser.mjs'
 // Real Edge/CDP interaction with production AdminQuestionEditor; API transport is a fixture.
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
@@ -67,6 +71,16 @@ import '/src/index.css'; import '/src/App.css';
 import '/src/components/UniversalEditor.css';
 const root=createRoot(document.getElementById('root'));
 const revision={question_family_id:'family',question_form_id:'form',revision_id:'revision',revision_number:1,status:'draft',question_type_id:'type',source_id:null,source_display_name:null,source_detail:null,difficulty:null,updated_at:'2026-01-01T00:00:00Z',primary_topic_id:null,related_topic_ids:[],purpose_ids:[],blocks:[],answer_policy:'unsupported',answer_options:[],accepted_answers:[],solution:null};
+${process.argv.includes('--cylinder-render')?`
+window.openCylinderRenderFixture=(source,highlighted=[])=>{
+ function ReadOnlyCylinder(){
+  const [update,setUpdate]=React.useState({camera:source.print_camera});
+  window.cylinderRenderSetCamera=camera=>setUpdate({camera});
+  window.cylinderRenderSnapshot={source:structuredClone(source),camera:structuredClone(update.camera)};
+  return React.createElement('div',{className:'pdf-export-document',style:{width:640,height:400,padding:0,border:0}},React.createElement(GeometrySceneViewport,{scene:source,camera:update.camera,cameraOrigin:update.origin,interactive:true,interactionTool:'camera',highlightedIds:highlighted,onNavigate:(camera,origin)=>setUpdate({camera,origin})}));
+ }
+ root.render(React.createElement(ReadOnlyCylinder,{key:++mount}));
+};`:''}
 window.savedRevision=revision;window.requests=[];let serial=0,mount=0;
 ${process.argv.includes('--camera-sync') ? `
 window.openCameraSyncFixture=source=>{
@@ -150,7 +164,7 @@ window.realRevision=()=>window.fetch('/api/v1/question-editor/revisions/'+${JSON
 const server = await createServer({ root: path.join(root, 'frontend'), ...(realContext?{define:{'import.meta.env.VITE_API_BASE_URL':'""'}}:{}), server: { host: '127.0.0.1', port: 0, ...(realContext?{proxy:{'/api':{target:realContext.backend,changeOrigin:true}}}:{}) }, plugins: [{
   name: 'geometry-frame-fixture', enforce: 'pre',
   transform(code,id) {
-    if((realContext||process.argv.includes('--solid-scale')||process.argv.includes('--solid-rotation')||process.argv.includes('--solid-translation'))&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).rotationScene=structuredClone(value);(globalThis as any).solidGestureState={selected:state.selected,dragging:state.dragging,message:state.message}; return <div className="geometry-3d-editor"')
+    if((realContext||process.argv.includes('--cylinder-authoring')||process.argv.includes('--face-points')||process.argv.includes('--edge-points')||process.argv.includes('--solid-scale')||process.argv.includes('--solid-rotation')||process.argv.includes('--solid-translation'))&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).rotationScene=structuredClone(value);(globalThis as any).solidGestureState={selected:state.selected,dragging:state.dragging,message:state.message}; return <div className="geometry-3d-editor"')
     if(process.argv.includes('--edge-visibility')&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).visibilityScene=structuredClone(value);(globalThis as any).visibilityNavigate=navigate; return <div className="geometry-3d-editor"')
     if(process.argv.includes('--edge-visibility')&&id.endsWith('/GeometrySceneViewport.tsx'))return code.replace('renderer!.render(world,view);','renderer!.render(world,view);(globalThis as any).visibilityDraw={camera:structuredClone(current),lines:group!.children.filter(o=>o.type==="Line").map(o=>({id:o.userData.semanticId,hidden:(o as THREE.Line<THREE.BufferGeometry,THREE.LineDashedMaterial>).material.isLineDashedMaterial===true}))};')
     if(process.argv.includes('--base-alignment')&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).baseAlignmentScene=structuredClone(value); return <div className="geometry-3d-editor"')
@@ -175,7 +189,7 @@ const server = await createServer({ root: path.join(root, 'frontend'), ...(realC
   }) },
 }] })
 await server.listen()
-const browser = spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', ['--headless=new', ...(realContext||process.argv.includes('--solid-scale')||process.argv.includes('--solid-translation')||process.argv.includes('--solid-rotation')||process.argv.includes('--edge-visibility')||process.argv.includes('--pyramid-consumption')||process.argv.includes('--base-alignment')||process.argv.includes('--scene-pyramid')||process.argv.includes('--planar')||process.argv.includes('--base-vertex')||process.argv.includes('--apex-apply')||process.argv.includes('--apex-height')||process.argv.includes('--apex-drag')||process.argv.includes('--menu-placement')||process.argv.includes('--context-picking')||process.argv.includes('--camera-sync')||process.argv.includes('--scene-3d-m2')||process.argv.includes('--scene-3d-m3')||process.argv.includes('--scene-3d-m4')||process.argv.includes('--unified-menu')||process.argv.includes('--frame-controls')||process.argv.includes('--frame-context')||process.argv.includes('--geometry-properties') ? ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] : ['--disable-gpu']), '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' })
+const browser = spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', ['--headless=new', ...(realContext||process.argv.includes('--cylinder-authoring')||process.argv.includes('--cylinder-render')||process.argv.includes('--face-points')||process.argv.includes('--edge-points')||process.argv.includes('--solid-scale')||process.argv.includes('--solid-translation')||process.argv.includes('--solid-rotation')||process.argv.includes('--edge-visibility')||process.argv.includes('--pyramid-consumption')||process.argv.includes('--base-alignment')||process.argv.includes('--scene-pyramid')||process.argv.includes('--planar')||process.argv.includes('--base-vertex')||process.argv.includes('--apex-apply')||process.argv.includes('--apex-height')||process.argv.includes('--apex-drag')||process.argv.includes('--menu-placement')||process.argv.includes('--context-picking')||process.argv.includes('--camera-sync')||process.argv.includes('--scene-3d-m2')||process.argv.includes('--scene-3d-m3')||process.argv.includes('--scene-3d-m4')||process.argv.includes('--unified-menu')||process.argv.includes('--frame-controls')||process.argv.includes('--frame-context')||process.argv.includes('--geometry-properties') ? ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] : ['--disable-gpu']), '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' })
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 let socket
 try {
@@ -245,7 +259,15 @@ try {
   }
   await until('document.querySelector(".universal-question-canvas")')
   if (realContext) {
-    await runM5RealAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+    if(process.argv.includes('--cylinder-authoring'))await runCylinderAuthoringAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag});else await runM5RealAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--cylinder-authoring')) {
+    await runCylinderAuthoringAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--cylinder-render')) {
+    await runCylinderRenderAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--face-points')) {
+    await runFacePointsAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--edge-points')) {
+    await runEdgePointsAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--solid-scale')) {
     await runSolidScaleAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--solid-translation')) {
@@ -449,5 +471,5 @@ try {
 } finally {
   socket?.close(); browser.kill(); await server.close()
   await delay(300)
-  if (path.dirname(profile) === path.resolve(os.tmpdir()) && path.basename(profile).startsWith('geometry-frame-edge-')) await fs.rm(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 })
+  if (path.dirname(profile) === path.resolve(os.tmpdir()) && path.basename(profile).startsWith('geometry-frame-edge-')) await fs.rm(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 300 })
 }

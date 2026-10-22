@@ -1,3 +1,5 @@
+import {exerciseFacePoint} from './geometry_face_points_browser.mjs'
+import {exerciseEdgePoint} from './geometry_edge_points_browser.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import {createScenePyramid} from './geometry_scene_pyramid_helpers.mjs'
@@ -13,6 +15,8 @@ export async function runM5RealAcceptance({evaluate,until,textButton,click,point
   await createScenePyramid({evaluate,until,click,pointer},[[-3,-1,0],[-1,-1,0],[-1,1,0],[-3,1,0]])
   const id=(await scene()).solids[0].id
   await createScenePyramid({evaluate,until,click,pointer},[[1,-1,0],[3,-1,0],[3,1,0],[1,1,0]])
+  if(process.argv.includes('--edge-points'))await exerciseEdgePoint({evaluate,until,textButton,click,pointer,send})
+  if(process.argv.includes('--face-points'))await exerciseFacePoint({evaluate,until,textButton,click,pointer,send})
   const original=await scene(),other=original.solids.find(s=>s.id!==id).id,initialCamera=await camera(),features=original.solids.find(s=>s.id===id).features
   const otherPoints=s=>s.points.filter(p=>s.solids.find(v=>v.id===other).features.some(f=>f.entity_id===p.id))
   const select=async()=>{
