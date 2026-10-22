@@ -392,6 +392,17 @@ class QuestionEditorApiTest(unittest.TestCase):
         service_class.assert_not_called()
 
     @patch("app.api.question_editor.QuestionEditorService")
+    def test_non_admin_cannot_load_printable_revision_through_editor_endpoint(
+        self, service_class: MagicMock,
+    ) -> None:
+        self.db.scalar.return_value = RoleName.TEACHER.value
+        response = self.client.get(
+            f"/api/v1/question-editor/revisions/{uuid.uuid4()}"
+        )
+        self.assertEqual(response.status_code, 403)
+        service_class.assert_not_called()
+
+    @patch("app.api.question_editor.QuestionEditorService")
     def test_non_admin_active_role_returns_403_without_service_call(
         self, service_class: MagicMock,
     ) -> None:
