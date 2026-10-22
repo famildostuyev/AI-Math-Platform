@@ -1,0 +1,29 @@
+{
+  "rays": [
+    {"name":"axis upward","origin":[0,0,-3],"direction":[0,0,2],"positions":[[0,0,0],[0,0,4]],"regions":["bottom_cap","top_cap"]},
+    {"name":"axis downward","origin":[0,0,7],"direction":[0,0,-1],"positions":[[0,0,4],[0,0,0]],"regions":["top_cap","bottom_cap"]},
+    {"name":"lateral","origin":[-5,0,2],"direction":[3,0,0],"positions":[[-2,0,2],[2,0,2]],"regions":["lateral","lateral"]},
+    {"name":"cap then side","origin":[0,0,5],"direction":[1,0,-1],"positions":[[1,0,4],[2,0,3]],"regions":["top_cap","lateral"]},
+    {"name":"side then cap","origin":[-4,0,1],"direction":[1,0,0.5],"positions":[[-2,0,2],[2,0,4]],"regions":["lateral","top_cap"]},
+    {"name":"inside lateral","origin":[0,0,2],"direction":[1,0,0],"positions":[[2,0,2]],"regions":["lateral"]},
+    {"name":"inside axial","origin":[0,0,2],"direction":[0,0,-1],"positions":[[0,0,0]],"regions":["bottom_cap"]},
+    {"name":"tangent","origin":[-5,2,2],"direction":[1,0,0],"positions":[[0,2,2]],"regions":["lateral"]},
+    {"name":"rim diagonal","origin":[-4,0,-2],"direction":[1,0,1],"positions":[[-2,0,0],[2,0,4]],"regions":["bottom_cap","top_cap"]},
+    {"name":"cap coplanar","origin":[-5,0,4],"direction":[1,0,0],"positions":[[-2,0,4],[2,0,4]],"regions":["top_cap","top_cap"]},
+    {"name":"cap coplanar inside","origin":[0,0,0],"direction":[1,0,0],"positions":[[2,0,0]],"regions":["bottom_cap"]},
+    {"name":"cap coplanar tangent","origin":[-5,2,0],"direction":[1,0,0],"positions":[[0,2,0]],"regions":["bottom_cap"]},
+    {"name":"side generator","origin":[2,0,-2],"direction":[0,0,1],"positions":[[2,0,0],[2,0,4]],"regions":["bottom_cap","top_cap"]},
+    {"name":"boundary inward","origin":[2,0,2],"direction":[-1,0,0],"positions":[[-2,0,2]],"regions":["lateral"]},
+    {"name":"boundary outward","origin":[2,0,2],"direction":[1,0,0],"positions":[],"regions":[]},
+    {"name":"top inward","origin":[0,0,4],"direction":[0,0,-1],"positions":[[0,0,0]],"regions":["bottom_cap"]},
+    {"name":"top outward","origin":[0,0,4],"direction":[0,0,1],"positions":[],"regions":[]},
+    {"name":"rim inward","origin":[2,0,4],"direction":[-1,0,-1],"positions":[[-2,0,0]],"regions":["bottom_cap"]},
+    {"name":"rim outward","origin":[2,0,4],"direction":[1,0,1],"positions":[],"regions":[]},
+    {"name":"axis miss","origin":[2.00000001,0,-2],"direction":[0,0,1],"positions":[],"regions":[]},
+    {"name":"tangent miss","origin":[-5,2.00000001,2],"direction":[1,0,0],"positions":[],"regions":[]},
+    {"name":"above finite height","origin":[-5,0,4.00000001],"direction":[1,0,0],"positions":[],"regions":[]},
+    {"name":"behind ray","origin":[5,0,2],"direction":[1,0,0],"positions":[],"regions":[]},
+    {"name":"near axis","origin":[0,0,-2],"direction":[1e-14,0,1],"positions":[[2e-14,0,0],[6e-14,0,4]],"regions":["bottom_cap","top_cap"]},
+    {"name":"far lateral","origin":[-1000000000,0,2],"direction":[1,0,0],"positions":[[-2,0,2],[2,0,2]],"regions":["lateral","lateral"]}
+  ]
+}

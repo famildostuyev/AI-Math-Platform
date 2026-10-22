@@ -1,0 +1,36 @@
+﻿{
+  "frames": [
+    {"origin": [0,0,0], "x_axis": [1,0,0], "y_axis": [0,1,0]},
+    {"origin": [3,-2,5], "x_axis": [0.6,0.8,0], "y_axis": [-0.48,0.36,0.8]},
+    {"origin": [-2,3,1], "x_axis": [1,0,0], "y_axis": [0,0,1]},
+    {"origin": [1,2,-3], "x_axis": [0,1,0], "y_axis": [0,0,1]}
+  ],
+  "evaluations": [
+    {"kind":"cylinder","uv":[0,0],"local":[2,0,0]},
+    {"kind":"cylinder","uv":[0.25,0.5],"local":[0,2,2]},
+    {"kind":"cylinder","uv":[0.5,1],"local":[-2,0,4]},
+    {"kind":"cone","uv":[0,0],"local":[2,0,0]},
+    {"kind":"cone","uv":[0.25,0.5],"local":[0,1,2]},
+    {"kind":"cone","uv":[0.75,1],"local":[0,0,4]},
+    {"kind":"sphere","uv":[0,0],"local":[0,0,-2]},
+    {"kind":"sphere","uv":[0.25,0.5],"local":[0,2,0]},
+    {"kind":"sphere","uv":[0.75,1],"local":[0,0,2]}
+  ],
+  "rays": [
+    {"name":"sphere outside","kind":"sphere","origin":[-5,0,0],"direction":[1,0,0],"hits":[[-2,0,0],[2,0,0]]},
+    {"name":"sphere tangent","kind":"sphere","origin":[-5,2,0],"direction":[1,0,0],"hits":[[0,2,0]]},
+    {"name":"sphere miss","kind":"sphere","origin":[-5,2.00000001,0],"direction":[1,0,0],"hits":[]},
+    {"name":"sphere inside","kind":"sphere","origin":[0,0,0],"direction":[1,0,0],"hits":[[2,0,0]]},
+    {"name":"far sphere","kind":"sphere","origin":[-1000000000,0,0],"direction":[1,0,0],"hits":[[-2,0,0],[2,0,0]]},
+    {"name":"cylinder outside","kind":"cylinder","origin":[-5,0,2],"direction":[1,0,0],"hits":[[-2,0,2],[2,0,2]]},
+    {"name":"cylinder tangent","kind":"cylinder","origin":[-5,2,2],"direction":[1,0,0],"hits":[[0,2,2]]},
+    {"name":"cylinder beyond top","kind":"cylinder","origin":[-5,0,5],"direction":[1,0,0],"hits":[]},
+    {"name":"cylinder axis excludes caps","kind":"cylinder","origin":[0,0,-5],"direction":[0,0,1],"hits":[]},
+    {"name":"cone outside","kind":"cone","origin":[-5,0,2],"direction":[1,0,0],"hits":[[-1,0,2],[1,0,2]]},
+    {"name":"cone tangent","kind":"cone","origin":[-5,1,2],"direction":[1,0,0],"hits":[[0,1,2]]},
+    {"name":"cone apex","kind":"cone","origin":[0,0,8],"direction":[0,0,-1],"hits":[[0,0,4]]},
+    {"name":"cone linear root","kind":"cone","origin":[-1,0,0],"direction":[0.5,0,1],"hits":[[0.5,0,3]]},
+    {"name":"cone coincident generator","kind":"cone","origin":[2,0,0],"direction":[-0.5,0,1],"hits":[]},
+    {"name":"cone beyond apex","kind":"cone","origin":[-5,0,5],"direction":[1,0,0],"hits":[]}
+  ]
+}
