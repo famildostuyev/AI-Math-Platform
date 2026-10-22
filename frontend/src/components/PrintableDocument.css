@@ -1,0 +1,12 @@
+.printable-document { color: #111827; font: 12pt/1.5 Arial, Helvetica, sans-serif; }
+.printable-document__question { position: relative; display: flow-root; overflow: visible; }
+.printable-document__question + .printable-document__question { margin-top: 1.5em; }
+.printable-document p { margin: 0 0 1em; white-space: pre-wrap; overflow-wrap: anywhere; }
+.printable-document ol, .printable-document ul { margin: 0 0 1em; padding-inline-start: 2em; }
+.printable-document li p { margin-bottom: .25em; }
+.printable-document__formula { margin: 0 0 1em; }
+.printable-document .math-content__math--display { display: block; }
+.printable-document__geometry { margin: 0; }
+.printable-document__geometry .visual-content { margin: 0; }
+.printable-document__geometry svg { display: block; min-height: 0; max-height: none; max-width: none; border: 0; border-radius: 0; }
+.printable-document__unsupported { position: relative; z-index: 1; padding: .5em; border: 1px dashed #b91c1c; background: #fff; color: #991b1b; overflow-wrap: anywhere; }
