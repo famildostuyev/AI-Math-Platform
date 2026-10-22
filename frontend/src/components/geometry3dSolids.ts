@@ -3,6 +3,8 @@ import type { GeometryParametricSolid3D, GeometryScene3D, Vec3 } from './geometr
 export type SolidKind3D = 'cube'|'cuboid'|'prism'|'pyramid'
 export const SOLID_TOOLS_3D: {kind:SolidKind3D;label:string}[]=[{kind:'cube',label:'Kub'},{kind:'cuboid',label:'Düzbucaqlı paralelepiped'},{kind:'prism',label:'Prizma'},{kind:'pyramid',label:'Piramida'}]
 export const solidSupported3D=(s:GeometryScene3D['solids'][number]):s is GeometryParametricSolid3D=>s.mode==='parametric'&&['cube','cuboid','prism','pyramid'].includes(s.kind)
+/** Transform support is separate from polyhedral topology support. */
+export const solidTransformSupported3D=(s:GeometryScene3D['solids'][number]):s is GeometryParametricSolid3D=>s.mode==='parametric'&&['cube','cuboid','prism','pyramid','cylinder','cone','sphere'].includes(s.kind)
 export function hasSolidTopology3D(s:GeometryScene3D['solids'][number]){
   if(!solidSupported3D(s))return false
   const n='sides'in s.parameters?s.parameters.sides:4

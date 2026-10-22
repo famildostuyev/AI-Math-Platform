@@ -1,3 +1,4 @@
+import { insideFace3D as insideFace } from './geometry3dFaces'
 import contractJson from '../../../backend/app/schemas/geometry_3d_contract.json?raw'
 import type { GeometryCamera3D, GeometryScene3D, Vec3 } from './geometry3dContract'
 import { solidSupported3D, hasSolidTopology3D, solidTopology3D, solidFeatureIds3D, evaluateSolid3D } from './geometry3dSolids'
@@ -56,16 +57,6 @@ function faceCoordinates(coords: Vec3[]): number[][] {
   let n = cross(x, sub(coords[2], coords[0])); const norm = Math.sqrt(dot(n, n)); n = n.map(v => v / norm)
   const y = cross(n, x)
   return coords.map(p => [dot(sub(p, coords[0]), x), dot(sub(p, coords[0]), y)])
-}
-function insideFace(uv: number[], polygon: number[][]): boolean {
-  let inside = false
-  for (let i = 0; i < polygon.length; i++) {
-    const a = polygon[i], b = polygon[(i + 1) % polygon.length]
-    const turn = (b[0]-a[0])*(uv[1]-a[1])-(b[1]-a[1])*(uv[0]-a[0])
-    if (Math.abs(turn) <= 1e-9 && uv[0] >= Math.min(a[0], b[0])-1e-9 && uv[0] <= Math.max(a[0], b[0])+1e-9 && uv[1] >= Math.min(a[1], b[1])-1e-9 && uv[1] <= Math.max(a[1], b[1])+1e-9) return true
-    if ((a[1] > uv[1]) !== (b[1] > uv[1]) && uv[0] < (b[0]-a[0])*(uv[1]-a[1])/(b[1]-a[1])+a[0]) inside = !inside
-  }
-  return inside
 }
 function simpleFace(polygon: number[][]) {
   const turn = (a: number[], b: number[], c: number[]) => (b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])
@@ -212,7 +203,7 @@ export function normalizeGeometryScene3D(value: unknown): GeometryScene3D | null
         if ((kind === 'edge' || ['segment', 'vector'].includes(parent.kind as string)) && (t < 0 || t > 1)) fail()
         if (kind === 'linear' && parent.kind === 'ray' && t < 0) fail()
       }
-      if (kind === 'surface') { const [u, v] = parameter as number[]; if (u < 0 || u >= 1 || v < 0 || v > 1) fail() }
+      if (kind === 'surface') { const uv=parameter as number[],[u, v] = uv; if (u < 0 || u >= 1 || v < 0 || v > 1) fail(); if(parent.kind==='sphere'&&(v===0||v===1))uv[0]=0 }
       if (kind === 'face') {
         const coords = (parent.boundary as string[]).map(p => index.get(p)!.position as Vec3)
         if (!insideFace(parameter as number[], faceCoordinates(coords))) fail()

@@ -56,7 +56,7 @@ import UniversalQuestionCanvas from './UniversalQuestionCanvas'
 import { emptyGeometryV1 } from './geometryV1'
 import { normalizeGeometrySourceData } from './geometrySourceData'
 import type { GeometryScene3D } from './geometry3dContract'
-import { defaultGeometryScenePlacement3D, emptyGeometryScene3D, evaluateGeometryScene3D } from './geometry3dModel'
+import { defaultGeometryScenePlacement3D, emptyGeometryScene3D, evaluateGeometryScene3D, prepareCylinderCenters3D } from './geometry3dModel'
 import {
   getUniversalEditorModule,
   UNIVERSAL_EDITOR_MODULES,
@@ -424,7 +424,7 @@ export default function AdminQuestionEditor({
       let geometry = normalizeGeometrySourceData(block.payload.source_data)
       if (geometry === null) return
       if (geometry.schema_version === 2) {
-        const evaluated = evaluateGeometryScene3D(geometry)
+        const evaluated = evaluateGeometryScene3D(prepareCylinderCenters3D(geometry)??geometry)
         if (evaluated.status === 'invalid') { setError('3D səhnəsinin hesablanması etibarsızdır.'); return }
         geometry = evaluated.scene
       }

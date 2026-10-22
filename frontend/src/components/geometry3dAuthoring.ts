@@ -1,12 +1,18 @@
+import { pickSolidFace3D, visiblePointForCreation3D, createPointOnFace3D, editPointOnFace3D, facePlanePointer3D } from './geometry3dFacePoints'
+import { faceBasis3D } from './geometry3dFaces'
+import { pickSolidEdge3D, createPointOnEdge3D, editPointOnEdge3D } from './geometry3dEdgePoints'
 import type { GeometryCamera3D, GeometryScene3D, Vec3 } from './geometry3dContract'
 import { createProjection3D, projectScene3D, add, sub, scale, dot, unit } from './geometry3dProjection'
+import { faceDepth3D, pointHiddenByAnalytic3D } from './geometry3dRenderVisibility'
+import { pickAnalyticSolid3D, pickAnalyticSurface3D } from './geometry3dCylinderPicking'
+import { createPointOnSurface3D, editPointOnSurface3D } from './geometry3dSurfacePoints'
 import { deleteGeometryTarget3D, evaluateGeometryScene3D, moveGeometryPoint3D, transactGeometryScene3D } from './geometry3dModel'
-import { deleteSolid3D, pyramidApexDrag3D, movePyramidApexParallel3D, changePyramidHeight3D, pyramidBaseDrag3D, movePyramidBaseVertex3D, createPyramidFromPolygon3D, rotateSolid3D, solidPivot3D, translateSolid3D } from './geometry3dSolidAuthoring'
+import { deleteSolid3D, pyramidApexDrag3D, movePyramidApexParallel3D, changePyramidHeight3D, pyramidBaseDrag3D, movePyramidBaseVertex3D, createPyramidFromPolygon3D, createCylinderAt3D, createConeAt3D, createSphereAt3D, rotateSolid3D, solidPivot3D, translateSolid3D } from './geometry3dSolidAuthoring'
 import { polygonBaseGeometry3D } from './geometry3dSolids'
-import { scaleSolid3D } from './geometry3dSolidAuthoring'
+import { scaleSolid3D, resizeCylinder3D, resizeCone3D, resizeSphereRadius3D } from './geometry3dSolidAuthoring'
 import { projectedSolidBounds3D } from './geometry3dSolidBounds'
 
-export type GeometryTool3D = 'select' | 'rotate_solid' | 'translate_solid' | 'camera' | 'point' | 'line' | 'ray' | 'segment' | 'vector' | 'plane' | 'polyline' | 'triangle' | 'polygon' | 'pyramid'
+export type GeometryTool3D = 'select' | 'rotate_solid' | 'translate_solid' | 'camera' | 'point' | 'line' | 'ray' | 'segment' | 'vector' | 'plane' | 'polyline' | 'triangle' | 'polygon' | 'pyramid' | 'cylinder' | 'cone' | 'sphere'
 export type WorkingPlane3D = 'XY' | 'XZ' | 'YZ'
 export const POINT_SNAP_TOLERANCE_3D=10
 export const GEOMETRY_TOOLS_3D: { tool: GeometryTool3D; label: string }[] = [
@@ -14,6 +20,9 @@ export const GEOMETRY_TOOLS_3D: { tool: GeometryTool3D; label: string }[] = [
   {tool:'line',label:'3D düz xətt'}, {tool:'ray',label:'3D şüa'}, {tool:'segment',label:'3D parça'},
   {tool:'vector',label:'3D vektor'}, {tool:'plane',label:'3D müstəvi'},
   {tool:'polyline',label:'Sınıq xətt'}, {tool:'triangle',label:'Üçbucaq'}, {tool:'polygon',label:'Poliqon'},
+  {tool:'cylinder',label:'Silindr'},
+  {tool:'cone',label:'Konus'},
+  {tool:'sphere',label:'Kürə'},
 ]
 export type Pointer3D = { pointerId:number; button:number; x:number; y:number; width:number; height:number; altKey:boolean; shiftKey?:boolean }
 export type PointerPhase3D = 'down' | 'move' | 'up' | 'cancel' | 'wheel'
@@ -119,6 +128,11 @@ export function editPoint3D(source:GeometryScene3D,id:string,position:Vec3,label
   const moved=moveGeometryPoint3D(source,id,position)
   return moved ? transactGeometryScene3D(moved,draft=>{draft.points.find(p=>p.id===id)!.label=label}) : null
 }
+export function editConeCenterLabel3D(source:GeometryScene3D,id:string,label:string|null){
+  if(label!==null&&typeof label!=='string')return null
+  if(!source.solids.some(s=>s.mode==='parametric'&&(s.kind==='cone'||s.kind==='sphere')&&s.features.some(f=>['v_0','v_1','v_2','v_3'].includes(f.slot)&&f.entity_id===id)))return null
+  return transactGeometryScene3D(source,d=>{d.points.find(p=>p.id===id)!.label=label===''?null:label})
+}
 export function editReferences3D(source:GeometryScene3D,id:string,pointIds:string[]):GeometryScene3D|null {
   return transactGeometryScene3D(source,draft=>{
     const line=draft.linear_objects.find(l=>l.id===id),plane=draft.planes.find(p=>p.id===id)
@@ -139,6 +153,8 @@ export type Pick3D = {id:string;kind:'point'|'linear'|'plane'|'solid'|'face';dis
 export function pickGeometry3D(source:GeometryScene3D,camera:GeometryCamera3D,pointer:Pick<Pointer3D,'x'|'y'|'width'|'height'>,pointsOnly=false,pointFilter?:(id:string)=>boolean,facesOnly=false):Pick3D|null {
   try {
     const projected=projectScene3D(source,camera,pointer.width,pointer.height), candidates:Pick3D[]=[]
+    if(projected.status!=='ok')return null
+    const cylinder=pointsOnly?null:pickAnalyticSolid3D(source,camera,pointer),surfaces=new Set<Pick3D>()
     const owner=(id:string)=>source.solids.find(s=>s.mode==='parametric'&&s.features.some(f=>f.entity_id===id))?.id
     for(const point of facesOnly?[]:projected.points){if(pointFilter&&!pointFilter(point.id))continue;const distance=Math.hypot(pointer.x-point.position[0],pointer.y-point.position[1]);if(distance<=POINT_SNAP_TOLERANCE_3D)candidates.push({id:point.id,kind:'point',distance,depth:point.position[2]})}
     if(!pointsOnly){
@@ -146,7 +162,14 @@ export function pickGeometry3D(source:GeometryScene3D,camera:GeometryCamera3D,po
         const dx=line.b[0]-line.a[0],dy=line.b[1]-line.a[1],length=dx*dx+dy*dy
         const t=length ? Math.max(0,Math.min(1,((pointer.x-line.a[0])*dx+(pointer.y-line.a[1])*dy)/length)) : 0
         const distance=Math.hypot(pointer.x-line.a[0]-dx*t,pointer.y-line.a[1]-dy*t)
-        if(distance<=7)candidates.push({id:owner(line.id)??line.id,kind:owner(line.id)?'solid':'linear',distance,depth:line.a[2]+t*(line.b[2]-line.a[2])})
+        if(distance<=7){
+          if(projected.analyticSolids.length&&line.viewA&&line.viewB){
+            const u=camera.projection==='perspective'?t*line.a[2]/((1-t)*line.b[2]+t*line.a[2]):t
+            const world=projected.projection.world(add(line.viewA,scale(sub(line.viewB,line.viewA),u)))
+            if(pointHiddenByAnalytic3D(world,camera,projected.analyticSolids))continue
+          }
+          candidates.push({id:owner(line.id)??line.id,kind:owner(line.id)?'solid':'linear',distance,depth:line.a[2]+t*(line.b[2]-line.a[2])})
+        }
       }
       for(const face of projected.faces){
         if(facesOnly&&!source.faces.some(f=>f.id===face.id))continue
@@ -155,7 +178,17 @@ export function pickGeometry3D(source:GeometryScene3D,camera:GeometryCamera3D,po
           const a=face.vertices[i],b=face.vertices[j]
           if((a[1]>pointer.y)!==(b[1]>pointer.y)&&pointer.x<(b[0]-a[0])*(pointer.y-a[1])/(b[1]-a[1])+a[0])inside=!inside
         }
-        if(inside)candidates.push({id:facesOnly?face.id:owner(face.id)??face.id,kind:facesOnly?'face':owner(face.id)?'solid':face.kind==='plane'?'plane':'face',distance:0,depth:face.vertices.reduce((s,p)=>s+p[2],0)/face.vertices.length})
+        if(inside){
+          const plane=cylinder?faceDepth3D(face,camera.projection):null,metric=plane?plane.x*pointer.x+plane.y*pointer.y+plane.c:null
+          const depth=metric===null?face.vertices.reduce((s,p)=>s+p[2],0)/face.vertices.length:camera.projection==='perspective'?-1/metric:metric
+          const candidate:Pick3D={id:facesOnly?face.id:owner(face.id)??face.id,kind:facesOnly?'face':owner(face.id)?'solid':face.kind==='plane'?'plane':'face',distance:0,depth}
+          candidates.push(candidate);if(face.kind==='face')surfaces.add(candidate)
+        }
+      }
+      if(cylinder){
+        if(!facesOnly){candidates.push(cylinder);surfaces.add(cylinder)}
+        const front=Math.min(cylinder.depth,...[...surfaces].map(c=>c.depth))
+        for(let i=candidates.length-1;i>=0;i--)if(surfaces.has(candidates[i])&&candidates[i].depth>front+1e-8*Math.max(1,Math.abs(front)))candidates.splice(i,1)
       }
     }
     const rank={point:0,linear:1,solid:2,plane:3,face:3}
@@ -178,8 +211,8 @@ export function createAuthoringInteraction3D(options:{getScene:()=>GeometryScene
   let tool:GeometryTool3D='select',plane:WorkingPlane3D='XY',selected:string|null=null,hover:string|null=null,pending:string[]=[],draft:GeometryScene3D|null=null,message=''
   let vertices:PlanarVertex3D[]=[],preview:Vec3|null=null
   const planar=()=>['segment','polyline','triangle','polygon'].includes(tool)
-  type Gesture={pointerId:number;start:Pointer3D;pointId:string|null;source:GeometryScene3D;worldStart:Vec3|null;position:Vec3|null;apexNormal:Vec3|null;base:ReturnType<typeof pyramidBaseDrag3D>;heightMode:boolean;heightMapping:ReturnType<typeof apexHeightMapping3D>;changed:boolean;invalid:boolean}
-  let rotation:{pointerId:number;start:Pointer3D;source:GeometryScene3D;camera:GeometryCamera3D;id:string;changed:boolean;translation?:{plane:WorkingPlane3D;pivot:Vec3;worldStart:Vec3};resize?:{length:number;mapping:NonNullable<ReturnType<typeof apexHeightMapping3D>>}}|null=null
+  type Gesture={pointerId:number;start:Pointer3D;pointId:string|null;source:GeometryScene3D;worldStart:Vec3|null;position:Vec3|null;apexNormal:Vec3|null;base:ReturnType<typeof pyramidBaseDrag3D>;heightMode:boolean;heightMapping:ReturnType<typeof apexHeightMapping3D>;edgeDrag?:{t:number;length:number;mapping:ReturnType<typeof apexHeightMapping3D>};edgeHit?:ReturnType<typeof pickSolidEdge3D>;faceHit?:ReturnType<typeof pickSolidFace3D>;faceDrag?:{vertices:Vec3[];camera:GeometryCamera3D;worldStart:Vec3|null};surfaceDrag?:{surfaceId:string;camera:GeometryCamera3D;offset:{x:number;y:number}};pointHit?:string;changed:boolean;invalid:boolean}
+  let rotation:{pointerId:number;start:Pointer3D;source:GeometryScene3D;camera:GeometryCamera3D;id:string;changed:boolean;translation?:{plane:WorkingPlane3D;pivot:Vec3;worldStart:Vec3};resize?:{kind:'uniform'|'radius'|'height';length:number;mapping:NonNullable<ReturnType<typeof apexHeightMapping3D>>}}|null=null
   let gesture:Gesture|null=null
   const cancel=()=>{rotation=null;gesture=null;draft=null;pending=[];vertices=[];preview=null;message='';options.notify()}
   const publish=(next:GeometryScene3D|null)=>{
@@ -259,8 +292,9 @@ export function createAuthoringInteraction3D(options:{getScene:()=>GeometryScene
           if(!rotation.changed){draft=null;options.notify();return true}
           if(rotation.resize){
             const delta=rotation.resize.mapping(p),factor=delta===null?NaN:1+delta/rotation.resize.length
-            draft=scaleSolid3D(rotation.source,rotation.id,factor)
-            message=draft?'Ölçünü dəyiş · Esc — ləğv et':'Ölçü etibarsızdır və ya həndəsə paylaşılır; tətbiq edilməyəcək.';options.notify();return true
+            const solid=rotation.source.solids.find(s=>s.id===rotation!.id)
+            draft=rotation.resize.kind==='uniform'?scaleSolid3D(rotation.source,rotation.id,factor):solid?.mode==='parametric'&&solid.kind==='sphere'&&rotation.resize.kind==='radius'&&delta!==null?resizeSphereRadius3D(rotation.source,rotation.id,solid.parameters.radius+delta):solid?.mode==='parametric'&&(solid.kind==='cylinder'||solid.kind==='cone')&&delta!==null?(solid.kind==='cone'?resizeCone3D:resizeCylinder3D)(rotation.source,rotation.id,rotation.resize.kind,solid.parameters[rotation.resize.kind]+delta*(solid.kind==='cylinder'&&rotation.resize.kind==='height'?2:1)):null
+            message=draft?(rotation.resize.kind==='radius'?'Radius · Esc — ləğv et':rotation.resize.kind==='height'?'Hündürlük · Esc — ləğv et':'Mütənasib ölçü · Esc — ləğv et'):'Ölçü etibarsızdır və ya həndəsə paylaşılır; tətbiq edilməyəcək.';options.notify();return true
           }
           if(rotation.translation){
             const t=rotation.translation,world=workingPlanePoint3D(rotation.camera,{...p,width:rotation.start.width,height:rotation.start.height},t.plane,t.pivot)
@@ -291,7 +325,7 @@ export function createAuthoringInteraction3D(options:{getScene:()=>GeometryScene
         }
         return false
       }
-      if(phase==='cancel'){if(!gesture)return false;cancel();return true}
+      if(phase==='cancel'){if(!gesture)return false;if(gesture.pointerId!==p.pointerId)return true;cancel();return true}
       if(phase==='move'&&!gesture){
         if(planar()&&vertices.length){preview=planarTarget(p)?.position??null;options.notify();return false}
         const hit=pickGeometry3D(options.getScene(),options.getCamera(),p,tool==='pyramid'?false:tool!=='select'&&tool!=='camera',undefined,tool==='pyramid');const next=hit?.id??null;if(next!==hover){hover=next;options.notify()}return false
@@ -300,36 +334,84 @@ export function createAuthoringInteraction3D(options:{getScene:()=>GeometryScene
         if(gesture)return true
         if(p.button!==0||p.altKey||tool==='camera')return false
         if(tool==='select'&&selected){
+          const scene=options.getScene(),surfacePoint=scene.constructions.some(c=>c.kind==='point_on_surface')?pickGeometry3D(scene,options.getCamera(),p,true,id=>scene.constructions.some(c=>c.kind==='point_on_surface'&&c.output_point_id===id)):null
           const bounds=projectedSolidBounds3D(options.getScene(),options.getCamera(),p.width,p.height,selected)
-          const handle=bounds?.handles.filter(h=>Math.hypot(h.x-p.x,h.y-p.y)<=9).sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y)||a.index-b.index)[0]
+          const handle=surfacePoint?undefined:bounds?.handles.filter(h=>Math.hypot(h.x-p.x,h.y-p.y)<=9).sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y)||a.index-b.index)[0]
           if(handle&&bounds){
-            const source=structuredClone(options.getScene()),solid=source.solids.find(s=>s.id===selected)!,length=Math.hypot(...sub(handle.world,bounds.pivot))
-            const mapping=apexHeightMapping3D(options.getCamera(),p,handle.world,unit(sub(handle.world,bounds.pivot)),length)
+            const source=structuredClone(options.getScene()),solid=source.solids.find(s=>s.id===selected)!,length=handle.length
+            const mapping=apexHeightMapping3D(options.getCamera(),p,handle.world,handle.direction,length)
             if(!mapping||solid.mode!=='parametric'||'base'in solid.parameters&&solid.parameters.base.kind==='face')message='Bu əsas paylaşılmış üzə bağlıdır və ya tutacaq bu görünüşdə əlçatan deyil; ölçü dəyişdirilmədi.'
-            else{rotation={pointerId:p.pointerId,start:p,source,camera:structuredClone(options.getCamera()),id:selected,changed:false,resize:{length,mapping}};message='Ölçünü dəyiş · Esc — ləğv et'}
+            else{rotation={pointerId:p.pointerId,start:p,source,camera:structuredClone(options.getCamera()),id:selected,changed:false,resize:{kind:handle.kind,length,mapping}};message=handle.kind==='radius'?'Radius · Esc — ləğv et':handle.kind==='height'?'Hündürlük · Esc — ləğv et':'Mütənasib ölçü · Esc — ləğv et'}
             options.notify();return true
           }
         }
         let source=options.getScene()
-        const hit=pickGeometry3D(source,options.getCamera(),p,tool!=='select')
+        let hit=pickGeometry3D(source,options.getCamera(),p,tool!=='select',tool==='point'?id=>visiblePointForCreation3D(source,options.getCamera(),p,id):undefined)
+        // A clamped attachment may coincide with its endpoint. Keep the already
+        // selected attachment draggable without changing ordinary vertex picking.
+        if(tool==='select'&&hit?.kind==='point'&&selected&&source.constructions.some(c=>(c.kind==='point_on_edge'||c.kind==='point_on_face'||c.kind==='point_on_surface')&&c.output_point_id===selected)){
+          const a=source.points.find(v=>v.id===selected),b=source.points.find(v=>v.id===hit!.id)
+          if(a&&b&&Math.hypot(...sub(a.position,b.position))<=1e-9)hit=pickGeometry3D(source,options.getCamera(),p,true,id=>id===selected)??hit
+        }
         if(tool==='select'&&!hit){selected=null;options.notify();return true}
         const apex=tool==='select'&&hit?.kind==='point'?pyramidApexDrag3D(source,hit.id):null
         let base=tool==='select'&&hit?.kind==='point'?pyramidBaseDrag3D(source,hit.id):null
         if(base){const evaluated=evaluateGeometryScene3D(source);if(evaluated.status!=='ok')return true;source=evaluated.scene;base=pyramidBaseDrag3D(source,hit!.id)}
-        const pointId=tool==='select'&&hit?.kind==='point'&&(apex||base||isFreePoint3D(source,hit.id))?hit.id:null
+        const attachment=tool==='select'&&hit?.kind==='point'?source.constructions.find(c=>(c.kind==='point_on_edge'||c.kind==='point_on_face'||c.kind==='point_on_surface')&&c.output_point_id===hit.id):null
+        const pointId=tool==='select'&&hit?.kind==='point'&&(apex||base||attachment||isFreePoint3D(source,hit.id))?hit.id:null
         const position=base?.position??apex?.position??(pointId?source.points.find(v=>v.id===pointId)!.position:null)
         const normal=base?.normal??apex?.normal
         const worldStart=normal?planePoint3D(options.getCamera(),p,normal,position!):position?workingPlanePoint3D(options.getCamera(),p,plane,position):null
         const heightMode=!!apex&&!!p.shiftKey,solid=apex?source.solids.find(s=>s.id===apex.solidId):null
         const heightMapping=heightMode&&solid?.mode==='parametric'&&'height'in solid.parameters?apexHeightMapping3D(options.getCamera(),p,apex!.position,apex!.normal,solid.parameters.height):null
+        let faceDrag:Gesture['faceDrag']
+        if(attachment?.kind==='point_on_face'){
+          const face=source.faces.find(f=>f.id===attachment.face_id)!,vertices=face.boundary.map(id=>source.points.find(p=>p.id===id)!.position),camera=structuredClone(options.getCamera())
+          faceDrag={vertices,camera,worldStart:facePlanePointer3D(vertices,camera,p)?.position??null}
+        }
+        let edgeDrag:Gesture['edgeDrag']
+        if(attachment?.kind==='point_on_edge'&&position){
+          const edge=source.edges.find(e=>e.id===attachment.edge_id)!,a=source.points.find(v=>v.id===edge.start)!.position,b=source.points.find(v=>v.id===edge.end)!.position,length=Math.hypot(...sub(b,a))
+          edgeDrag={t:attachment.t,length,mapping:length>1e-9?apexHeightMapping3D(options.getCamera(),p,position,unit(sub(b,a)),length):null}
+        }
+        let surfaceDrag:Gesture['surfaceDrag']
+        if(attachment?.kind==='point_on_surface'&&position){
+          const camera=structuredClone(options.getCamera()),projection=createProjection3D(camera,p.width,p.height),screen=projection.screen(projection.view(position))
+          surfaceDrag={surfaceId:attachment.surface_id,camera,offset:{x:screen[0]-p.x,y:screen[1]-p.y}}
+        }
         selected=tool==='select'?hit?.id??null:selected
-        gesture={pointerId:p.pointerId,start:p,pointId,source,worldStart,position,apexNormal:apex?.normal??null,base,heightMode,heightMapping,changed:false,invalid:false};message='';options.notify();return true
+        const edgeHit=tool==='point'&&!hit?pickSolidEdge3D(source,options.getCamera(),p):null
+        gesture={pointerId:p.pointerId,start:p,pointId,source,worldStart,position,apexNormal:apex?.normal??null,base,heightMode,heightMapping,edgeDrag,faceDrag,surfaceDrag,edgeHit,faceHit:tool==='point'&&!hit&&!edgeHit?pickSolidFace3D(source,options.getCamera(),p):null,pointHit:hit?.id,changed:false,invalid:false};message='';options.notify();return true
       }
-      if(!gesture||gesture.pointerId!==p.pointerId)return false
+      if(!gesture)return false
+      if(gesture.pointerId!==p.pointerId)return true
       if(phase==='move'){
         const changed=Math.hypot(p.x-gesture.start.x,p.y-gesture.start.y)>3
         gesture.changed ||= changed
         if(gesture.pointId&&gesture.changed){
+          if(gesture.surfaceDrag){
+            const s=gesture.surfaceDrag
+            if(Math.hypot(p.x-gesture.start.x,p.y-gesture.start.y)<1e-7)draft=gesture.source
+            else{
+              const hit=pickAnalyticSurface3D(gesture.source,s.camera,{...p,x:p.x+s.offset.x,y:p.y+s.offset.y,width:gesture.start.width,height:gesture.start.height},s.surfaceId)
+              const next=hit?editPointOnSurface3D(gesture.source,gesture.pointId,hit.uv):null
+              if(next)draft=next // Hold the last valid position on caps, occlusion or a missed ray.
+            }
+            options.notify();return true
+          }
+          if(gesture.faceDrag){
+            const f=gesture.faceDrag,hit=facePlanePointer3D(f.vertices,f.camera,{...p,width:gesture.start.width,height:gesture.start.height})
+            if(hit&&f.worldStart){
+              const position=add(gesture.position!,sub(hit.position,f.worldStart)),uv=faceBasis3D(f.vertices).local(position),next=editPointOnFace3D(gesture.source,gesture.pointId,uv)
+              if(next){draft=next;gesture.invalid=false}
+            }
+            options.notify();return true
+          }
+          if(gesture.edgeDrag){
+            const e=gesture.edgeDrag,delta=e.mapping?.(p)??null
+            draft=delta===null?null:editPointOnEdge3D(gesture.source,gesture.pointId,Math.max(0,Math.min(1,e.t+delta/e.length)))
+            gesture.invalid=!draft;options.notify();return true
+          }
           const normal=gesture.base?.normal??gesture.apexNormal
           const world=normal?planePoint3D(options.getCamera(),p,normal,gesture.position!):gesture.position?workingPlanePoint3D(options.getCamera(),p,plane,gesture.position):null
           const position=world&&gesture.worldStart?add(gesture.position!,sub(world,gesture.worldStart)):null
@@ -351,14 +433,30 @@ export function createAuthoringInteraction3D(options:{getScene:()=>GeometryScene
           draft=null
         }
         else if(!finished.changed){
-          if(tool==='pyramid'){
+          if(tool==='cylinder'||tool==='cone'||tool==='sphere'){
+            const p=finished.start,inside=p.x>=0&&p.y>=0&&p.x<=p.width&&p.y<=p.height
+            const position=inside?workingPlanePoint3D(options.getCamera(),p,plane):null,result=position?(tool==='sphere'?createSphereAt3D:tool==='cone'?createConeAt3D:createCylinderAt3D)(finished.source,position,plane):null
+            if(result&&publish(result.scene)){selected=result.id;hover=null;message=tool==='sphere'?'Kürə yaradıldı.':tool==='cone'?'Konus yaradıldı.':'Silindr yaradıldı.';tool='select'}
+            else message='İş müstəvisi bu görünüşdə əlçatan deyil; görünüşü dəyişin.'
+          }else if(tool==='pyramid'){
             const hit=pickGeometry3D(finished.source,options.getCamera(),finished.start,false,undefined,true)
             const result=hit?createPyramidFromPolygon3D(finished.source,hit.id):null
             if(result&&publish(result.scene)){selected=result.id;hover=null;tool='select';message=result.sourceConsumed?'Piramida yaradıldı.':'Piramida yaradıldı. Mənbə poliqon paylaşılır və ya təhlükəsiz ayrıla bilmir; saxlanıldı.'}
             else message='Etibarlı qapalı poliqonun daxilinə klikləyin.'
           }else if(tool==='point'){
-            const hit=pickGeometry3D(options.getScene(),options.getCamera(),p,true),position=workingPlanePoint3D(options.getCamera(),p,plane)
-            const result=hit?{scene:options.getScene(),id:hit.id,reused:true}:position?createPoint3D(options.getScene(),position):null
+            const position=workingPlanePoint3D(options.getCamera(),finished.start,plane),edge=finished.edgeHit,face=finished.faceHit
+            const cylinder=pickAnalyticSolid3D(finished.source,options.getCamera(),finished.start)
+            const surface=pickAnalyticSurface3D(finished.source,options.getCamera(),finished.start)
+            const cylinderFirst=cylinder&&(!face||cylinder.depth<face.depth-1e-8*Math.max(1,Math.abs(cylinder.depth)))
+            if(cylinderFirst&&!finished.pointHit&&!edge&&!surface){message='Nöqtə üçün cismin görünən yan səthinə klikləyin.';options.notify();return true}
+            let result:ReturnType<typeof createPoint3D>=null
+            if(finished.pointHit)result={scene:options.getScene(),id:finished.pointHit,reused:true}
+            else if(edge)result=createPointOnEdge3D(options.getScene(),edge.edge_id,edge.t)
+            else if(surface){
+              const id=newId('p'),scene=createPointOnSurface3D(options.getScene(),surface.surface_id,surface.uv,id)
+              if(scene)result={scene,id,reused:false}
+            }else if(face)result=createPointOnFace3D(options.getScene(),face.face_id,face.uv)
+            else if(position)result=createPoint3D(options.getScene(),position)
             if(result&&publish(result.scene)){selected=result.id;message=result.reused?'Mövcud nöqtə seçildi.':'Nöqtə yaradıldı.'}else message='İş müstəvisi görünüşə paraleldir və ya koordinatlar etibarsızdır.'
           }else if(planar()){
             planarClick(finished.start)

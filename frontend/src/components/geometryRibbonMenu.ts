@@ -39,7 +39,7 @@ export const GEOMETRY_RIBBON: GeometryRibbonControl[] = [
     {label:'Müstəvi və bucaqlar',items:[{label:'Müstəvi',action3D:'plane'},{label:'Kamera',action3D:'camera'},{label:'İkiüzlü bucaq'}]},
     {label:'Prizmalar',items:[{label:'Kub',action3D:'cube'},{label:'Düzbucaqlı paralelepiped',action3D:'cuboid'},{label:'Prizma',action3D:'prism'},{label:'Düzgün n-bucaqlı prizma'}]},
     {label:'Piramidalar',items:[{label:'Piramida',action3D:'pyramid'},{label:'Düzgün n-bucaqlı piramida'},{label:'Düzgün n-bucaqlı kəsik piramida'}]},
-    group('Fırlanma cisimləri', ['Silindr', 'Konus', 'Kəsik konus', 'Sfera', 'Kürə']),
+    {label:'Fırlanma cisimləri',items:[{label:'Silindr',action3D:'cylinder'},{label:'Konus',action3D:'cone'},{label:'Kürə',action3D:'sphere'},...group('', ['Kəsik konus','Sfera']).items]},
     group('Digər', ['Sərbəst çoxüzlü']),
   ] satisfies GeometryRibbonGroup[]).map(section => ({ ...section, items: section.items.map(item => item.label.includes('n-bucaqlı') ? { ...item, title: GEOMETRY_BASE_SIDES_TITLE } : item) })) },
   { label: 'Mətn', action: 'text' },

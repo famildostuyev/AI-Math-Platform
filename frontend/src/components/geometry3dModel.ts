@@ -1,8 +1,10 @@
+import { faceFrame3D } from './geometry3dFaces'
 import type { GeometryAttachmentLoss3D, GeometryCamera3D, GeometryScene3D, Vec3 } from './geometry3dContract'
 import { normalizeGeometryEditingCamera3D, normalizeGeometryScene3D } from './geometry3d'
 import type { EditorHistoryProvider } from './universalEditorHistory'
 import type { PersistedVisualPlacement } from './visualPlacement'
 import { solidSupported3D, hasSolidTopology3D, evaluateSolid3D } from './geometry3dSolids'
+import { analyticBounds3D, analyticFeaturePositions3D, evaluateAnalyticSurface3D } from './geometry3dAnalytic'
 
 export function defaultGeometryScenePlacement3D(y = 0): PersistedVisualPlacement {
   return { version: 1, layoutMode: 'floating', anchor: { kind: 'document' }, position: { x: 24, y: Math.max(24, y), unit: 'px' }, size: { width: 520, height: 400, unit: 'px' } }
@@ -16,23 +18,55 @@ export function emptyGeometryScene3D(): GeometryScene3D {
     print_camera: { projection: 'orthographic', position: [4, 3, 5], target: [0, 0, 0], up: [0, 0, 1], vertical_span: 10, fov_degrees: 45, near: 0.01, far: 1000 },
   }
 }
+
+/** Materialize analytic solid reference points without changing the V2 normalizer or
+ * sparse contract. Deterministic IDs also keep read-only legacy display stable. */
+export function prepareAnalyticCenters3D(value:unknown):GeometryScene3D|null {
+  const scene=normalizeGeometryScene3D(value)
+  if(!scene)return null
+  try{
+    const used=new Set(Object.values(scene).flatMap(v=>Array.isArray(v)?v.flatMap(e=>e&&typeof e==='object'&&'id'in e?[e.id as string]:[]):[]))
+    for(const solid of [...scene.solids].sort((a,b)=>a.id.localeCompare(b.id))){
+      if(solid.mode!=='parametric'||!['cylinder','cone','sphere'].includes(solid.kind))continue
+      const centers=solid.kind==='sphere'?[['v_0','O']]:solid.kind==='cone'?[['v_0','O'],['v_1','S']]:[['v_0','O1'],['v_1','O2']]
+      for(const [slot,label] of centers){
+        let feature=solid.features.find(f=>f.slot===slot)
+        if(!feature){
+          const stem=`${solid.id.slice(0,54)}_${slot}`;let id=stem,n=2
+          while(used.has(id))id=`${stem}_${n++}`
+          used.add(id);feature={slot,entity_id:id};solid.features.push(feature)
+          scene.points.push({id,position:[0,0,0],label})
+        }
+        const point=scene.points.find(p=>p.id===feature.entity_id)!
+        if(solid.kind==='cylinder'||solid.kind==='cone'||solid.kind==='sphere')point.position=analyticFeaturePositions3D(solid)[feature.entity_id]
+        if(solid.kind==='cylinder'&&point.label===null)point.label=label
+      }
+    }
+    return normalizeGeometryScene3D(scene)
+  }catch{return null}
+}
+export const prepareCylinderCenters3D=prepareAnalyticCenters3D
 export type GeometryEvaluation3D =
   | { status: 'ok'; scene: GeometryScene3D }
   | { status: 'unavailable'; scene: GeometryScene3D; capabilities: string[] }
   | { status: 'invalid'; scene: null }
-const sub = (a: Vec3, b: Vec3): Vec3 => [a[0]-b[0], a[1]-b[1], a[2]-b[2]]
-const length = (a: Vec3) => Math.hypot(...a)
-const cross = (a: Vec3, b: Vec3): Vec3 => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
-const unit = (a: Vec3): Vec3 => { const n = length(a); if (n <= 1e-9) throw Error('Degenerate basis'); return a.map(x => x/n) as Vec3 }
 const interpolate = (a: Vec3, b: Vec3, t: number): Vec3 => a.map((v, i) => v+t*(b[i]-v)) as Vec3
 
 /** Complete evaluation of the M1 recipe subset; never treats unavailable caches as results. */
 export function evaluateGeometryScene3D(value: unknown): GeometryEvaluation3D {
+  return evaluateScene3D(value)
+}
+/** Rendering and authoring share the same validated graph. Cylinder transforms
+ * and surface constructions remain independently gated by their own tools. */
+export function evaluateGeometryRenderScene3D(value:unknown):GeometryEvaluation3D{
+  return evaluateScene3D(value)
+}
+function evaluateScene3D(value:unknown):GeometryEvaluation3D{
   const scene = normalizeGeometryScene3D(value)
   if (!scene) return { status: 'invalid', scene: null }
   const capabilities = [...new Set([
-    ...scene.solids.filter(s => s.mode === 'parametric'&&!hasSolidTopology3D(s)).map(s => 'solid:' + s.kind),
-    ...scene.constructions.filter(c => c.kind === 'point_on_surface').map(() => 'point_on_surface'),
+    ...scene.solids.filter(s => s.mode === 'parametric'&&s.kind!=='cylinder'&&s.kind!=='cone'&&s.kind!=='sphere'&&!hasSolidTopology3D(s)).map(s => 'solid:' + s.kind),
+    ...scene.constructions.filter(c => c.kind === 'point_on_surface' && !['cylinder','cone','sphere'].includes(scene.surfaces.find(s => s.id === c.surface_id)?.kind??'')).map(() => 'point_on_surface'),
   ])].sort()
   if (capabilities.length) return { status: 'unavailable', scene, capabilities }
   try {
@@ -43,31 +77,43 @@ export function evaluateGeometryScene3D(value: unknown): GeometryEvaluation3D {
       if (c.kind === 'point_on_linear') { const l = scene.linear_objects.find(l => l.id === c.linear_id)!; return [l.a, l.b] }
       if (c.kind === 'point_on_edge') { const e = scene.edges.find(e => e.id === c.edge_id)!; return [e.start, e.end] }
       if (c.kind === 'point_on_face') return scene.faces.find(f => f.id === c.face_id)!.boundary
+      if (c.kind === 'point_on_surface') return [] // Analytic placement waits for its solid below.
       throw Error('Unavailable recipe')
     }
     const pending = new Map(scene.constructions.map(c => [c.id, c]))
-    const pendingSolids=new Map(scene.solids.filter(solidSupported3D).map(s=>[s.id,s]))
-    const solidOwners=new Map(scene.solids.filter(solidSupported3D).flatMap(s=>s.features.map(f=>[f.entity_id,s.id] as const)))
+    const renderSolids=scene.solids.filter(s=>s.mode==='parametric'&&(s.kind==='cylinder'||s.kind==='cone'||s.kind==='sphere'||solidSupported3D(s)))
+    const pendingSolids=new Map(renderSolids.map(s=>[s.id,s]))
+    const solidOwners=new Map(renderSolids.flatMap(s=>s.mode==='parametric'?s.features.map(f=>[f.entity_id,s.id] as const):[]))
     const complete = new Set<string>()
     const waiting=(p:string)=>producers.has(p)&&!complete.has(producers.get(p)!.id)||solidOwners.has(p)&&!complete.has(solidOwners.get(p)!)
     while (pending.size||pendingSolids.size) {
       let progressed = false
       for(const [id,s] of pendingSolids){
+        if(s.mode!=='parametric')throw Error('Unavailable solid')
         const p=s.parameters,faceId='base'in p&&p.base.kind==='face'?p.base.face_id:null,face=scene.faces.find(f=>f.id===faceId)
         if(face&&face.boundary.some(waiting))continue
-        evaluateSolid3D(scene,s);pendingSolids.delete(id);complete.add(id);progressed=true
+        if(s.kind==='cylinder'||s.kind==='cone'||s.kind==='sphere'){
+          analyticBounds3D(s)
+          for(const [pointId,position] of Object.entries(analyticFeaturePositions3D(s)))points.get(pointId)!.position=position
+        }else evaluateSolid3D(scene,s)
+        pendingSolids.delete(id);complete.add(id);progressed=true
       }
       for (const [id, c] of pending) {
         if (dependencies(c).some(waiting)) continue
+        if (c.kind === 'point_on_surface' && !complete.has(scene.surfaces.find(s => s.id === c.surface_id)!.solid_id)) continue
         const position = (id: string) => points.get(id)!.position
         let result: Vec3
         if (c.kind === 'midpoint') result = interpolate(position(c.a), position(c.b), 0.5)
         else if (c.kind === 'point_on_linear') { const l = scene.linear_objects.find(l => l.id === c.linear_id)!; result = interpolate(position(l.a), position(l.b), c.t) }
         else if (c.kind === 'point_on_edge') { const e = scene.edges.find(e => e.id === c.edge_id)!; result = interpolate(position(e.start), position(e.end), c.t) }
         else if (c.kind === 'point_on_face') {
-          const face = scene.faces.find(f => f.id === c.face_id)!, [a, b, d] = face.boundary.map(position)
-          const x = unit(sub(b, a)), normal = unit(cross(x, sub(d, a))), y = cross(normal, x)
-          result = a.map((v, i) => v + c.uv[0]*x[i] + c.uv[1]*y[i]) as Vec3
+          const face = scene.faces.find(f => f.id === c.face_id)!
+          result = faceFrame3D(face.boundary.map(position)).world(c.uv)
+        } else if (c.kind === 'point_on_surface') {
+          const surface = scene.surfaces.find(s => s.id === c.surface_id)!
+          const solid = scene.solids.find(s => s.id === surface.solid_id)!
+          if (solid.mode !== 'parametric' || solid.kind !== 'cylinder' && solid.kind !== 'cone' && solid.kind !== 'sphere') throw Error('Unavailable surface')
+          result = evaluateAnalyticSurface3D(solid, c.uv)
         } else throw Error('Unavailable recipe')
         if (result.some(v => !Number.isFinite(v) || Math.abs(v) > 1e12)) throw Error('Invalid output')
         points.get(c.output_point_id)!.position = result
@@ -128,9 +174,8 @@ export function deleteGeometryTargets3D(source:GeometryScene3D,ids:string[]):{sc
         const edge = draft.edges.find(e => e.id === id)!
         position = interpolate(draft.points.find(p => p.id === edge.start)!.position, draft.points.find(p => p.id === edge.end)!.position, a.t)
       } else {
-        const face = draft.faces.find(f => f.id === id)!, [p, q, r] = face.boundary.map(id => draft.points.find(p => p.id === id)!.position)
-        const x = unit(sub(q, p)), y = cross(unit(cross(x, sub(r, p))), x)
-        position = p.map((v, i) => v + a.uv[0]*x[i] + a.uv[1]*y[i]) as Vec3
+        const face = draft.faces.find(f => f.id === id)!
+        position = faceFrame3D(face.boundary.map(id => draft.points.find(p => p.id === id)!.position)).world(a.uv)
       }
       annotation.anchor = { kind: 'world', position }
       losses.push({ subject_id: annotation.id, parent_id: id, reason: 'parent_deleted', preserved_world_position: position })

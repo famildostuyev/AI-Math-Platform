@@ -67,6 +67,7 @@ export default function GeometrySceneViewport({ scene, camera, cameraOrigin, int
   selectedSolidId?:string
 }) {
   const host=useRef<HTMLDivElement>(null), callback=useRef(onNavigate), cameraRef=useRef(camera)
+  const sharedScreen=useRef<HTMLDivElement>(null)
   const navigationOrigin=useRef(Symbol('OrbitControls navigation'))
   const captureAt=useContext(GeometryFrameMenuContext)?.captureAt,contextCallback=useRef(onContextSelect)
   contextCallback.current=onContextSelect
@@ -76,6 +77,8 @@ export default function GeometrySceneViewport({ scene, camera, cameraOrigin, int
   const [size,setSize]=useState({width:520,height:300}), [failure,setFailure]=useState(false)
   const failureRef=useRef(failure);failureRef.current=failure
   const adapter=useMemo(()=>scenePrimitives3D(scene),[scene])
+  const sharedDisplay=adapter.analyticSolids.length>0
+  const sharedDisplayRef=useRef(sharedDisplay);sharedDisplayRef.current=sharedDisplay
   const solidBounds=useMemo(()=>interactive&&selectedSolidId?projectedSolidBounds3D(scene,camera,size.width,size.height,selectedSolidId):null,[scene,camera,size,interactive,selectedSolidId])
   const svg=useMemo(()=>{try{return geometrySceneSVG3D(scene,size.width,size.height)}catch{return ''}},[scene,size])
   const screenSVG=useMemo(()=>{if(interactive)return '';try{return geometrySceneSVG3D({...scene,print_camera:camera},size.width,size.height)}catch{return ''}},[scene,camera,size,interactive])
@@ -150,7 +153,17 @@ export default function GeometrySceneViewport({ scene, camera, cameraOrigin, int
         else { view.aspect=aspect; view.fov=current.fov_degrees }
         view.near=current.near; view.far=current.far; view.position.set(...current.position); view.up.set(...current.up); view.lookAt(new THREE.Vector3(...current.target)); view.updateProjectionMatrix()
       }
-      const draw=()=>{ frame=0; if(dead)return; try { populate(group!,sceneRef.current,current,width,height,new Set(highlightedRef.current)); renderer!.render(world,view);renderer!.domElement.dataset.renderCount=String(Number(renderer!.domElement.dataset.renderCount ?? 0)+1) } catch { setFailure(true) } }
+      const draw=()=>{ frame=0; if(dead)return; try {
+        const highlighted=new Set(highlightedRef.current)
+        if(sharedDisplayRef.current){
+          // The semantic SVG compositor is shared with print. OrbitControls still
+          // owns the live camera; write with its current snapshot synchronously,
+          // never with a delayed React navigation echo.
+          if(group!.children.length)disposeGroup(group!)
+          if(sharedScreen.current)sharedScreen.current.innerHTML=geometrySceneSVG3D({...sceneRef.current,print_camera:current},width,height,highlighted)
+        }else populate(group!,sceneRef.current,current,width,height,highlighted)
+        renderer!.render(world,view);renderer!.domElement.dataset.renderCount=String(Number(renderer!.domElement.dataset.renderCount ?? 0)+1)
+      } catch { setFailure(true) } }
       const request=()=>{if(!frame&&!dead)frame=requestAnimationFrame(draw)}
       const changed=()=>{
         if(suppress || dead)return
@@ -191,16 +204,18 @@ export default function GeometrySceneViewport({ scene, camera, cameraOrigin, int
   },[camera,cameraOrigin])
   useEffect(()=>{controller.current?.refresh()},[scene,highlightedIds])
   return <div className="geometry-3d-view" data-geometry-version="2" data-render-status={adapter.status}>
-    <div ref={host} tabIndex={interactive?0:undefined} className="geometry-3d-viewport" data-interaction-tool={interactionTool} data-webgl-fallback={failure} data-editing-camera={JSON.stringify(camera)}
+    <div ref={host} tabIndex={interactive?0:undefined} className="geometry-3d-viewport" data-display-pipeline={sharedDisplay?'shared-vector':'webgl'} data-interaction-tool={interactionTool} data-webgl-fallback={failure} data-editing-camera={JSON.stringify(camera)}
       onPointerDown={event=>{if(interactive)event.stopPropagation()}} onWheel={event=>{if(interactive)event.stopPropagation()}} onContextMenu={event=>{if(interactive)event.preventDefault()}}>
       <div className={`geometry-3d-static geometry-3d-print${interactive&&failure?'':' is-print-only'}`} dangerouslySetInnerHTML={{__html:svg}} />
       {!interactive&&<div className="geometry-3d-static geometry-3d-screen" dangerouslySetInnerHTML={{__html:screenSVG}} />}
-      {interactive&&!failure&&<div className="geometry-3d-labels" aria-hidden="true">{labels.map(label=><span key={label.id} data-label-id={label.id} style={{left:label.x,top:label.y}}>{label.text}</span>)}</div>}
+      {interactive&&!failure&&sharedDisplay&&<div ref={sharedScreen} className="geometry-3d-static geometry-3d-screen geometry-3d-shared-screen" />}
+      {interactive&&!failure&&!sharedDisplay&&<div className="geometry-3d-labels" aria-hidden="true">{labels.map(label=><span key={label.id} data-label-id={label.id} style={{left:label.x,top:label.y}}>{label.text}</span>)}</div>}
       {interactive&&!failure&&solidBounds&&<svg className="geometry-3d-solid-bounds" data-solid-bounds={selectedSolidId} aria-hidden="true" viewBox={`0 0 ${size.width} ${size.height}`}>
         {solidBounds.lines.map(([a,b],i)=><line key={i} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#0891b2" strokeWidth="1" strokeDasharray="3 3"/>)}
         {solidBounds.handles.map(h=><g key={h.index}>
           <line x1={h.screen[0]} y1={h.screen[1]} x2={h.x} y2={h.y} stroke="#0891b2" strokeWidth="1"/>
-          <rect data-resize-handle={h.index} x={h.x-4} y={h.y-4} width="8" height="8" rx="1" fill={interactionTool==='select'?'white':'#e0f2fe'} stroke="#0891b2" strokeWidth="2"/>
+          <rect data-resize-handle={h.index} data-resize-kind={h.kind} x={h.x-(h.kind==='uniform'?4:5)} y={h.y-(h.kind==='uniform'?4:5)} width={h.kind==='uniform'?8:10} height={h.kind==='uniform'?8:10} rx={h.kind==='radius'?5:1} transform={h.kind==='height'?`rotate(45 ${h.x} ${h.y})`:undefined} fill={interactionTool==='select'?'white':'#e0f2fe'} stroke={h.kind==='uniform'?'#0891b2':'#047857'} strokeWidth="2"><title>{h.kind==='radius'?'Radius':h.kind==='height'?'Hündürlük':'Mütənasib ölçü'}</title></rect>
+          {h.kind!=='uniform'&&<text x={h.x} y={h.y+3} textAnchor="middle" fontSize="8" fill="#047857">{h.kind==='radius'?'R':'H'}</text>}
         </g>)}
       </svg>}
       {interactive&&!failure&&previewPoints.length>0&&<svg className="geometry-3d-construction-preview" aria-hidden="true" viewBox={`0 0 ${size.width} ${size.height}`}>

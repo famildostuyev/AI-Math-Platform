@@ -5,9 +5,11 @@ import { UniversalEditorSessionContext } from './universalEditorSession'
 import GeometrySceneViewport from './GeometrySceneViewport'
 import { standardView3D, type StandardView3D } from './geometry3dProjection'
 import GeometrySolidControls from './GeometrySolidControls'
+import { setSphereEquator3D } from './geometry3dSolidAuthoring'
 import GeometryEditorPanels from './GeometryEditorPanels'
-import { SOLID_TOOLS_3D, solidSupported3D, type SolidKind3D } from './geometry3dSolids'
-import { createAuthoringInteraction3D, createPoint3D, deletePrimitive3D, editPoint3D, editReferences3D, GEOMETRY_TOOLS_3D, isFreePoint3D, parseCoordinates3D, type GeometryTool3D, type WorkingPlane3D } from './geometry3dAuthoring'
+import { editSurfacePointLabel3D } from './geometry3dSurfacePoints'
+import { SOLID_TOOLS_3D, solidSupported3D, solidTransformSupported3D, type SolidKind3D } from './geometry3dSolids'
+import { createAuthoringInteraction3D, createPoint3D, deletePrimitive3D, editPoint3D, editConeCenterLabel3D, editReferences3D, GEOMETRY_TOOLS_3D, isFreePoint3D, parseCoordinates3D, type GeometryTool3D, type WorkingPlane3D } from './geometry3dAuthoring'
 
 export default function GeometrySceneEditor({ value, onChange, targetId, disabled }: {
   value: GeometryScene3D; onChange: (value: GeometryScene3D) => void; targetId: string; disabled: boolean
@@ -27,7 +29,14 @@ export default function GeometrySceneEditor({ value, onChange, targetId, disable
   const [interaction]=useState(()=>createAuthoringInteraction3D({getScene:()=>valueRef.current,getCamera:()=>editingCameraRef.current,commit:next=>{
     const detached=valueRef.current.solids.find(s=>s.mode==='parametric'&&s.kind==='pyramid'&&'base'in s.parameters&&s.parameters.base.kind==='face'&&next.solids.some(n=>n.id===s.id&&n.mode==='parametric'&&'base'in n.parameters&&n.parameters.base.kind==='polygon'))
     const preserved=next.solids.find(s=>s.mode==='parametric'&&s.kind==='pyramid'&&'base'in s.parameters&&s.parameters.base.kind==='face'&&!valueRef.current.solids.some(old=>old.id===s.id))
+    const coneView=!valueRef.current.solids.length&&next.solids.some(s=>s.kind==='cone')&&JSON.stringify(next.print_camera)!==JSON.stringify(valueRef.current.print_camera)
     const committed=history.commit(next)
+    if(committed&&coneView&&history.navigate(next.print_camera)){
+      const camera=history.getEditingCamera()
+      editingCameraRef.current=camera
+      sessionRef.current?.geometry3DCameras.current.set(targetId,camera)
+      setCameraUpdate({camera})
+    }
     if(committed&&detached){detachedSolid.current=detached.id;setNotice('Piramida mənbə poliqondan ayrıldı. Mənbə poliqon dəyişdirilmədi.')}
     if(committed&&preserved){preservedSourceSolid.current=preserved.id;setNotice(preservedSourceNotice)}
     return committed
@@ -35,9 +44,11 @@ export default function GeometrySceneEditor({ value, onChange, targetId, disable
   const state=interaction.snapshot(),authoringDisabled=disabled||evaluateGeometryScene3D(value).status!=='ok'
   const [creatingSolid,setCreatingSolid]=useState<SolidKind3D|null>(null)
   const openProperties=useRef<()=>void>(()=>{})
-  const selectedSolid=value.solids.find(s=>s.id===state.selected&&solidSupported3D(s))
+  const selectedSolid=value.solids.find(s=>s.id===state.selected&&solidTransformSupported3D(s))
   const selectedPoint=value.points.find(p=>p.id===state.selected),selectedLine=value.linear_objects.find(p=>p.id===state.selected),selectedPlane=value.planes.find(p=>p.id===state.selected)
   const freePoint=selectedPoint?isFreePoint3D(value,selectedPoint.id):false
+  const surfacePoint=!!selectedPoint&&value.constructions.some(c=>c.kind==='point_on_surface'&&c.output_point_id===selectedPoint.id&&value.surfaces.some(s=>s.id===c.surface_id&&['cylinder','cone','sphere'].includes(s.kind)))
+  const coneCenter=!!selectedPoint&&value.solids.some(s=>s.mode==='parametric'&&(s.kind==='cone'||s.kind==='sphere')&&s.features.some(f=>['v_0','v_1','v_2','v_3'].includes(f.slot)&&f.entity_id===selectedPoint.id))
   const [coordinates,setCoordinates]=useState(['0','0','0']),[label,setLabel]=useState(''),[references,setReferences]=useState<string[]>([])
   useEffect(()=>{interaction.sync()},[value,interaction])
   useEffect(()=>{
@@ -85,7 +96,7 @@ export default function GeometrySceneEditor({ value, onChange, targetId, disable
       const result=state.selected?deletePrimitive3D(value,state.selected):null
       if(!result){setError('Bu obyektin təhlükəsiz silinməsi əlçatan deyil. Asılı obyektlər qorunur.');return}
       if(history.commit(result.scene)){interaction.select(null);setNotice(result.losses.length?`İtirilmiş əlaqələr: ${result.losses.map(l=>l.subject_id).join(', ')}. Nöqtələrin son mövqeləri qorundu.`:'Obyekt silindi.')}
-    }else if(action==='rotate_solid'||action==='translate_solid'){if(!selectedSolid){setError('Əvvəlcə fiqurun üzünə və ya kənarına klikləyib seçin.');return}setCreatingSolid(null);interaction.setTool(action)}else if(action==='pyramid'){setCreatingSolid(null);interaction.select(null);interaction.setTool('pyramid')}
+    }else if(action==='rotate_solid'||action==='translate_solid'){if(!selectedSolid){setError('Əvvəlcə fiqurun üzünə və ya kənarına klikləyib seçin.');return}setCreatingSolid(null);interaction.setTool(action)}else if(action==='pyramid'||action==='cylinder'||action==='cone'||action==='sphere'){setCreatingSolid(null);interaction.select(null);interaction.setTool(action)}
     else if(SOLID_TOOLS_3D.some(s=>s.kind===action)){interaction.setTool('select');interaction.select(null);setCreatingSolid(action as SolidKind3D);openProperties.current()}
     else {setCreatingSolid(null);interaction.setTool(action as GeometryTool3D)}
   }
@@ -135,9 +146,10 @@ export default function GeometrySceneEditor({ value, onChange, targetId, disable
     <details className="geometry-3d-inspector" data-geometry-transient="" open={creatingSolid?true:undefined}><summary>Obyektlər və koordinatlar</summary>
       <label>Seçilmiş obyekt <select aria-label="3D obyekt seç" value={state.selected??''} onChange={e=>['line','ray','segment','vector','plane'].includes(state.tool)?interaction.choose(e.target.value):interaction.select(e.target.value||null)}><option value="">Seçilməyib</option>{[...value.points,...value.linear_objects,...value.planes,...value.solids,...value.faces.filter(f=>!value.solids.some(s=>s.mode==='parametric'&&s.features.some(v=>v.entity_id===f.id)))].map(object=><option key={object.id} value={object.id}>{'position' in object?'Nöqtə':'boundary' in object?'Poliqon': 'kind' in object?(SOLID_TOOLS_3D.find(t=>t.kind===object.kind)?.label??GEOMETRY_TOOLS_3D.find(t=>t.tool===object.kind)?.label):'Müstəvi'}: {'label' in object&&object.label?object.label:object.id}</option>)}</select></label>
       <GeometrySolidControls scene={value} selected={selectedSolid&&solidSupported3D(selectedSolid)?selectedSolid:null} creating={creatingSolid} disabled={authoringDisabled} onCommit={(next,id)=>{commit(next);setCreatingSolid(null);interaction.select(id)}} onClose={()=>{setCreatingSolid(null);interaction.select(null)}}/>
+      {selectedSolid?.kind==='sphere'&&<label><input type="checkbox" aria-label="Ekvatoru göstər" disabled={authoringDisabled} checked={selectedSolid.parameters.equator==='visible'} onChange={e=>{interaction.cancel();const next=setSphereEquator3D(value,selectedSolid.id,e.target.checked);if(next)commit(next)}}/>Ekvatoru göstər</label>}
       <p>{state.selected??'Nöqtə yaratmaq üçün koordinatları daxil edin.'}</p>
-      {selectedPoint&&!freePoint&&<p role="status">Bu nöqtə məhdudiyyətə və ya cismə bağlıdır; sərbəst redaktə əlçatan deyil.</p>}
-      <fieldset disabled={authoringDisabled}><legend>Nöqtə koordinatları</legend>{(['X','Y','Z'] as const).map((axis,i)=><label key={axis}>{axis}<input type="number" aria-label={`3D nöqtə ${axis}`} value={coordinates[i]} onChange={e=>setCoordinates(old=>old.map((v,j)=>i===j?e.target.value:v))}/></label>)}
+      {selectedPoint&&!freePoint&&<p role="status">{coneCenter?'Cismin istinad nöqtəsi: koordinatlar cismə bağlıdır; etiketi dəyişə bilərsiniz.':'Bu nöqtə məhdudiyyətə və ya cismə bağlıdır; sərbəst redaktə əlçatan deyil.'}</p>}
+      <fieldset disabled={authoringDisabled}><legend>Nöqtə koordinatları</legend>{(['X','Y','Z'] as const).map((axis,i)=><label key={axis}>{axis}<input type="number" aria-label={`3D nöqtə ${axis}`} disabled={surfacePoint||coneCenter} value={coordinates[i]} onChange={e=>setCoordinates(old=>old.map((v,j)=>i===j?e.target.value:v))}/></label>)}
         <label>Etiket<input aria-label="3D nöqtə etiketi" value={label} onChange={e=>setLabel(e.target.value)}/></label>
         <button type="button" onClick={()=>{
           interaction.cancel();const position=parseCoordinates3D(coordinates),result=position?createPoint3D(value,position):null
@@ -146,7 +158,7 @@ export default function GeometrySceneEditor({ value, onChange, targetId, disable
           if(!candidate||!result.reused&&!history.commit(candidate)){setError('Nöqtə yaradılmadı.');return}
           interaction.select(result.id);setError('');setNotice(result.reused?'Mövcud nöqtə seçildi.':'Nöqtə yaradıldı.')
         }}>Koordinatla nöqtə yarat</button>
-        <button type="button" disabled={!freePoint} onClick={()=>{interaction.cancel();const position=parseCoordinates3D(coordinates),next=position&&selectedPoint?editPoint3D(value,selectedPoint.id,position,label||null):null;if(!next){setError('Nöqtənin redaktəsi etibarsızdır.');return}commit(next)}}>Nöqtəyə tətbiq et</button>
+        <button type="button" disabled={!freePoint&&!surfacePoint&&!coneCenter} onClick={()=>{interaction.cancel();const position=parseCoordinates3D(coordinates),next=selectedPoint?(coneCenter?editConeCenterLabel3D(value,selectedPoint.id,label):surfacePoint?editSurfacePointLabel3D(value,selectedPoint.id,label):position?editPoint3D(value,selectedPoint.id,position,label||null):null):null;if(!next){setError('Nöqtənin redaktəsi etibarsızdır.');return}commit(next)}}>Nöqtəyə tətbiq et</button>
       </fieldset>
       {(selectedLine||selectedPlane)&&<fieldset disabled={authoringDisabled}><legend>Müəyyən edən nöqtələr</legend>{references.map((id,i)=><select key={i} aria-label={`3D istinad ${i+1}`} value={id} onChange={e=>setReferences(old=>old.map((v,j)=>i===j?e.target.value:v))}>{value.points.map(p=><option key={p.id} value={p.id}>{p.label??p.id}</option>)}</select>)}<button type="button" onClick={()=>{interaction.cancel();const next=state.selected?editReferences3D(value,state.selected,references):null;if(next)commit(next);else setError('İstinadlar degenerativdir və ya asılılıq etibarsızdır.')}}>İstinadları tətbiq et</button></fieldset>}
       <button type="button" disabled={!canDelete} onClick={()=>run.current('delete')}>3D seçiləni sil</button>

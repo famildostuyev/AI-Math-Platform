@@ -9,7 +9,7 @@
     "pyramid": [[1, 1], [2, 0], [1, 1]],
     "truncated_pyramid": [[2, 0], [3, 0], [1, 2]],
     "regular_polyhedron": {"tetrahedron": [4, 6, 4], "cube": [8, 12, 6], "octahedron": [6, 12, 8], "dodecahedron": [20, 30, 12], "icosahedron": [12, 30, 20]},
-    "sphere": [1, 0, 0], "cylinder": [2, 0, 0], "cone": [2, 0, 0], "frustum": [2, 0, 0]
+    "sphere": [1, 0, 0], "cylinder": [2, 0, 0], "cone": [4, 0, 0], "frustum": [2, 0, 0]
   },
   "definitions": {
     "vec3": {"tuple": ["number", "number", "number"]},
@@ -35,7 +35,7 @@
     "cylinder_parameters": {"object": {"radius": "positive", "height": "positive"}},
     "cone_parameters": {"object": {"radius": "positive", "height": "positive"}},
     "frustum_parameters": {"object": {"bottom_radius": "positive", "top_radius": "positive", "height": "positive"}},
-    "sphere_parameters": {"object": {"radius": "positive"}},
+    "sphere_parameters": {"anyOf":[{"object":{"radius":"positive"}},{"object":{"radius":"positive","equator":{"enum":["visible","hidden"]}}}]},
     "solid": {"discriminator": "kind", "variants": {
       "cube": {"object": {"id": "id", "kind": {"literal": "cube"}, "mode": {"literal": "parametric"}, "frame": "frame", "parameters": "cube_parameters", "features": {"array": "feature"}}},
       "cuboid": {"object": {"id": "id", "kind": {"literal": "cuboid"}, "mode": {"literal": "parametric"}, "frame": "frame", "parameters": "cuboid_parameters", "features": {"array": "feature"}}},

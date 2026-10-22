@@ -5,6 +5,7 @@
 .geometry-3d-static { position: absolute; inset: 0; pointer-events: none; }
 .geometry-3d-static svg { display: block; width: 100%; height: 100%; min-height: 0 !important; max-height: none !important; }
 .geometry-3d-static.is-print-only { visibility: hidden; }
+.geometry-3d-shared-screen { z-index:1; }
 .geometry-3d-labels { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
 .geometry-3d-construction-preview { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
 .geometry-3d-viewport .geometry-3d-solid-bounds { position:absolute; inset:0; width:100%; height:100%; min-height:0 !important; max-height:none !important; border:0; background:transparent; pointer-events:none; z-index:2; }

@@ -31,7 +31,7 @@ export type GeometrySolidParameters3D = {
   cylinder: { radius: number; height: number }
   cone: { radius: number; height: number }
   frustum: { bottom_radius: number; top_radius: number; height: number }
-  sphere: { radius: number }
+  sphere: { radius: number; equator?: 'visible' | 'hidden' }
 }
 export type GeometrySolidBase3D = {kind:'template';radius:number} | {kind:'face';face_id:string;point_ids:string[]}
 export type GeometryPyramidBase3D = GeometrySolidBase3D | {kind:'polygon';vertices:Vec3[]}

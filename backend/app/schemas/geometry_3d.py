@@ -304,6 +304,8 @@ def normalize_scene_3d(value):
             u, v = parameter
             if not 0 <= u < 1 or not 0 <= v <= 1:
                 raise ValueError("Surface UV outside domain")
+            if parent["kind"] == "sphere" and v in (0, 1):
+                parameter[0] = 0
         if kind == "face":
             coords = [index[p]["position"] for p in parent["boundary"]]
             if not _inside_face(parameter, _face_coordinates(coords)):

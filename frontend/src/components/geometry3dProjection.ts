@@ -1,6 +1,10 @@
 import type { GeometryCamera3D, GeometryScene3D, Vec3 } from './geometry3dContract'
 import { normalizeGeometryEditingCamera3D } from './geometry3d'
-import { evaluateGeometryScene3D } from './geometry3dModel'
+import { evaluateGeometryRenderScene3D, prepareCylinderCenters3D } from './geometry3dModel'
+import { analyticRenderGeometry3D, type RenderAnalyticSolid3D } from './geometry3dRenderGeometry'
+import { analyticLineIntervals3D, faceOcclusionMasks3D, pointHiddenByAnalytic3D, pointHiddenByFaces3D } from './geometry3dRenderVisibility'
+import { evaluateAnalyticSurface3D } from './geometry3dAnalytic'
+import { faceFrame3D } from './geometry3dFaces'
 
 export const add = (a: Vec3, b: Vec3): Vec3 => a.map((v, i) => v + b[i]) as Vec3
 export const sub = (a: Vec3, b: Vec3): Vec3 => a.map((v, i) => v - b[i]) as Vec3
@@ -18,9 +22,10 @@ export type Primitive3D =
   | { id: string; kind: 'segment' | 'line' | 'ray' | 'vector'; a: Vec3; b: Vec3 }
   | { id: string; kind: 'face' | 'plane'; vertices: Vec3[]; outline?:boolean }
 export function scenePrimitives3D(source: GeometryScene3D) {
-  const result = evaluateGeometryScene3D(source)
-  if (result.status !== 'ok') return { status: result.status, primitives: [] as Primitive3D[] }
+  const result = evaluateGeometryRenderScene3D(prepareCylinderCenters3D(source)??source)
+  if (result.status !== 'ok') return { status: result.status, primitives: [] as Primitive3D[], analyticSolids:[] as RenderAnalyticSolid3D[], annotations:[] as {id:string;position:Vec3;content:string;offset:[number,number]}[] }
   const scene = result.scene, points = new Map(scene.points.map(p => [p.id, p.position]))
+  const analyticSolids=scene.solids.filter((s):s is RenderAnalyticSolid3D=>s.mode==='parametric'&&(s.kind==='cylinder'||s.kind==='cone'||s.kind==='sphere'))
   const p = (id: string) => points.get(id)!
   const primitives: Primitive3D[] = scene.points.map(point => ({ ...point, kind: 'point' }))
   primitives.push(...scene.linear_objects.map(l => ({ id: l.id, kind: l.kind, a: p(l.a), b: p(l.b) })))
@@ -28,7 +33,20 @@ export function scenePrimitives3D(source: GeometryScene3D) {
   primitives.push(...scene.faces.map(f => ({ id: f.id, kind: 'face' as const, vertices: f.boundary.map(p) })))
   // A plane is represented by its basis, not by an arbitrary persisted finite patch.
   primitives.push(...scene.planes.map(f => ({ id: f.id, kind: 'plane' as const, vertices: f.point_ids.map(p) })))
-  return { status: 'ok' as const, primitives: primitives.sort((a,b) => a.id.localeCompare(b.id)) }
+  const annotations:{id:string;position:Vec3;content:string;offset:[number,number]}[]=[]
+  // Existing text anchors can participate in read-only analytic display without
+  // adding annotation authoring or changing attachment semantics.
+  if(analyticSolids.length)for(const annotation of scene.annotations){
+    if(annotation.format!=='text')continue
+    const a=annotation.anchor;let position:Vec3|undefined
+    if(a.kind==='world')position=a.position
+    else if(a.kind==='point')position=p(a.point_id)
+    else if(a.kind==='edge'){const e=scene.edges.find(e=>e.id===a.edge_id)!;position=add(p(e.start),scale(sub(p(e.end),p(e.start)),a.t))}
+    else if(a.kind==='face'){const f=scene.faces.find(f=>f.id===a.face_id)!;position=faceFrame3D(f.boundary.map(p)).world(a.uv)}
+    else {const surface=scene.surfaces.find(s=>s.id===a.surface_id),solid=analyticSolids.find(s=>s.id===surface?.solid_id);if(solid)position=evaluateAnalyticSurface3D(solid,a.uv)}
+    if(position)annotations.push({id:annotation.id,position,content:annotation.content,offset:annotation.offset_mm})
+  }
+  return { status: 'ok' as const, primitives: primitives.sort((a,b) => a.id.localeCompare(b.id)),analyticSolids,annotations }
 }
 /** Display only: preserve semantic objects/picking while drawing coincident edges once. */
 export function displayPrimitives3D(primitives:Primitive3D[]){
@@ -106,17 +124,68 @@ export function createProjection3D(value: GeometryCamera3D, width: number, heigh
   }
   return { camera, width, height, view, world, screen, line, polygon, planePatch, visible: (p: Vec3) => planes.every(f=>f(view(p))>=-1e-9) }
 }
-export type ProjectedFace3D = { id: string; kind: 'face' | 'plane'; vertices: Vec3[]; outline?:boolean; viewVertices?:Vec3[] }
-export type ProjectedLine3D = { id: string; kind: string; a: Vec3; b: Vec3; arrow?: boolean; viewA?:Vec3; viewB?:Vec3 }
+export type ProjectedFace3D = { id: string; kind: 'face' | 'plane'; vertices: Vec3[]; outline?:boolean; viewVertices?:Vec3[];ownerId?:string;analytic?:boolean;region?:string }
+export type ProjectedLine3D = { id: string; kind: string; a: Vec3; b: Vec3; arrow?: boolean; viewA?:Vec3; viewB?:Vec3;role?:'rim'|'silhouette'|'equator';dashOffset?:number;arc?:{solid:RenderAnalyticSolid3D;from:number;to:number;z:number} }
 export function projectScene3D(source: GeometryScene3D, camera: GeometryCamera3D, width: number, height: number, display=false) {
   const adapter=scenePrimitives3D(source), projection=createProjection3D(camera,width,height)
+  const worldPoints=new Map(adapter.primitives.filter(p=>p.kind==='point').map(p=>[p.id,p.position]))
   const points: { id: string; position: Vec3; label: string|null }[] = [], lines: ProjectedLine3D[] = [], faces: ProjectedFace3D[] = []
   for (const primitive of display?displayPrimitives3D(adapter.primitives).primitives:adapter.primitives) {
     if (primitive.kind==='point') { if (projection.visible(primitive.position)) points.push({ ...primitive, position: projection.screen(projection.view(primitive.position)) }); }
     else if ('a' in primitive) { const clipped=projection.line(primitive.a,primitive.b,primitive.kind); if(clipped) lines.push({ id:primitive.id, kind:primitive.kind, a:projection.screen(clipped[0]), b:projection.screen(clipped[1]), viewA:clipped[0],viewB:clipped[1],arrow: primitive.kind==='vector'&&projection.visible(primitive.b) }); }
     else { const polygon=projection.polygon(primitive.kind==='plane' ? projection.planePatch(primitive.vertices) : primitive.vertices); if(polygon.length>=3) faces.push({ id:primitive.id,kind:primitive.kind,vertices:polygon.map(projection.screen),viewVertices:polygon,...(primitive.outline===false?{outline:false}:{}) }); }
   }
-  return { status:adapter.status, projection, points, lines, faces }
+  const owner=new Map(source.solids.flatMap(s=>s.mode==='parametric'?s.features.map(f=>[f.entity_id,s.id] as const):s.face_ids.map(id=>[id,s.id] as const)))
+  faces.forEach(f=>{f.ownerId=owner.get(f.id)})
+  // Derived patches are display-only. Ordinary semantic picking must never
+  // mistake a tessellation patch/circular cap for an independently owned face.
+  for(const solid of display?adapter.analyticSolids:[]){
+    // Deterministic display quality, independent of semantic sparse features.
+    const render=analyticRenderGeometry3D(solid,camera)
+    for(const patch of render.patches){
+      const clipped=projection.polygon(patch.vertices)
+      if(clipped.length>=3)faces.push({id:solid.id,kind:'face',vertices:clipped.map(projection.screen),viewVertices:clipped,outline:false,ownerId:solid.id,analytic:true,region:patch.region})
+    }
+    for(const curve of render.curves){
+      // A real owned generator takes precedence over a coincident display-only
+      // silhouette. Keep semantic picking/IDs and its analytic visibility intact.
+      if(solid.kind==='cone'&&curve.role==='silhouette'){
+        const owned=new Set(solid.features.filter(f=>f.slot.startsWith('v_')).map(f=>f.entity_id))
+        const same=(a:Vec3,b:Vec3)=>Math.hypot(...sub(a,b))<=1e-10*Math.max(1,solid.parameters.radius,solid.parameters.height)
+        if(source.linear_objects.some(l=>{
+          if(l.kind!=='segment'||!owned.has(l.a)||!owned.has(l.b))return false
+          const a=worldPoints.get(l.a),b=worldPoints.get(l.b);if(!a||!b)return false
+          return same(a,curve.vertices[0])&&same(b,curve.vertices[1])||same(b,curve.vertices[0])&&same(a,curve.vertices[1])
+        }))continue
+      }
+      let curveDistance=0
+      for(let i=0;i<curve.vertices.length-1;i++){
+      const clipped=projection.line(curve.vertices[i],curve.vertices[i+1],'segment');if(!clipped)continue
+      const line:ProjectedLine3D={id:solid.id,kind:'segment',a:projection.screen(clipped[0]),b:projection.screen(clipped[1]),viewA:clipped[0],viewB:clipped[1],role:curve.role,dashOffset:curveDistance}
+      curveDistance+=Math.hypot(line.b[0]-line.a[0],line.b[1]-line.a[1])
+      if(curve.role==='equator'||curve.role==='rim'&&solid.kind!=='sphere'){
+        // Clip parameter recovery preserves the arc's original pointer-free geometry.
+        const a=projection.view(curve.vertices[i]),b=projection.view(curve.vertices[i+1]),d=sub(b,a),length=dot(d,d)
+        const lo=length?dot(sub(clipped[0],a),d)/length:0,hi=length?dot(sub(clipped[1],a),d)/length:1
+        const angles=curve.angles
+        line.arc={solid,from:angles?angles[i]+(angles[i+1]-angles[i])*lo:2*Math.PI*(i+lo)/render.resolution,to:angles?angles[i]+(angles[i+1]-angles[i])*hi:2*Math.PI*(i+hi)/render.resolution,z:solid.kind==='sphere'||curve===render.curves[0]?0:solid.parameters.height}
+      }
+      if(Math.hypot(line.b[0]-line.a[0],line.b[1]-line.a[1])>1e-7)lines.push(line)
+      }
+    }
+  }
+  const ordinaryFaces=faces.filter(f=>!f.analytic)
+  const hiddenPoint=(position:Vec3)=>pointHiddenByAnalytic3D(position,camera,adapter.analyticSolids)||pointHiddenByFaces3D(projection.screen(projection.view(position)),ordinaryFaces,camera.projection)
+  // Predefined cone references and a sphere's center remain visible through their own solid,
+  // as in a geometric construction diagram; other occluders retain depth order.
+  const visiblePoints=adapter.analyticSolids.length?points.filter(p=>{
+    const owner=adapter.analyticSolids.find(s=>(s.kind==='cone'||s.kind==='sphere')&&s.features.some(f=>['v_0','v_1','v_2','v_3'].includes(f.slot)&&f.entity_id===p.id))
+    if(!owner)return !hiddenPoint(worldPoints.get(p.id)!)
+    const world=worldPoints.get(p.id)!
+    return !pointHiddenByAnalytic3D(world,camera,adapter.analyticSolids.filter(s=>s.id!==owner.id))&&!pointHiddenByFaces3D(p.position,ordinaryFaces,camera.projection)
+  }):points
+  const annotations=adapter.annotations.filter(a=>projection.visible(a.position)&&!hiddenPoint(a.position)).map(a=>({...a,position:projection.screen(projection.view(a.position))}))
+  return { status:adapter.status, projection, points:visiblePoints, lines, faces,analyticSolids:adapter.analyticSolids,annotations }
 }
 /** Screen intervals inside a planar face and strictly behind it. Perspective uses
  * reciprocal depth, which is affine in screen space. Coplanarity is tested in
@@ -161,27 +230,68 @@ export function hiddenIntervals3D(line:ProjectedLine3D,face:ProjectedFace3D,mode
 export function projectedEdgeStrokes3D(projected:ReturnType<typeof projectScene3D>,mode:GeometryCamera3D['projection']){
   const strokes:(ProjectedLine3D&{hidden:boolean})[]=[]
   for(const line of projected.lines){
-    const intervals=projected.faces.filter(f=>f.kind==='face').flatMap(f=>hiddenIntervals3D(line,f,mode)).sort((a,b)=>a[0]-b[0]),merged:[number,number][]=[]
+    const polygonIntervals=projected.faces.filter(f=>f.kind==='face'&&!f.analytic).flatMap(f=>hiddenIntervals3D(line,f,mode))
+    const seeds=projected.faces.filter(f=>f.analytic&&f.ownerId!==line.id).flatMap(f=>hiddenIntervals3D(line,f,mode)).flat()
+    // A sphere silhouette's sampled chords are inside its own surface. The
+    // true tangent curve cannot self-occlude; all other occluders still apply.
+    const occluders=line.role==='silhouette'?projected.analyticSolids.filter(s=>s.kind!=='sphere'||s.id!==line.id):projected.analyticSolids
+    const analyticIntervals=analyticLineIntervals3D(line,projected.projection,occluders,seeds)
+    const intervals=[...polygonIntervals,...analyticIntervals].sort((a,b)=>a[0]-b[0]),merged:[number,number][]=[]
     for(const interval of intervals){const last=merged.at(-1);if(last&&interval[0]<=last[1]+1e-9)last[1]=Math.max(last[1],interval[1]);else merged.push([...interval])}
     const cuts=[...new Set([0,1,...merged.flat()])].sort((a,b)=>a-b)
     const point=(t:number):Vec3=>[line.a[0]+(line.b[0]-line.a[0])*t,line.a[1]+(line.b[1]-line.a[1])*t,mode==='perspective'?1/((1-t)/line.a[2]+t/line.b[2]):line.a[2]+(line.b[2]-line.a[2])*t]
     const view=(t:number)=>{if(!line.viewA||!line.viewB)return undefined;const u=mode==='perspective'?t*line.a[2]/((1-t)*line.b[2]+t*line.a[2]):t;return add(line.viewA,scale(sub(line.viewB,line.viewA),u))}
-    for(let i=0;i<cuts.length-1;i++){const lo=cuts[i],hi=cuts[i+1];if(hi-lo<=1e-9)continue;const t=(lo+hi)/2;strokes.push({...line,a:point(lo),b:point(hi),viewA:view(lo),viewB:view(hi),hidden:merged.some(([a,b])=>t>a&&t<b)})}
+    for(let i=0;i<cuts.length-1;i++){const lo=cuts[i],hi=cuts[i+1];if(hi-lo<=1e-9)continue;const t=(lo+hi)/2;strokes.push({...line,a:point(lo),b:point(hi),viewA:view(lo),viewB:view(hi),...(line.dashOffset!==undefined?{dashOffset:line.dashOffset+Math.hypot(line.b[0]-line.a[0],line.b[1]-line.a[1])*lo}:{}),hidden:merged.some(([a,b])=>t>a&&t<b)})}
   }
-  return strokes.sort((a,b)=>Number(b.hidden)-Number(a.hidden))
+  // Orthographic axial rims can project to the same curve. Keep the visible
+  // representative instead of laying a second dashed stroke over it.
+  const curves=new Map<string,(typeof strokes)[number]>(),ordinary=strokes.filter(s=>!s.role)
+  for(const stroke of strokes.filter(s=>s.role)){
+    const key=stroke.id+'|'+[stroke.a,stroke.b].map(p=>p.slice(0,2).map(v=>v.toFixed(6)).join(',')).sort().join('|')
+    const previous=curves.get(key)
+    if(!previous||previous.hidden&&!stroke.hidden)curves.set(key,stroke)
+  }
+  return [...ordinary,...curves.values()].sort((a,b)=>Number(b.hidden)-Number(a.hidden))
 }
 const escape = (value: string) => value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]!))
 const number = (v: number) => String(Math.abs(v)<0.0000005 ? 0 : Number(v.toFixed(6)))
-export function geometrySceneSVG3D(source: GeometryScene3D, width=520, height=300): string {
+export function geometrySceneSVG3D(source: GeometryScene3D, width=520, height=300,highlighted:ReadonlySet<string>=new Set()): string {
   const projected=projectScene3D(source,source.print_camera,width,height,true), parts: string[]=[]
   const xy=(p:Vec3)=>`${number(p[0])},${number(p[1])}`
-  for(const face of [...projected.faces].sort((a,b)=> b.vertices.reduce((s,p)=>s+p[2],0)/b.vertices.length-a.vertices.reduce((s,p)=>s+p[2],0)/a.vertices.length || a.id.localeCompare(b.id))) parts.push(`<polygon data-id="${escape(face.id)}" points="${face.vertices.map(xy).join(' ')}" fill="#e2e8f0" fill-opacity="0.35" stroke="${face.outline===false?'none':'#94a3b8'}"/>`)
+  let hash=2166136261
+  if(projected.analyticSolids.length)for(const c of JSON.stringify([width,height,source.print_camera,projected.faces]))hash=Math.imul(hash^c.charCodeAt(0),16777619)
+  const prefix=`g3d${(hash>>>0).toString(16)}`,defs:string[]=[]
+  const sorted=[...projected.faces].sort((a,b)=> b.vertices.reduce((s,p)=>s+p[2],0)/b.vertices.length-a.vertices.reduce((s,p)=>s+p[2],0)/a.vertices.length || a.id.localeCompare(b.id))
+  sorted.forEach((face,i)=>{
+    const masks=projected.analyticSolids.length?faceOcclusionMasks3D(face,projected.faces,source.print_camera.projection):[],id=`${prefix}_${i}`
+    if(masks.length)defs.push(`<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="${number(width)}" height="${number(height)}" style="mask-type:luminance"><rect width="100%" height="100%" fill="white"/>${masks.map(v=>`<polygon points="${v.map(xy).join(' ')}" fill="black"/>`).join('')}</mask>`)
+    const color=highlighted.has(face.id)?'#f97316':face.analytic?(face.region==='lateral'?'#e2e8f0':'#f1f5f9'):'#e2e8f0'
+    parts.push(`<polygon data-id="${escape(face.id)}"${face.analytic?` data-render-surface="${face.region}"`:''} points="${face.vertices.map(xy).join(' ')}" fill="${color}" fill-opacity="${face.analytic?'1':'0.35'}" stroke="${face.analytic?color:face.outline===false?'none':'#94a3b8'}"${face.analytic?' stroke-width="0.3" stroke-linejoin="round"':''}${masks.length?` mask="url(#${id})"`:''}/>`)
+  })
   for(const line of projectedEdgeStrokes3D(projected,source.print_camera.projection)) {
-    parts.push(`<path data-id="${escape(line.id)}" d="M${xy(line.a)} L${xy(line.b)}" fill="none" stroke="#334155"${line.hidden?' stroke-dasharray="4 3" opacity="0.45"':''}/>`)
+    parts.push(`<path data-id="${escape(line.id)}"${line.role?` data-render-curve="${line.role}"`:''} d="M${xy(line.a)} L${xy(line.b)}" fill="none" stroke="${highlighted.has(line.id)?'#f97316':'#334155'}"${line.hidden?` stroke-dasharray="4 3"${line.dashOffset!==undefined?` stroke-dashoffset="${number(-line.dashOffset)}"`:''} opacity="0.45"`:''}/>`)
   }
   for(const line of projected.lines){
-    if(line.arrow) { const dx=line.b[0]-line.a[0], dy=line.b[1]-line.a[1], len=Math.hypot(dx,dy); if(len>1e-8) { const x=dx/len,y=dy/len; parts.push(`<path d="M${xy([line.b[0]-8*x+4*y,line.b[1]-8*y-4*x,0])} L${xy(line.b)} L${xy([line.b[0]-8*x-4*y,line.b[1]-8*y+4*x,0])}" fill="none" stroke="#334155"/>`) } }
+    if(line.arrow&&!(projected.analyticSolids.length&&pointHiddenByAnalytic3D(projected.projection.world(line.viewB!),source.print_camera,projected.analyticSolids))) { const dx=line.b[0]-line.a[0], dy=line.b[1]-line.a[1], len=Math.hypot(dx,dy); if(len>1e-8) { const x=dx/len,y=dy/len; parts.push(`<path d="M${xy([line.b[0]-8*x+4*y,line.b[1]-8*y-4*x,0])} L${xy(line.b)} L${xy([line.b[0]-8*x-4*y,line.b[1]-8*y+4*x,0])}" fill="none" stroke="#334155"/>`) } }
   }
-  for(const point of projected.points) { parts.push(`<circle data-id="${escape(point.id)}" cx="${number(point.position[0])}" cy="${number(point.position[1])}" r="3" fill="#2563eb"/>`); if(point.label)parts.push(`<text x="${number(point.position[0]+6)}" y="${number(point.position[1]-6)}" font-size="12">${escape(point.label)}</text>`) }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${number(width)} ${number(height)}" width="${number(width)}" height="${number(height)}" role="img" aria-label="3D həndəsə">${parts.join('')}</svg>`
+  for(const point of projected.points) {
+    parts.push(`<circle data-id="${escape(point.id)}" cx="${number(point.position[0])}" cy="${number(point.position[1])}" r="3" fill="${highlighted.has(point.id)?'#f97316':'#2563eb'}"/>`)
+    if(point.label){
+      let dx=6,dy=-6,anchor='start'
+      const cone=source.solids.find(s=>s.mode==='parametric'&&s.kind==='cone'&&s.features.some(f=>f.entity_id===point.id&&['v_0','v_1','v_2','v_3'].includes(f.slot)))
+      if(cone?.mode==='parametric'){
+        const slot=cone.features.find(f=>f.entity_id===point.id)!.slot,center=projected.points.find(p=>p.id===cone.features.find(f=>f.slot==='v_0')?.entity_id)?.position
+        if(slot==='v_0'){dx=9;dy=15}
+        else if(center){
+          const vx=point.position[0]-center[0],vy=point.position[1]-center[1],length=Math.hypot(vx,vy)
+          if(length>1e-7){dx=12*vx/length;dy=12*vy/length+4;anchor=Math.abs(vx)<.25*length?'middle':vx<0?'end':'start'}
+        }
+      }
+      // Static cone references must not acquire native text-selection tiles.
+      // Keep this inside the SVG so editor and standalone saved views agree.
+      parts.push(`<text x="${number(point.position[0]+dx)}" y="${number(point.position[1]+dy)}"${cone?` text-anchor="${anchor}" data-cone-point-label="${escape(point.id)}" style="fill:#172033;background:transparent;user-select:none;-webkit-user-select:none"`:''} font-size="12">${escape(point.label)}</text>`)
+    }
+  }
+  for(const a of projected.annotations)parts.push(`<text data-id="${escape(a.id)}" x="${number(a.position[0]+a.offset[0]*96/25.4)}" y="${number(a.position[1]+a.offset[1]*96/25.4)}" font-size="12">${escape(a.content)}</text>`)
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${number(width)} ${number(height)}" width="${number(width)}" height="${number(height)}" role="img" aria-label="3D həndəsə">${defs.length?`<defs>${defs.join('')}</defs>`:''}${parts.join('')}</svg>`
 }
