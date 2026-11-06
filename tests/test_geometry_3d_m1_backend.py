@@ -24,7 +24,7 @@ class Geometry3DM1BackendTest(unittest.TestCase):
             source[key] = []
         source['print_camera']['position'] = [6, 4, 2]
         update = GeometryBlockUpdate.model_validate(dict(source_data=source, expected_revision_updated_at=NOW))
-        self.assertEqual(update.source_data.model_dump(mode='json'), source)
+        self.assertEqual(update.source_data.model_dump(mode='json'), {**source, 'dihedrals': []})
 
     def test_invalid_scene_and_required_concurrency_boundary(self):
         for change in ({'schema_version': 99}, {'editing_camera': {}}, {'print_camera': {}}):

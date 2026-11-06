@@ -1,7 +1,7 @@
 """M4 deterministic semantic topology; no rendering objects or ID allocation."""
 import math
 
-SUPPORTED = ("cube", "cuboid", "prism", "pyramid")
+SUPPORTED = ("cube", "cuboid", "prism", "pyramid", "truncated_pyramid")
 def add(a, b): return [x+y for x,y in zip(a,b)]
 def sub(a, b): return [x-y for x,y in zip(a,b)]
 def mul(a, t): return [x*t for x in a]
@@ -56,8 +56,9 @@ def solid_topology(scene, solid):
             origin = points[source_ids[0]]
             base = [sub(points[i], origin) for i in source_ids]
         else:
-            r = p.get("radius", p.get("base", {}).get("radius"))
+            r = p.get("bottom_radius", p.get("radius", p.get("base", {}).get("radius")))
             base = [[r*math.cos(2*math.pi*i/n),r*math.sin(2*math.pi*i/n),0] for i in range(n)]
+    if kind == "truncated_pyramid" and not p["bottom_radius"] > p["top_radius"] > 0: raise ValueError("Invalid frustum radii")
     if (abs(h) if kind == "pyramid" and "base" in p else h) <= 1e-9: raise ValueError("Invalid height")
     u = unit(sub(base[1],base[0])); normal = unit(cross(u,sub(base[2],base[0]))); v = cross(normal,u)
     if any(abs(dot(sub(b,base[0]),normal)) > 1e-9*max(1,math.hypot(*sub(b,base[0]))) for b in base): raise ValueError("Nonplanar base")
@@ -85,7 +86,7 @@ def solid_topology(scene, solid):
         direction = p.get("direction",[0,0,1])
         if abs(dot(direction,direction)-1) > 1e-9 or abs(direction[2]) <= 1e-9: raise ValueError("Invalid extrusion direction")
         displacement = mul(add(mul(u,direction[0]),add(mul(v,direction[1]),mul(normal,direction[2]))),h/abs(direction[2]))
-        vertices.extend([add(b,displacement) for b in base]); faces.append(list(range(n,2*n)))
+        vertices.extend([add(mul(b,p["top_radius"]/p["bottom_radius"]) if kind == "truncated_pyramid" else b,displacement) for b in base]); faces.append(list(range(n,2*n)))
         for i in range(n): edges.append([i,(i+1)%n]); faces.append([i,(i+1)%n,(i+1)%n+n,i+n])
         edges.extend([[i+n,(i+1)%n+n] for i in range(n)]); edges.extend([[i,i+n] for i in range(n)])
     z = cross(frame["x_axis"],frame["y_axis"])
@@ -99,8 +100,9 @@ def solid_topology(scene, solid):
     return dict(vertices=world, edges=edges, faces=faces, source_ids=source_ids)
 
 def validate_solid_topology(scene, solid):
+    if solid["kind"] == "truncated_pyramid" and not solid["parameters"]["bottom_radius"] > solid["parameters"]["top_radius"] > 0: raise ValueError("Invalid frustum radii")
     n = solid["parameters"].get("sides",4)
-    count = 26 if solid["kind"] in ("cube","cuboid") else 6*n+2 if solid["kind"] == "prism" else 4*n+2
+    count = 26 if solid["kind"] in ("cube","cuboid") else 6*n+2 if solid["kind"] in ("prism","truncated_pyramid") else 4*n+2
     if len(solid["features"]) != count and "base" not in solid["parameters"]:
         return # Preserve the M0 partial-feature contract; evaluator marks it unavailable.
     topology = solid_topology(scene,solid)

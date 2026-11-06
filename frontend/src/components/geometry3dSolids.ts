@@ -1,14 +1,14 @@
 import type { GeometryParametricSolid3D, GeometryScene3D, Vec3 } from './geometry3dContract'
 
-export type SolidKind3D = 'cube'|'cuboid'|'prism'|'pyramid'
-export const SOLID_TOOLS_3D: {kind:SolidKind3D;label:string}[]=[{kind:'cube',label:'Kub'},{kind:'cuboid',label:'Düzbucaqlı paralelepiped'},{kind:'prism',label:'Prizma'},{kind:'pyramid',label:'Piramida'}]
-export const solidSupported3D=(s:GeometryScene3D['solids'][number]):s is GeometryParametricSolid3D=>s.mode==='parametric'&&['cube','cuboid','prism','pyramid'].includes(s.kind)
+export type SolidKind3D = 'cube'|'cuboid'|'prism'|'pyramid'|'truncated_pyramid'
+export const SOLID_TOOLS_3D: {kind:SolidKind3D;label:string}[]=[{kind:'cube',label:'Kub'},{kind:'cuboid',label:'Düzbucaqlı paralelepiped'},{kind:'prism',label:'Prizma'},{kind:'pyramid',label:'Piramida'},{kind:'truncated_pyramid',label:'D\u00fczg\u00fcn n-bucaql\u0131 k\u0259sik piramida'}]
+export const solidSupported3D=(s:GeometryScene3D['solids'][number]):s is GeometryParametricSolid3D=>s.mode==='parametric'&&['cube','cuboid','prism','pyramid','truncated_pyramid'].includes(s.kind)
 /** Transform support is separate from polyhedral topology support. */
-export const solidTransformSupported3D=(s:GeometryScene3D['solids'][number]):s is GeometryParametricSolid3D=>s.mode==='parametric'&&['cube','cuboid','prism','pyramid','cylinder','cone','sphere'].includes(s.kind)
+export const solidTransformSupported3D=(s:GeometryScene3D['solids'][number]):s is GeometryParametricSolid3D=>s.mode==='parametric'&&['cube','cuboid','prism','pyramid','truncated_pyramid','cylinder','cone','sphere','frustum'].includes(s.kind)
 export function hasSolidTopology3D(s:GeometryScene3D['solids'][number]){
   if(!solidSupported3D(s))return false
   const n='sides'in s.parameters?s.parameters.sides:4
-  const count=s.kind==='cube'||s.kind==='cuboid'?26:s.kind==='prism'?6*n+2:4*n+2
+  const count=s.kind==='cube'||s.kind==='cuboid'?26:(s.kind==='prism'||s.kind==='truncated_pyramid')?6*n+2:4*n+2
   return s.features.length===count
 }
 const add=(a:Vec3,b:Vec3):Vec3=>a.map((v,i)=>v+b[i]) as Vec3
@@ -52,7 +52,7 @@ export function solidTopology3D(scene:GeometryScene3D,solid:GeometryParametricSo
     height='side'in p?p.side:'height'in p?p.height:NaN
     base=[[0,0,0],[width,0,0],[width,depth,0],[0,depth,0]]
     if(!(width>0&&depth>0))throw Error('Invalid dimensions')
-  }else if((solid.kind==='prism'||solid.kind==='pyramid')&&'sides'in p&&'height'in p){
+  }else if((solid.kind==='prism'||solid.kind==='pyramid'||solid.kind==='truncated_pyramid')&&'sides'in p&&'height'in p){
     height=p.height
     if(!Number.isInteger(p.sides)||p.sides<3||p.sides>128)throw Error('Invalid sides')
     if('base'in p&&p.base.kind==='polygon'){
@@ -65,11 +65,12 @@ export function solidTopology3D(scene:GeometryScene3D,solid:GeometryParametricSo
       const positions=sourceIds.map(id=>{const point=scene.points.find(v=>v.id===id);if(!point)throw Error('Missing source');return point.position})
       sourceOrigin=positions[0];base=positions.map(v=>sub(v,sourceOrigin))
     }else{
-      const radius='radius'in p?p.radius:'base'in p&&p.base.kind==='template'?p.base.radius:NaN
+      const radius='bottom_radius'in p?p.bottom_radius:'radius'in p?p.radius:'base'in p&&p.base.kind==='template'?p.base.radius:NaN
       if(!(radius>0))throw Error('Invalid radius')
       base=Array.from({length:p.sides},(_,i)=>[radius*Math.cos(2*Math.PI*i/p.sides),radius*Math.sin(2*Math.PI*i/p.sides),0] as Vec3)
     }
   }else throw Error('Unsupported definition')
+  if(solid.kind==='truncated_pyramid'&&'bottom_radius'in p&&!(p.bottom_radius>p.top_radius&&p.top_radius>0))throw Error('Invalid frustum radii')
   if(!Number.isFinite(height)||(solid.kind==='pyramid'&&'base'in p?Math.abs(height):height)<=1e-9)throw Error('Invalid height')
   const u=unit(sub(base[1],base[0])),normal=unit(cross(u,sub(base[2],base[0]))),v=cross(normal,u)
   const coords=base.map(b=>[dot(sub(b,base[0]),u),dot(sub(b,base[0]),v)])
@@ -95,7 +96,7 @@ export function solidTopology3D(scene:GeometryScene3D,solid:GeometryParametricSo
     const direction='direction'in p?p.direction:[0,0,1] as Vec3
     if(Math.abs(dot(direction,direction)-1)>1e-9||Math.abs(direction[2])<=1e-9)throw Error('Invalid extrusion direction')
     const displacement=mul(add(mul(u,direction[0]),add(mul(v,direction[1]),mul(normal,direction[2]))),height/Math.abs(direction[2]))
-    vertices.push(...base.map(b=>add(b,displacement)))
+    vertices.push(...base.map(b=>add(solid.kind==='truncated_pyramid'&&'bottom_radius'in p?mul(b,p.top_radius/p.bottom_radius):b,displacement)))
     faces.push(bottom.map(i=>i+n))
     for(let i=0;i<n;i++){const j=(i+1)%n;edges.push([i,j]);faces.push([i,j,j+n,i+n])}
     for(let i=0;i<n;i++)edges.push([i+n,(i+1)%n+n])

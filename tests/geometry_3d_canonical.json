@@ -24,6 +24,7 @@
     }
   ],
   "description": "Semantic 3D — M0",
+  "dihedrals": [],
   "dimension": 3,
   "edges": [
     {

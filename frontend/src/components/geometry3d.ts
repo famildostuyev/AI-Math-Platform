@@ -1,11 +1,15 @@
+import {guidedPlaneGeometry3D,planeGuidePointIds3D} from './geometry3dGuidedPlane'
+import {isConstructedPlane3D,constructionOutputPointIds3D,normalizePlaneAngle3D} from './geometry3dConstructedPlane'
+import {DIHEDRAL_FEATURES_3D,validateDihedralTopology3D} from './geometry3dDihedral'
+import {pyramidAltitudeOwner3D} from './geometry3dPlanePerpendicular'
 import { insideFace3D as insideFace } from './geometry3dFaces'
 import contractJson from '../../../backend/app/schemas/geometry_3d_contract.json?raw'
 import type { GeometryCamera3D, GeometryScene3D, Vec3 } from './geometry3dContract'
 import { solidSupported3D, hasSolidTopology3D, solidTopology3D, solidFeatureIds3D, evaluateSolid3D } from './geometry3dSolids'
 
 type Spec = string | { anyOf?:Spec[]; nullable?: Spec; literal?: string | number; enum?: string[]; discriminator?: string; variants?: Record<string, Spec>; object?: Record<string, Spec>; tuple?: Spec[]; array?: Spec; min?: number }
-const contract = JSON.parse(contractJson) as { definitions: Record<string, Spec>; max_depth: number; max_bytes: number; max_items: number; feature_limits: Record<string, (number | number[])[] | Record<string, number[]>> }
-const collections = ['points', 'linear_objects', 'planes', 'edges', 'faces', 'surfaces', 'solids', 'constructions', 'annotations', 'markings'] as const
+const contract = JSON.parse(contractJson) as { definitions: Record<string, Spec>; max_depth: number; max_bytes: number; max_items: number; stroke_width_range:[number,number]; feature_limits: Record<string, (number | number[])[] | Record<string, number[]>> }
+const collections = ['points', 'linear_objects', 'planes', 'edges', 'faces', 'surfaces', 'solids', 'constructions', 'annotations', 'markings', 'dihedrals'] as const
 function fail(): never { throw new Error('Invalid semantic 3D scene') }
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) fail()
@@ -15,13 +19,16 @@ function shape(value: unknown, spec: Spec, depth = 1): unknown {
   if (depth > contract.max_depth) fail()
   if (typeof spec === 'string') {
     if (contract.definitions[spec]) return shape(value, contract.definitions[spec], depth)
-    if (['number', 'positive', 'side_count'].includes(spec)) {
+    if (spec === 'boolean') { if (typeof value !== 'boolean') fail(); return value }
+    if (['number', 'positive', 'side_count', 'stroke_width'].includes(spec)) {
       if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > 1e12) fail()
       if (spec === 'positive' && value <= 0) fail()
+      if (spec === 'stroke_width' && (value < contract.stroke_width_range[0] || value > contract.stroke_width_range[1])) fail()
       if (spec === 'side_count' && (!Number.isInteger(value) || value < 3 || value > 128)) fail()
       return value === 0 ? 0 : value
     }
     if (typeof value !== 'string' || [...value].length > (spec === 'id' ? 64 : 4096)) fail()
+    if (spec === 'stroke_color') { if (value.length !== 7 || !/^#[0-9a-fA-F]{6}$/.test(value)) fail(); return value.toUpperCase() }
     if ([...value].some(c => c.codePointAt(0)! >= 0xD800 && c.codePointAt(0)! <= 0xDFFF)) fail()
     if (spec === 'id' && !/^[A-Za-z][A-Za-z0-9_-]*$/.test(value)) fail()
     return value
@@ -99,7 +106,7 @@ function canonical(value: unknown): unknown {
 /** Strict boundary: rejects unsupported structures; never clamps or detaches. */
 export function normalizeGeometryScene3D(value: unknown): GeometryScene3D | null {
   try {
-    const scene = shape(value, 'scene') as GeometryScene3D
+    const input=record(value);const scene = shape({...input,dihedrals:Array.isArray(input.dihedrals)?input.dihedrals.map(d=>{const v=record(d);return Object.hasOwn(v,'display')?v:{...v,display:{edge_length:4,widths:[2.5,2.5]}}}):Object.hasOwn(input,'dihedrals')?input.dihedrals:[]}, 'scene') as GeometryScene3D
     if (new TextEncoder().encode(JSON.stringify(scene)).length > contract.max_bytes) fail()
     if (collections.reduce((n, k) => n + scene[k].length, 0) > contract.max_items) fail()
     const index = new Map<string, Record<string, unknown>>()
@@ -126,6 +133,7 @@ export function normalizeGeometryScene3D(value: unknown): GeometryScene3D | null
     for (const e of scene.linear_objects) { const [a, b] = points(e.id, [e.a, e.b]); nonzero(sub(b, a)) }
     for (const e of scene.edges) { const [a, b] = points(e.id, [e.start, e.end]); nonzero(sub(b, a)) }
     for (const e of [...scene.planes, ...scene.faces]) {
+      if('display' in e&&e.display?.skew!==undefined&&Math.abs(e.display.skew)>1.5)fail()
       const coords = points(e.id, 'point_ids' in e ? e.point_ids : e.boundary, 3)
       const normal = cross(sub(coords[1], coords[0]), sub(coords[2], coords[0])); nonzero(normal)
       for (const p of coords.slice(3)) {
@@ -133,6 +141,10 @@ export function normalizeGeometryScene3D(value: unknown): GeometryScene3D | null
         if (Math.abs(dot(normal, delta)) > 1e-9 * Math.sqrt(dot(normal, normal)) * Math.max(1, Math.sqrt(dot(delta, delta)))) fail()
       }
       if ('boundary' in e) simpleFace(faceCoordinates(coords))
+    }
+    for(const d of scene.dihedrals){
+      validateDihedralTopology3D(scene,d)
+      for(const f of d.features){const group=DIHEDRAL_FEATURES_3D[f.slot as keyof typeof DIHEDRAL_FEATURES_3D];if(category.get(f.entity_id)!==group)fail();own(f.entity_id,d.id)}
     }
     for (const e of scene.solids) {
       if (e.mode === 'freeform') {
@@ -172,6 +184,8 @@ export function normalizeGeometryScene3D(value: unknown): GeometryScene3D | null
         if (reached.size !== usedVertices.size) fail()
         continue
       }
+      if(e.kind==='frustum'&&!(e.parameters.bottom_radius>e.parameters.top_radius))fail()
+      if(e.kind==='truncated_pyramid'&&!(e.parameters.bottom_radius>e.parameters.top_radius))fail()
       const x = e.frame.x_axis, y = e.frame.y_axis
       if (Math.abs(dot(x, x)-1) > 1e-9 || Math.abs(dot(y, y)-1) > 1e-9 || Math.abs(dot(x, y)) > 1e-9) fail()
       const slots = new Set<string>()
@@ -209,9 +223,36 @@ export function normalizeGeometryScene3D(value: unknown): GeometryScene3D | null
         if (!insideFace(parameter as number[], faceCoordinates(coords))) fail()
       }
     }
+    for(const c of scene.constructions)if(c.kind==='constructed_plane'&&c.relation==='perpendicular')c.orientation.angle_radians=normalizePlaneAngle3D(c.orientation.angle_radians)
+    const outputPlanes=new Set<string>()
     for (const e of scene.constructions) {
-      ref(e.id, e.output_point_id, 'points'); graph.get(e.id)!.delete(e.output_point_id); own(e.output_point_id, e.id)
-      if (e.kind === 'midpoint') points(e.id, [e.a, e.b])
+      for(const output of constructionOutputPointIds3D(e)){ref(e.id,output,'points');graph.get(e.id)!.delete(output);own(output,e.id)}
+      if(isConstructedPlane3D(e)){
+        const plane=scene.planes.find(p=>p.id===e.output_plane_id)
+        if(!plane||plane.kind||!plane.display||outputPlanes.has(plane.id)||JSON.stringify(plane.point_ids)!==JSON.stringify(e.output_point_ids)||new Set(e.output_point_ids).size!==3)fail()
+        if(e.kind==='constructed_plane'&&e.relation==='perpendicular'&&plane.display.intersection_mode===undefined)plane.display.intersection_mode='cross'
+        outputPlanes.add(e.output_plane_id)
+        const parent=ref(e.id,e.reference.id,e.reference.kind==='plane'?'planes':'faces');if(e.reference.kind==='plane'&&parent.kind==='half_plane')fail()
+        if(e.kind==='constructed_plane')ref(e.id,e.through.id,'points')
+        else {if(e.guide.kind==='linear')ref(e.id,e.guide.id,'linear_objects');for(const id of planeGuidePointIds3D(scene,e.guide))ref(e.id,id,'points');if(!parent.display)fail();guidedPlaneGeometry3D(scene,e.reference,e.guide)}
+        continue
+      }
+      if(e.kind==='parallel'){
+        const parent=ref(e.id,e.reference.id,({edge:'edges',linear:'linear_objects',plane:'planes',face:'faces'})[e.reference.kind])
+        if(e.reference.kind==='plane'&&parent.kind==='half_plane')fail()
+        if(e.reference.kind==='linear'&&!['line','ray','segment'].includes(parent.kind as string))fail()
+        ref(e.id,e.source_point_id,'points')
+        const line=scene.linear_objects.find(l=>l.id===e.linear_id)
+        if(!line||line.kind!==e.output_kind||line.a!==e.source_point_id||line.b!==e.output_point_id)fail()
+      }else if(e.kind==='perpendicular_foot'||e.kind==='pyramid_altitude'){
+        const parent=ref(e.id,e.reference.id,({edge:'edges',linear:'linear_objects',plane:'planes',face:'faces'})[e.reference.kind])
+        if(e.reference.kind==='linear'&&!['line','segment'].includes(parent.kind as string))fail()
+        if(e.reference.kind==='plane'&&parent.kind==='half_plane')fail()
+        if(e.kind==='pyramid_altitude'){ref(e.id,e.pyramid_id,'solids');pyramidAltitudeOwner3D(scene,e.source_point_id,e.reference.id,e.pyramid_id)}
+        ref(e.id,e.source_point_id,'points')
+        const segment=scene.linear_objects.find(l=>l.id===e.segment_id)
+        if(!segment||segment.kind!=='segment'||segment.a!==e.source_point_id||segment.b!==e.output_point_id)fail()
+      }else if (e.kind === 'midpoint') points(e.id, [e.a, e.b])
       else {
         const kind = e.kind.replace('point_on_', '')
         const raw = e as unknown as Record<string, unknown>

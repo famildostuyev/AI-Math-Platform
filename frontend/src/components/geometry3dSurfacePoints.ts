@@ -10,7 +10,7 @@ export function createPointOnSurface3D(source:GeometryScene3D,surfaceId:string,u
     return transactGeometryScene3D(source,draft=>{
       const surface=draft.surfaces.find(s=>s.id===surfaceId)
       const solid=draft.solids.find(s=>s.id===surface?.solid_id)
-      if(!surface||!['cylinder','cone','sphere'].includes(surface.kind)||surface.slot!=='surface'||!solid||solid.mode!=='parametric'||solid.kind!=='cylinder'&&solid.kind!=='cone'&&solid.kind!=='sphere'||solid.kind!==surface.kind)throw Error('Invalid analytic surface')
+      if(!surface||!['cylinder','cone','sphere','frustum'].includes(surface.kind)||surface.slot!=='surface'||!solid||solid.mode!=='parametric'||solid.kind!=='cylinder'&&solid.kind!=='cone'&&solid.kind!=='sphere'&&solid.kind!=='frustum'||solid.kind!==surface.kind)throw Error('Invalid analytic surface')
       if(solid.kind==='cone'&&canonical[1]===1)throw Error('Reuse the semantic apex')
       if(solid.kind==='sphere'&&(canonical[1]===0||canonical[1]===1)){
         canonical[0]=0
@@ -31,7 +31,7 @@ export function editPointOnSurface3D(source:GeometryScene3D,id:string,uv:Vec2){
       const recipe=draft.constructions.find(c=>c.kind==='point_on_surface'&&c.output_point_id===id)
       if(!recipe||recipe.kind!=='point_on_surface')throw Error('Missing surface attachment')
       const surface=draft.surfaces.find(s=>s.id===recipe.surface_id)
-      if(!surface||!['cylinder','cone','sphere'].includes(surface.kind))throw Error('Unsupported surface')
+      if(!surface||!['cylinder','cone','sphere','frustum'].includes(surface.kind))throw Error('Unsupported surface')
       if(surface.kind==='cone'&&canonical[1]===1)canonical[0]=0
       if(surface.kind==='sphere'&&(canonical[1]===0||canonical[1]===1)){
         canonical[0]=0
@@ -48,7 +48,7 @@ export function editSurfacePointLabel3D(source:GeometryScene3D,id:string,label:s
   if(label!==null&&typeof label!=='string')return null
   return transactGeometryScene3D(source,draft=>{
     const recipe=draft.constructions.find(c=>c.kind==='point_on_surface'&&c.output_point_id===id)
-    if(!recipe||recipe.kind!=='point_on_surface'||!draft.surfaces.some(s=>s.id===recipe.surface_id&&['cylinder','cone','sphere'].includes(s.kind)))throw Error('Missing analytic attachment')
+    if(!recipe||recipe.kind!=='point_on_surface'||!draft.surfaces.some(s=>s.id===recipe.surface_id&&['cylinder','cone','sphere','frustum'].includes(s.kind)))throw Error('Missing analytic attachment')
     const point=draft.points.find(p=>p.id===id)
     if(!point)throw Error('Missing point')
     point.label=label===''?null:label

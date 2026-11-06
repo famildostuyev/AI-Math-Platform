@@ -74,11 +74,12 @@ class AnalyticFrame:
 
 
 def geometry(solid):
-    if solid['mode'] != 'parametric' or solid['kind'] not in ('cylinder', 'cone', 'sphere'):
+    if solid['mode'] != 'parametric' or solid['kind'] not in ('cylinder', 'cone', 'sphere', 'frustum'):
         raise ValueError('Unsupported analytic kind')
-    radius = positive(solid['parameters']['radius'])
+    radius = positive(solid['parameters']['bottom_radius'] if solid['kind'] == 'frustum' else solid['parameters']['radius'])
     height = 0 if solid['kind'] == 'sphere' else positive(solid['parameters']['height'])
     frame = AnalyticFrame(solid['frame'])
+    if solid['kind'] == 'frustum' and (not radius > positive(solid['parameters']['top_radius']) or (radius-solid['parameters']['top_radius'])/height == 0 or not math.isfinite(radius/((radius-solid['parameters']['top_radius'])/height))): raise ValueError('Invalid frustum radii')
     resolution = 16 * EPS * max(map(abs, frame.origin))
     if radius < resolution or height and height < resolution:
         raise ValueError('Dimensions below world-space resolution')
@@ -112,7 +113,7 @@ def evaluate_analytic_surface(solid, uv):
         radial = 0 if v in (0, 1) else r * math.cos(phi)
         z = -r if v == 0 else r if v == 1 else r * math.sin(phi)
     else:
-        radial = r * (1-v) if solid['kind'] == 'cone' else r
+        radial = r * (1-v) if solid['kind'] == 'cone' else r+(solid['parameters']['top_radius']-r)*v if solid['kind'] == 'frustum' else r
         z = h * v
     return frame.to_world([radial*math.cos(theta), radial*math.sin(theta), z])
 
@@ -133,7 +134,7 @@ def inverse_analytic_surface(solid, world, previous_u=0):
         if z < -axial_tolerance or z > h+axial_tolerance:
             return None
         v = max(0, min(1, z/h))
-        if abs(radial-(r*(1-v) if solid['kind'] == 'cone' else r)) > tolerance:
+        if abs(radial-(r*(1-v) if solid['kind'] == 'cone' else r+(solid['parameters']['top_radius']-r)*v if solid['kind'] == 'frustum' else r)) > tolerance:
             return None
     if radial <= 64*EPS*r:
         if solid['kind'] == 'sphere' and abs(abs(z)-r) <= 64*EPS*r+precision:
@@ -156,6 +157,10 @@ def analytic_bounds(solid):
             extent = r * math.hypot(frame.x[i], frame.y[i], frame.z[i])
             world_min.append(o-extent)
             world_max.append(o+extent)
+        elif solid['kind'] == 'frustum':
+            top_extent = solid['parameters']['top_radius'] * math.hypot(frame.x[i], frame.y[i])
+            world_min.append(min(o-extent,tip[i]-top_extent))
+            world_max.append(max(o+extent,tip[i]+top_extent))
         elif solid['kind'] == 'cone':
             world_min.append(min(o-extent, tip[i]))
             world_max.append(max(o+extent, tip[i]))
@@ -179,7 +184,7 @@ def analytic_feature_positions(solid):
         slots.add(slot)
         ids.add(eid)
         if slot != 'surface':
-            r = solid['parameters']['radius']
+            r = solid['parameters']['bottom_radius'] if solid['kind'] == 'frustum' else solid['parameters']['radius']
             output[eid] = frame.to_world([-.6*r, .8*r, 0] if slot == 'v_2' else [.6*r, -.8*r, 0] if slot == 'v_3' else [0, 0, h if slot == 'v_1' else 0])
     return output
 
@@ -242,10 +247,10 @@ def intersect_analytic_surface(solid, ray):
         positive(clip['far'])
         if clip['near'] >= clip['far'] or abs(math.hypot(*clip['forward'])-1) > 1e-9:
             raise ValueError('Invalid ray clip')
-    if solid['kind'] == 'cone':
+    if solid['kind'] in ('cone', 'frustum'):
         t0 = -dot(sub(o, [0, 0, h/2]), d)/dot(d, d)
-        q, k = add(o, scale(d, t0)), r/h
-        k2, w = k*k, h-q[2]
+        q, k = add(o, scale(d, t0)), (r-solid['parameters']['top_radius'] if solid['kind'] == 'frustum' else r)/h
+        k2, w = k*k, r/k-q[2] if solid['kind'] == 'frustum' else h-q[2]
         radial, axial = d[0]*d[0]+d[1]*d[1], k2*d[2]*d[2]
         a, b = radial-axial, 2*(q[0]*d[0]+q[1]*d[1]+k2*w*d[2])
         c = q[0]*q[0]+q[1]*q[1]-k2*w*w
@@ -372,3 +377,23 @@ def intersect_closed_cylinder(solid, ray):
         uv = [wrap_surface_azimuth(math.atan2(local[1], local[0])/TAU), local[2]/h] if region == 'lateral' else None
         hits.append(dict(position=position, distance=distance, depth=depth, region=region, uv=uv))
     return sorted(hits, key=lambda hit: hit['distance'])
+
+def intersect_closed_frustum(solid, ray):
+    r, h, frame = geometry(solid)
+    origin, direction = vector(ray['origin']), unit(vector(ray['direction']))
+    o, d, clip = frame.to_local(origin), frame.vector_to_local(direction), ray.get('clip')
+    hits = [dict(hit, region='lateral') for hit in intersect_analytic_surface(solid, ray)]
+    if d[2] != 0:
+        for z, radius, region in ((0,r,'bottom_cap'),(h,solid['parameters']['top_radius'],'top_cap')):
+            t = (z-o[2])/d[2]
+            x, y = o[0]+d[0]*t, o[1]+d[1]*t
+            if t <= 0 or math.hypot(x,y) > radius*(1+64*EPS): continue
+            position = frame.to_world([x,y,z])
+            depth = dot(sub(position,clip['origin']),clip['forward']) if clip else t
+            if not clip or clip['near'] <= depth <= clip['far']:
+                hits.append(dict(position=position,distance=t,depth=depth,region=region,uv=None))
+    error = 8*EPS*max(r,h,*map(abs,origin),*map(abs,frame.origin))
+    result = []
+    for hit in sorted(hits,key=lambda v:(v['distance'],v['region']=='lateral')):
+        if hit['distance'] > error and not any(abs(v['distance']-hit['distance']) <= error for v in result): result.append(hit)
+    return result

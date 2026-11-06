@@ -1,9 +1,9 @@
 /** Pure analytic foundation. This module does not enable runtime/editor capabilities. */
 import type { GeometryCamera3D, GeometryParametricSolid3D, GeometryScene3D, Vec2, Vec3 } from './geometry3dContract'
 
-export type AnalyticSolid3D=Extract<GeometryParametricSolid3D,{kind:'cylinder'|'cone'|'sphere'}>
+export type AnalyticSolid3D=Extract<GeometryParametricSolid3D,{kind:'cylinder'|'cone'|'sphere'|'frustum'}>
 export type ClosedAnalyticSolid3D=AnalyticSolid3D
-export const isClosedAnalyticSolid3D=(solid:GeometryScene3D['solids'][number]):solid is ClosedAnalyticSolid3D=>solid.mode==='parametric'&&(solid.kind==='cylinder'||solid.kind==='cone'||solid.kind==='sphere')
+export const isClosedAnalyticSolid3D=(solid:GeometryScene3D['solids'][number]):solid is ClosedAnalyticSolid3D=>solid.mode==='parametric'&&(solid.kind==='cylinder'||solid.kind==='cone'||solid.kind==='sphere'||solid.kind==='frustum')
 export type AnalyticRay3D={origin:Vec3;direction:Vec3;clip?:{origin:Vec3;forward:Vec3;near:number;far:number}}
 export type AnalyticHit3D={position:Vec3;uv:Vec2;distance:number;depth:number}
 /** Transient intersection result, not a persisted surface/face attachment. */
@@ -33,8 +33,9 @@ export function analyticFrame3D(frame:GeometryParametricSolid3D['frame']){
   return {origin,x,y,z,vectorToWorld,vectorToLocal,toWorld:(v:Vec3)=>vector(add(origin,vectorToWorld(vector(v)))),toLocal:(v:Vec3)=>vectorToLocal(sub(vector(v),origin))}
 }
 function geometry(solid:AnalyticSolid3D){
-  if(solid.mode!=='parametric'||!['cylinder','cone','sphere'].includes(solid.kind))throw Error('Unsupported analytic kind')
-  const radius=positive(solid.parameters.radius),height=solid.kind==='sphere'?0:positive(solid.parameters.height),frame=analyticFrame3D(solid.frame)
+  if(solid.mode!=='parametric'||!['cylinder','cone','sphere','frustum'].includes(solid.kind))throw Error('Unsupported analytic kind')
+  const radius=positive(solid.kind==='frustum'?solid.parameters.bottom_radius:solid.parameters.radius),height=solid.kind==='sphere'?0:positive(solid.parameters.height),frame=analyticFrame3D(solid.frame)
+  if(solid.kind==='frustum'&&(!(radius>positive(solid.parameters.top_radius))||!Number.isFinite(radius/((radius-solid.parameters.top_radius)/height))))throw Error('Invalid frustum radii')
   const resolution=16*EPS*Math.max(...frame.origin.map(Math.abs))
   if(radius<resolution||height&&height<resolution)throw Error('Dimensions below world-space resolution')
   if(solid.kind==='cone'&&!Number.isFinite(radius/height))throw Error('Ill-conditioned cone')
@@ -52,7 +53,7 @@ export function evaluateAnalyticSurface3D(solid:AnalyticSolid3D,uv:Vec2):Vec3{
   let radial:number,z:number
   if(solid.kind==='sphere'){
     const phi=Math.PI*(v-.5);radial=v===0||v===1?0:r*Math.cos(phi);z=v===0?-r:v===1?r:r*Math.sin(phi)
-  }else{radial=solid.kind==='cone'?r*(1-v):r;z=h*v}
+  }else{radial=solid.kind==='cone'?r*(1-v):solid.kind==='frustum'?r+(solid.parameters.top_radius-r)*v:r;z=h*v}
   return frame.toWorld([radial*Math.cos(theta),radial*Math.sin(theta),z])
 }
 export function inverseAnalyticSurface3D(solid:AnalyticSolid3D,world:Vec3,previousU=0):Vec2|null{
@@ -66,7 +67,7 @@ export function inverseAnalyticSurface3D(solid:AnalyticSolid3D,world:Vec3,previo
   }else{
     if(z < -axialTolerance||z>h+axialTolerance)return null
     v=Math.max(0,Math.min(1,z/h))
-    if(Math.abs(radial-(solid.kind==='cone'?r*(1-v):r))>tolerance)return null
+    if(Math.abs(radial-(solid.kind==='cone'?r*(1-v):solid.kind==='frustum'?r+(solid.parameters.top_radius-r)*v:r))>tolerance)return null
   }
   if(radial<=64*EPS*r){
     if(solid.kind==='sphere'&&Math.abs(Math.abs(z)-r)<=64*EPS*r+precision)v=z<0?0:1
@@ -81,11 +82,11 @@ export function analyticBounds3D(solid:AnalyticSolid3D){
   const min:Vec3=[-r,-r,sphere?-r:0],max:Vec3=[r,r,sphere?r:h]
   const worldMin=frame.origin.map((o,i)=>{
     const extent=r*Math.hypot(frame.x[i],frame.y[i])
-    return sphere?o-r*Math.hypot(frame.x[i],frame.y[i],frame.z[i]):solid.kind==='cone'?Math.min(o-extent,tip[i]):Math.min(o,tip[i])-extent
+    return solid.kind==='frustum'?Math.min(o-extent,tip[i]-solid.parameters.top_radius*Math.hypot(frame.x[i],frame.y[i])):sphere?o-r*Math.hypot(frame.x[i],frame.y[i],frame.z[i]):solid.kind==='cone'?Math.min(o-extent,tip[i]):Math.min(o,tip[i])-extent
   }) as Vec3
   const worldMax=frame.origin.map((o,i)=>{
     const extent=r*Math.hypot(frame.x[i],frame.y[i])
-    return sphere?o+r*Math.hypot(frame.x[i],frame.y[i],frame.z[i]):solid.kind==='cone'?Math.max(o+extent,tip[i]):Math.max(o,tip[i])+extent
+    return solid.kind==='frustum'?Math.max(o+extent,tip[i]+solid.parameters.top_radius*Math.hypot(frame.x[i],frame.y[i])):sphere?o+r*Math.hypot(frame.x[i],frame.y[i],frame.z[i]):solid.kind==='cone'?Math.max(o+extent,tip[i]):Math.max(o,tip[i])+extent
   }) as Vec3
   vector(worldMin);vector(worldMax)
   const corners=Array.from({length:8},(_,i)=>frame.toWorld([i&1?max[0]:min[0],i&2?max[1]:min[1],i&4?max[2]:min[2]]))
@@ -134,9 +135,9 @@ export function intersectAnalyticSurface3D(solid:AnalyticSolid3D,ray:AnalyticRay
   const clip=ray.clip
   if(clip){vector(clip.origin);vector(clip.forward);positive(clip.near);positive(clip.far);if(clip.near>=clip.far||Math.abs(Math.hypot(...clip.forward)-1)>1e-9)throw Error('Invalid ray clip')}
   let roots:{distance:number;local:Vec3}[]=[]
-  if(solid.kind==='cone'){
+  if(solid.kind==='cone'||solid.kind==='frustum'){
     // Shift near the solid before forming a quadratic; avoid far-origin cancellation.
-    const t0=-dot(sub(o,[0,0,h/2]),d)/dot(d,d),q=add(o,scale(d,t0)),k=r/h,k2=k*k,w=h-q[2]
+    const t0=-dot(sub(o,[0,0,h/2]),d)/dot(d,d),q=add(o,scale(d,t0)),k=(solid.kind==='frustum'?r-solid.parameters.top_radius:r)/h,k2=k*k,w=solid.kind==='frustum'?r/k-q[2]:h-q[2]
     const radial=d[0]*d[0]+d[1]*d[1],axial=k2*d[2]*d[2],a=radial-axial,b=2*(q[0]*d[0]+q[1]*d[1]+k2*w*d[2]),c=q[0]*q[0]+q[1]*q[1]-k2*w*w
     const linear=Math.abs(a)<=64*EPS*(radial+axial),bError=64*EPS*2*(Math.abs(q[0]*d[0])+Math.abs(q[1]*d[1])+Math.abs(k2*w*d[2]))
     roots=linear&&Math.abs(b)<=bError?[]:quadratic(a,b,c,linear).map(t=>({distance:t+t0,local:add(q,scale(d,t))}))
@@ -255,6 +256,19 @@ export function intersectClosedCone3D(solid:Extract<AnalyticSolid3D,{kind:'cone'
     .filter((hit,index,all)=>!all.slice(0,index).some(other=>Math.abs(other.distance-hit.distance)<=selfError))
 }
 export function intersectClosedAnalytic3D(solid:ClosedAnalyticSolid3D,ray:AnalyticRay3D){
+  if(solid.kind==='frustum')return intersectClosedFrustum3D(solid,ray)
   if(solid.kind==='sphere')return intersectAnalyticSurface3D(solid,ray).filter(hit=>hit.distance>8*EPS*Math.max(solid.parameters.radius,...ray.origin.map(Math.abs))).map(hit=>({...hit,region:'sphere' as const,uv:hit.uv[1]===0||hit.uv[1]===1?[0,hit.uv[1]] as Vec2:hit.uv}))
   return solid.kind==='cylinder'?intersectClosedCylinder3D(solid,ray):intersectClosedCone3D(solid,ray)
+}
+export function intersectClosedFrustum3D(solid:Extract<AnalyticSolid3D,{kind:'frustum'}>,ray:AnalyticRay3D):ClosedCylinderHit3D[]{
+ const {radius:r,height:h,frame}=geometry(solid),direction=unit(vector(ray.direction)),origin=vector(ray.origin),o=frame.toLocal(origin),d=frame.vectorToLocal(direction),clip=ray.clip
+ const hits:ClosedCylinderHit3D[]=intersectAnalyticSurface3D(solid,ray).map(hit=>({...hit,region:'lateral',uv:hit.uv}))
+ if(d[2]!==0)for(const [z,radius,region]of [[0,r,'bottom_cap'],[h,solid.parameters.top_radius,'top_cap']] as const){
+  const t=(z-o[2])/d[2],x=o[0]+d[0]*t,y=o[1]+d[1]*t
+  if(t<=0||Math.hypot(x,y)>radius*(1+64*EPS))continue
+  const position=frame.toWorld([x,y,z]),depth=clip?dot(sub(position,clip.origin),clip.forward):t
+  if(!clip||depth>=clip.near&&depth<=clip.far)hits.push({position,distance:t,depth,region,uv:null})
+ }
+ const error=8*EPS*Math.max(r,h,...origin.map(Math.abs),...frame.origin.map(Math.abs))
+ return hits.filter(hit=>hit.distance>error).sort((a,b)=>a.distance-b.distance||(a.region==='lateral'?1:0)-(b.region==='lateral'?1:0)).filter((hit,i,all)=>!all.slice(0,i).some(v=>Math.abs(v.distance-hit.distance)<=error))
 }

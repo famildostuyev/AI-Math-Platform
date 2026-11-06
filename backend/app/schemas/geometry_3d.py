@@ -15,7 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 from .geometry_3d_solids import SUPPORTED, validate_solid_topology
 
 CONTRACT = json.loads(Path(__file__).with_name("geometry_3d_contract.json").read_text())
-COLLECTIONS = ("points", "linear_objects", "planes", "edges", "faces", "surfaces", "solids", "constructions", "annotations", "markings")
+from .geometry_3d_dihedral import FEATURES as DIHEDRAL_FEATURES, validate_dihedral
+
+COLLECTIONS = ("points", "linear_objects", "planes", "edges", "faces", "surfaces", "solids", "constructions", "annotations", "markings", "dihedrals")
 
 
 def _shape(value, spec, depth=1):
@@ -24,11 +26,17 @@ def _shape(value, spec, depth=1):
     if isinstance(spec, str):
         if spec in CONTRACT["definitions"]:
             return _shape(value, CONTRACT["definitions"][spec], depth)
-        if spec in ("number", "positive", "side_count"):
+        if spec == "boolean":
+            if type(value) is not bool:
+                raise ValueError("Expected strict boolean")
+            return value
+        if spec in ("number", "positive", "side_count", "stroke_width"):
             if type(value) not in (int, float) or abs(value) > 1e12 or not math.isfinite(value):
                 raise ValueError("3D numbers must be finite, strict and within 1e12")
             if spec == "positive" and value <= 0:
                 raise ValueError("Expected positive number")
+            if spec == "stroke_width" and not CONTRACT['stroke_width_range'][0] <= value <= CONTRACT['stroke_width_range'][1]:
+                raise ValueError("Stroke width must be within 0.25–8 logical display units")
             if spec == "side_count" and (int(value) != value or not 3 <= value <= 128):
                 raise ValueError("Invalid side count")
             if spec == "side_count":
@@ -36,6 +44,9 @@ def _shape(value, spec, depth=1):
             return 0 if value == 0 else value
         if type(value) is not str or len(value) > (64 if spec == "id" else 4096):
             raise ValueError("Invalid string")
+        if spec == 'stroke_color':
+            if not re.fullmatch(r'#[0-9a-fA-F]{6}', value): raise ValueError('Expected #RRGGBB stroke color')
+            return value.upper()
         if spec == "id" and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", value):
             raise ValueError("Invalid stable ID")
         if any(0xD800 <= ord(c) <= 0xDFFF for c in value):
@@ -169,6 +180,9 @@ def _canonical(value):
 
 
 def normalize_scene_3d(value):
+    if type(value) is dict and "dihedrals" not in value: value = dict(value, dihedrals=[])
+    if type(value) is dict and type(value.get('dihedrals')) is list:
+        value = dict(value, dihedrals=[dict(d, display={'edge_length':4,'widths':[2.5,2.5]}) if type(d) is dict and 'display' not in d else d for d in value['dihedrals']])
     scene = _shape(value, "scene")
     if len(json.dumps(scene, ensure_ascii=False, separators=(",", ":")).encode()) > CONTRACT["max_bytes"]:
         raise ValueError("Scene payload exceeds encoded limit")
@@ -206,6 +220,7 @@ def normalize_scene_3d(value):
         a, b = points(e["id"], [e["start"], e["end"]])
         _nonzero(_sub(b, a))
     for e in scene["planes"] + scene["faces"]:
+        if abs(e.get('display',{}).get('skew',0)) > 1.5: raise ValueError('Invalid plane skew')
         coords = points(e["id"], e.get("point_ids", e.get("boundary")), 3)
         normal = _cross(_sub(coords[1], coords[0]), _sub(coords[2], coords[0]))
         _nonzero(normal)
@@ -215,6 +230,11 @@ def normalize_scene_3d(value):
                 raise ValueError("Nonplanar face")
         if "boundary" in e:
             _simple_face(_face_coordinates(coords))
+    for d in scene["dihedrals"]:
+        validate_dihedral(scene,d)
+        for f in d['features']:
+            if category.get(f['entity_id']) != DIHEDRAL_FEATURES[f['slot']]: raise ValueError('Invalid dihedral feature category')
+            own(f['entity_id'],d['id'])
     for e in scene["solids"]:
         if e["mode"] == "freeform":
             points(e["id"], e["point_ids"], 4)
@@ -264,6 +284,7 @@ def normalize_scene_3d(value):
             if reached != used_vertices:
                 raise ValueError("Disconnected polyhedron")
             continue
+        if e["kind"] == "frustum" and not e["parameters"]["bottom_radius"] > e["parameters"]["top_radius"]: raise ValueError("Invalid frustum radii")
         x, y = e["frame"]["x_axis"], e["frame"]["y_axis"]
         if abs(_dot(x, x)-1) > 1e-9 or abs(_dot(y, y)-1) > 1e-9 or abs(_dot(x, y)) > 1e-9:
             raise ValueError("Solid frame must be orthonormal")
@@ -311,11 +332,55 @@ def normalize_scene_3d(value):
             if not _inside_face(parameter, _face_coordinates(coords)):
                 raise ValueError("Face attachment outside boundary")
 
+    from .geometry_3d_constructed_plane import normalize_plane_angle, guided_perpendicular_plane
+    for recipe in scene['constructions']:
+        if recipe['kind']=='constructed_plane' and recipe['relation']=='perpendicular': recipe['orientation']['angle_radians']=normalize_plane_angle(recipe['orientation']['angle_radians'])
+    output_planes=set()
     for e in scene["constructions"]:
-        ref(e["id"], e["output_point_id"], "points")
-        graph[e["id"]].remove(e["output_point_id"])
-        own(e["output_point_id"], e["id"])
-        if e["kind"] == "midpoint":
+        outputs=e['output_point_ids'] if e['kind'] in ('constructed_plane','perpendicular_plane_on_line') else [e['output_point_id']]
+        for output in outputs:
+            ref(e['id'],output,'points')
+            graph[e['id']].remove(output)
+            own(output,e['id'])
+        if e['kind'] in ('constructed_plane','perpendicular_plane_on_line'):
+            plane=next((p for p in scene['planes'] if p['id']==e['output_plane_id']),None)
+            if not plane or plane.get('kind') or not plane.get('display') or plane['id'] in output_planes or plane['point_ids']!=outputs or len(set(outputs))!=3: raise ValueError('Invalid constructed plane output')
+            if e['kind']=='constructed_plane' and e['relation']=='perpendicular': plane['display'].setdefault('intersection_mode','cross')
+            output_planes.add(plane['id'])
+            parent=ref(e['id'],e['reference']['id'],'planes' if e['reference']['kind']=='plane' else 'faces')
+            if e['reference']['kind']=='plane' and parent.get('kind')=='half_plane': raise ValueError('Select a standalone plane')
+            if e['kind']=='constructed_plane': ref(e['id'],e['through']['id'],'points')
+            else:
+                if not parent.get('display'): raise ValueError('Reference plane requires a finite display patch')
+                guide=e['guide']
+                if guide['kind']=='linear':
+                    line=ref(e['id'],guide['id'],'linear_objects')
+                    if line['kind'] not in ('line','segment'): raise ValueError('Select a line or segment')
+                    ids=[line['a'],line['b']]
+                else: ids=[guide['a'],guide['b']]
+                if ids[0]==ids[1]: raise ValueError('Select distinct guide points')
+                for point_id in ids: ref(e['id'],point_id,'points')
+                guided_perpendicular_plane(index[ids[0]]['position'],index[ids[1]]['position'],[index[id]['position'] for id in parent['point_ids']])
+            continue
+        if e['kind']=='parallel':
+            parent=ref(e['id'],e['reference']['id'],{'edge':'edges','linear':'linear_objects','plane':'planes','face':'faces'}[e['reference']['kind']])
+            if e['reference']['kind']=='plane' and parent.get('kind')=='half_plane': raise ValueError('Select a standalone plane')
+            if e['reference']['kind']=='linear' and parent['kind'] not in ('line','ray','segment'): raise ValueError('Invalid parallel reference')
+            ref(e['id'],e['source_point_id'],'points')
+            output=next((l for l in scene['linear_objects'] if l['id']==e['linear_id']),None)
+            if not output or output['kind']!=e['output_kind'] or output['a']!=e['source_point_id'] or output['b']!=e['output_point_id']: raise ValueError('Invalid parallel object')
+        elif e['kind'] in ('perpendicular_foot','pyramid_altitude'):
+            parent=ref(e['id'],e['reference']['id'],{'edge':'edges','linear':'linear_objects','plane':'planes','face':'faces'}[e['reference']['kind']])
+            if e['reference']['kind']=='linear' and parent['kind'] not in ('line','segment'): raise ValueError('Invalid perpendicular reference')
+            if e['reference']['kind']=='plane' and parent.get('kind')=='half_plane': raise ValueError('Select a standalone plane')
+            if e['kind']=='pyramid_altitude':
+                owner=ref(e['id'],e['pyramid_id'],'solids')
+                features={f['slot']:f['entity_id'] for f in owner.get('features',[])}
+                if owner.get('kind')!='pyramid' or owner.get('mode')!='parametric' or features.get('f_0')!=parent['id'] or features.get('v_'+str(len(parent['boundary'])))!=e['source_point_id']: raise ValueError('Select the apex and base face of the same semantic pyramid')
+            ref(e['id'],e['source_point_id'],'points')
+            segment=next((l for l in scene['linear_objects'] if l['id']==e['segment_id']),None)
+            if not segment or segment['kind']!='segment' or segment['a']!=e['source_point_id'] or segment['b']!=e['output_point_id']: raise ValueError('Invalid perpendicular segment')
+        elif e["kind"] == "midpoint":
             points(e["id"], [e["a"], e["b"]])
         else:
             kind = e["kind"].removeprefix("point_on_")
@@ -379,7 +444,9 @@ def _type(spec, name):
             if spec not in _models:
                 _models[spec] = _type(CONTRACT["definitions"][spec], "Geometry3D_" + spec)
             return _models[spec]
-        return {"id": str, "text": str, "number": float, "positive": float, "side_count": int}[spec]
+        if spec == 'stroke_color': return Annotated[str, Field(pattern=r'^#[0-9A-F]{6}$', min_length=7, max_length=7)]
+        if spec == 'stroke_width': return Annotated[float, Field(ge=CONTRACT['stroke_width_range'][0], le=CONTRACT['stroke_width_range'][1], allow_inf_nan=False)]
+        return {"id": str, "text": str, "number": float, "positive": float, "side_count": int, "boolean": bool}[spec]
     if "anyOf" in spec:
         return Union[tuple(_type(v, name + "_variant" + str(i)) for i, v in enumerate(spec["anyOf"]))]
     if "literal" in spec:

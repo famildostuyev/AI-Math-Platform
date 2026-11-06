@@ -10,7 +10,7 @@ export function projectedSolidBounds3D(scene:GeometryScene3D,camera:GeometryCame
     const vertices=scene.points.filter(p=>projection.visible(p.position)).map(p=>projection.screen(projection.view(p.position)))
     const lines=bounds.edges.flatMap(([a,b])=>{const clipped=projection.line(bounds.corners[a],bounds.corners[b],'segment');return clipped?[clipped.map(v=>projection.screen(v))]:[]})
     const solid=scene.solids.find(s=>s.id===id)
-    const dimensions: {world:Vec3;index:number;kind:'radius'|'height';direction:Vec3;length:number}[]=[]
+    const dimensions: {world:Vec3;index:number;kind:'radius'|'height'|'bottom_radius'|'top_radius';direction:Vec3;length:number}[]=[]
     if(solid?.mode==='parametric'&&solid.kind==='sphere'){
       // Every radius direction is valid for a sphere. Camera-right gives one
       // well-conditioned handle even when a local axis points toward the eye.
@@ -23,6 +23,17 @@ export function projectedSolidBounds3D(scene:GeometryScene3D,camera:GeometryCame
       }
       const axis=unit(cross(solid.frame.x_axis,solid.frame.y_axis))
       for(const sign of [1,-1]){const direction=scale(axis,sign);dimensions.push({index:sign===1?12:13,kind:'height',direction,length:solid.parameters.height/2,world:add(bounds.pivot,scale(direction,solid.parameters.height/2))})}
+    }
+    if(solid?.mode==='parametric'&&(solid.kind==='prism'||solid.kind==='pyramid')&&'constraint'in solid.parameters&&solid.parameters.constraint==='regular'&&'radius'in solid.parameters){
+      const axis=unit(cross(solid.frame.x_axis,solid.frame.y_axis))
+      dimensions.push({index:8,kind:'radius',direction:solid.frame.x_axis,length:solid.parameters.radius,world:add(solid.frame.origin,scale(solid.frame.x_axis,solid.parameters.radius))})
+      dimensions.push({index:13,kind:'height',direction:axis,length:solid.parameters.height,world:add(solid.frame.origin,scale(axis,solid.parameters.height))})
+    }
+    if(solid?.mode==='parametric'&&(solid.kind==='truncated_pyramid'||solid.kind==='frustum')){
+      const axis=unit(cross(solid.frame.x_axis,solid.frame.y_axis)),p=solid.parameters
+      dimensions.push({index:8,kind:'bottom_radius',direction:solid.frame.x_axis,length:p.bottom_radius,world:add(solid.frame.origin,scale(solid.frame.x_axis,p.bottom_radius))})
+      dimensions.push({index:9,kind:'top_radius',direction:solid.frame.x_axis,length:p.top_radius,world:add(add(solid.frame.origin,scale(axis,p.height)),scale(solid.frame.x_axis,p.top_radius))})
+      dimensions.push({index:13,kind:'height',direction:axis,length:p.height,world:add(solid.frame.origin,scale(axis,p.height))})
     }
     if(solid?.mode==='parametric'&&solid.kind==='cone'){
       for(const [i,direction] of [solid.frame.x_axis,solid.frame.y_axis,scale(solid.frame.x_axis,-1),scale(solid.frame.y_axis,-1)].entries())dimensions.push({index:8+i,kind:'radius',direction,length:solid.parameters.radius,world:add(solid.frame.origin,scale(direction,solid.parameters.radius))})

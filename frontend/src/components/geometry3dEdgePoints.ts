@@ -40,7 +40,7 @@ export function createPointOnEdge3D(source:GeometryScene3D,edgeId:string,t:numbe
   const length=Math.hypot(...sub(b,a))
   if(length<=1e-9)return null
   const existing=scene.constructions.find(c=>c.kind==='point_on_edge'&&c.edge_id===edgeId&&Math.abs(c.t-t)*length<=1e-9)
-  if(existing)return {scene,id:existing.output_point_id,reused:true}
+  if(existing&&existing.kind==='point_on_edge')return {scene,id:existing.output_point_id,reused:true}
   const next=transactGeometryScene3D(scene,draft=>{
     draft.points.push({id,position:add(a,scale(sub(b,a),t)),label:null})
     draft.constructions.push({id:`${id}_attachment`,kind:'point_on_edge',edge_id:edgeId,t,output_point_id:id})

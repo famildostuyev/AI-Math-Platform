@@ -1,3 +1,8 @@
+import {planeGuidePointIds3D} from './geometry3dGuidedPlane'
+import {constructionOutputPointIds3D} from './geometry3dConstructedPlane'
+import {parallelDependencies3D} from './geometry3dParallel'
+import {planeReferencePointIds3D} from './geometry3dPlanePerpendicular'
+import {perpendicularReference3D} from './geometry3dPerpendicular'
 import { transportFaceAttachments3D } from './geometry3dFaces'
 import type { GeometryParametricSolid3D, GeometryScene3D, Vec3 } from './geometry3dContract'
 import { evaluateGeometryScene3D, transactGeometryScene3D, deleteGeometryTargets3D, prepareCylinderCenters3D, emptyGeometryScene3D } from './geometry3dModel'
@@ -14,6 +19,13 @@ export function createCylinderAt3D(source:GeometryScene3D,origin:Vec3,plane:'XY'
   solid.frame={origin:[...origin],x_axis:plane==='YZ'?[0,1,0]:[1,0,0],y_axis:plane==='XY'?[0,1,0]:plane==='XZ'?[0,0,-1]:[0,0,1]}
   return createSolid3D(source,solid)
 }
+export const defaultFrustum3D=(id?:string):Extract<GeometryParametricSolid3D,{kind:'frustum'}>=>({...defaultCylinder3D(id),kind:'frustum',parameters:{bottom_radius:2,top_radius:1,height:2}})
+export function createFrustumAt3D(source:GeometryScene3D,origin:Vec3,plane:'XY'|'XZ'|'YZ',id?:string){
+ if(!['XY','XZ','YZ'].includes(plane))return null
+ const solid=defaultFrustum3D(id)
+ solid.frame={origin:[...origin],x_axis:plane==='YZ'?[0,1,0]:[1,0,0],y_axis:plane==='XY'?[0,1,0]:plane==='XZ'?[0,0,-1]:[0,0,1]}
+ return createSolid3D(source,solid)
+}
 export const defaultCone3D=(id=`solid_${crypto.randomUUID().replace(/-/g,'')}`):Extract<GeometryParametricSolid3D,{kind:'cone'}>=>({...defaultCylinder3D(id),kind:'cone'})
 export const defaultSphere3D=(id=`solid_${crypto.randomUUID().replace(/-/g,'')}`):Extract<GeometryParametricSolid3D,{kind:'sphere'}>=>({id,kind:'sphere',mode:'parametric',frame:{origin:[0,0,0],x_axis:[1,0,0],y_axis:[0,1,0]},parameters:{radius:1,equator:'visible'},features:[]})
 export function setSphereEquator3D(source:GeometryScene3D,id:string,visible:boolean){
@@ -24,8 +36,16 @@ export function setSphereEquator3D(source:GeometryScene3D,id:string,visible:bool
   return editSolid3D(source,{...sphere,parameters:{...sphere.parameters,equator:visible?'visible':'hidden'}})
 }
 export function createSphereAt3D(source:GeometryScene3D,origin:Vec3,plane:'XY'|'XZ'|'YZ',id?:string){
+  return createSphericalAt3D(source,origin,plane,id)
+}
+/** A distinct authoring route; absent region on legacy spheres still means ball. */
+export function createSphereSurfaceAt3D(source:GeometryScene3D,origin:Vec3,plane:'XY'|'XZ'|'YZ',id?:string){
+  return createSphericalAt3D(source,origin,plane,id,'surface')
+}
+function createSphericalAt3D(source:GeometryScene3D,origin:Vec3,plane:'XY'|'XZ'|'YZ',id?:string,region?:'surface'){
   if(!['XY','XZ','YZ'].includes(plane))return null
   const solid=defaultSphere3D(id)
+  if(region)solid.parameters.region=region
   solid.frame={origin:[...origin],x_axis:plane==='YZ'?[0,1,0]:[1,0,0],y_axis:plane==='XY'?[0,1,0]:plane==='XZ'?[0,0,-1]:[0,0,1]}
   return createSolid3D(source,solid)
 }
@@ -119,7 +139,28 @@ export function changePyramidHeight3D(source:GeometryScene3D,pointId:string,delt
   return editSolid3D(source,{...solid,parameters:{...solid.parameters,height}} as GeometryParametricSolid3D)
 }
 
-export const defaultSolid3D=(kind:SolidKind3D,id=`solid_${crypto.randomUUID().replace(/-/g,'')}`):GeometryParametricSolid3D=>({id,kind,mode:'parametric',frame:{origin:[0,0,0],x_axis:[1,0,0],y_axis:[0,1,0]},features:[],parameters:kind==='cube'?{side:2}:kind==='cuboid'?{width:2,depth:3,height:2}:kind==='prism'?{sides:3,height:2,base:{kind:'template',radius:2},direction:[0,0,1]}:{sides:4,height:2,base:{kind:'template',radius:2},apex_offset:[0,0]}} as GeometryParametricSolid3D)
+export function defaultRegularFrustum3D(id?:string):GeometryParametricSolid3D {
+ return {...defaultSolid3D('pyramid',id),kind:'truncated_pyramid',parameters:{sides:3,bottom_radius:2,top_radius:1,height:2}}
+}
+
+export function resizeFrustum3D(source:GeometryScene3D,id:string,dimension:'bottom_radius'|'top_radius'|'height',value:number){
+ if(!Number.isFinite(value)||value<=0||value>1e12)return null
+ const solid=source.solids.find(s=>s.id===id)
+ if(!solid||solid.mode!=='parametric'||(solid.kind!=='truncated_pyramid'&&solid.kind!=='frustum')||!['bottom_radius','top_radius','height'].includes(dimension))return null
+ if(solid.parameters[dimension]===value)return source
+ return editSolid3D(source,{...solid,parameters:{...solid.parameters,[dimension]:value}} as GeometryParametricSolid3D)
+}
+
+export const defaultSolid3D=(kind:SolidKind3D,id=`solid_${crypto.randomUUID().replace(/-/g,'')}`):GeometryParametricSolid3D=>({id,kind,mode:'parametric',frame:{origin:[0,0,0],x_axis:[1,0,0],y_axis:[0,1,0]},features:[],parameters:kind==='truncated_pyramid'?{sides:3,bottom_radius:2,top_radius:1,height:2}:kind==='cube'?{side:2}:kind==='cuboid'?{width:2,depth:3,height:2}:kind==='prism'?{sides:3,height:2,base:{kind:'template',radius:2},direction:[0,0,1]}:{sides:4,height:2,base:{kind:'template',radius:2},apex_offset:[0,0]}} as GeometryParametricSolid3D)
+
+/** Regular creation uses the existing scalar template topology, never an oblique direction. */
+export function defaultRegularPyramid3D(id?:string):GeometryParametricSolid3D {
+  return {...defaultSolid3D('pyramid',id),parameters:{sides:3,radius:2,height:2,constraint:'regular'}} as GeometryParametricSolid3D
+}
+
+export function defaultRegularPrism3D(id?:string):GeometryParametricSolid3D {
+  return {...defaultSolid3D('prism',id),parameters:{sides:3,radius:2,height:2,constraint:'regular'}} as GeometryParametricSolid3D
+}
 
 /** A polygon is an ordered closed cycle of existing semantic segments/edges. */
 export function addBasePolygon3D(source:GeometryScene3D,pointIds:string[],id=`base_${crypto.randomUUID().replace(/-/g,'')}`){
@@ -299,9 +340,15 @@ export function deleteSolid3D(source:GeometryScene3D,id:string){
   if(!solid||!solidSupported3D(solid))return null
   const faces=new Set(solid.features.filter(f=>f.slot.startsWith('f_')).map(f=>f.entity_id))
   if(scene.solids.some(s=>s.mode==='parametric'&&'base'in s.parameters&&s.parameters.base.kind==='face'&&faces.has(s.parameters.base.face_id)))return null
+  const altitudeLosses:GeometryAttachmentLoss3D[]=[]
+  scene.constructions=scene.constructions.filter(c=>{
+    if(c.kind!=='pyramid_altitude'||c.pyramid_id!==id)return true
+    altitudeLosses.push({subject_id:c.output_point_id,parent_id:id,reason:'parent_deleted',preserved_world_position:[...scene.points.find(p=>p.id===c.output_point_id)!.position]});return false
+  })
   scene.solids=scene.solids.filter(s=>s.id!==id)
   // Vertices remain as free points at their last evaluated coordinates. Downstream references survive.
-  return deleteGeometryTargets3D(scene,solid.features.filter(f=>!f.slot.startsWith('v_')).map(f=>f.entity_id))
+  const removed=deleteGeometryTargets3D(scene,solid.features.filter(f=>!f.slot.startsWith('v_')).map(f=>f.entity_id))
+  return removed?{scene:removed.scene,losses:[...altitudeLosses,...removed.losses]}:null
 }
 /** Euler orientation is UI state only; the persisted orthonormal frame remains authoritative. */
 export function solidFrame3D(origin:Vec3,angles:Vec3){
@@ -371,8 +418,8 @@ function isolatedSolidEdit3D(scene:GeometryScene3D,next:GeometryScene3D,id:strin
   while(changed){
     changed=false
     for(const c of scene.constructions){
-      const refs=c.kind==='midpoint'?[c.a,c.b]:c.kind==='point_on_edge'?scene.edges.filter(e=>e.id===c.edge_id).flatMap(e=>[e.start,e.end]):c.kind==='point_on_linear'?scene.linear_objects.filter(l=>l.id===c.linear_id).flatMap(l=>[l.a,l.b]):c.kind==='point_on_face'?scene.faces.find(f=>f.id===c.face_id)?.boundary??[]:[]
-      if(refs.some(id=>allowed.has(id))&&!allowed.has(c.output_point_id)){allowed.add(c.output_point_id);changed=true}
+      const refs=c.kind==='perpendicular_plane_on_line'?[...planeGuidePointIds3D(scene,c.guide),...planeReferencePointIds3D(scene,c.reference)]:c.kind==='constructed_plane'?[c.through.id,...planeReferencePointIds3D(scene,c.reference)]:c.kind==='pyramid_altitude'||c.kind==='perpendicular_foot'&&(c.reference.kind==='plane'||c.reference.kind==='face')?[c.source_point_id,...planeReferencePointIds3D(scene,c.reference as {kind:'plane'|'face';id:string})]:c.kind==='parallel'?[c.source_point_id,...parallelDependencies3D(scene,c.reference)]:c.kind==='perpendicular_foot'?(()=>{const r=perpendicularReference3D(scene,c.reference as {kind:'linear'|'edge';id:string});return [c.source_point_id,r.a,r.b]})():c.kind==='midpoint'?[c.a,c.b]:c.kind==='point_on_edge'?scene.edges.filter(e=>e.id===c.edge_id).flatMap(e=>[e.start,e.end]):c.kind==='point_on_linear'?scene.linear_objects.filter(l=>l.id===c.linear_id).flatMap(l=>[l.a,l.b]):c.kind==='point_on_face'?scene.faces.find(f=>f.id===c.face_id)?.boundary??[]:[]
+      if(refs.some(id=>allowed.has(id)))for(const output of constructionOutputPointIds3D(c))if(!allowed.has(output)){allowed.add(output);changed=true}
     }
   }
   if(scene.solids.some(s=>s.id!==id&&(s.mode==='freeform'?s.point_ids:s.features.filter(f=>f.slot.startsWith('v_')).map(f=>f.entity_id)).some(id=>{const a=scene.points.find(p=>p.id===id),b=next.points.find(p=>p.id===id);return a&&b&&Math.hypot(...sub(a.position,b.position))>1e-9})))return null
@@ -380,8 +427,9 @@ function isolatedSolidEdit3D(scene:GeometryScene3D,next:GeometryScene3D,id:strin
   // A freeform solid or standalone object may directly share an owned vertex.
   if(scene.solids.some(s=>s.id!==id&&(s.mode==='freeform'?s.point_ids.some(id=>owned.has(id)):s.features.some(f=>owned.has(f.entity_id)))))return null
   const ownsFeature=new Set(solid.features.map(f=>f.entity_id))
+  const dependentPerpendicular=(l:GeometryScene3D['linear_objects'][number])=>scene.constructions.some(c=>((c.kind==='perpendicular_foot'||c.kind==='pyramid_altitude')&&c.segment_id===l.id||c.kind==='parallel'&&c.linear_id===l.id)&&c.source_point_id===l.a&&c.output_point_id===l.b&&allowed.has(l.b))
   const coneAxis=(l:GeometryScene3D['linear_objects'][number])=>solid.kind==='cone'&&l.kind==='segment'&&l.a!==l.b&&[['v_0','v_1'],['v_2','v_3'],['v_1','v_2'],['v_1','v_3']].some(pair=>pair.every(slot=>solid.features.some(f=>f.slot===slot&&(f.entity_id===l.a||f.entity_id===l.b))))
-  if(scene.linear_objects.some(l=>(owned.has(l.a)||owned.has(l.b))&&!coneAxis(l))||scene.planes.some(p=>p.point_ids.some(id=>owned.has(id)))||scene.edges.some(e=>!ownsFeature.has(e.id)&&(owned.has(e.start)||owned.has(e.end)))||scene.faces.some(f=>!ownsFeature.has(f.id)&&f.boundary.some(id=>owned.has(id))))return null
+  if(scene.linear_objects.some(l=>(owned.has(l.a)||owned.has(l.b))&&!coneAxis(l)&&!dependentPerpendicular(l))||scene.planes.some(p=>p.point_ids.some(id=>owned.has(id)))||scene.edges.some(e=>!ownsFeature.has(e.id)&&(owned.has(e.start)||owned.has(e.end)))||scene.faces.some(f=>!ownsFeature.has(f.id)&&f.boundary.some(id=>owned.has(id))))return null
   return true
 }
 
@@ -398,7 +446,7 @@ export function scaleSolid3D(source:GeometryScene3D,id:string,factor:number){
   const owned=new Set(solid.features.map(f=>f.entity_id))
   if(scene.markings.some(m=>m.point_ids.some(id=>owned.has(id)))||scene.annotations.some(a=>Object.values(a.anchor).some(v=>typeof v==='string'&&owned.has(v))))return null
   const parameters=structuredClone(p)
-  for(const key of ['side','width','depth','height','radius'] as const)if(key in parameters)(parameters as unknown as Record<string,unknown>)[key]=(parameters as unknown as Record<string,number>)[key]*factor
+  for(const key of ['side','width','depth','height','radius','bottom_radius','top_radius'] as const)if(key in parameters)(parameters as unknown as Record<string,unknown>)[key]=(parameters as unknown as Record<string,number>)[key]*factor
   if('base'in parameters){
     if(parameters.base.kind==='template')parameters.base.radius*=factor
     else if(parameters.base.kind==='polygon')parameters.base.vertices=parameters.base.vertices.map(v=>scale(v,factor))
@@ -407,6 +455,17 @@ export function scaleSolid3D(source:GeometryScene3D,id:string,factor:number){
   const frame={...solid.frame,origin:add(pivot,scale(sub(solid.frame.origin,pivot),factor))}
   const next=editSolid3D(scene,{...solid,parameters,frame} as GeometryParametricSolid3D)
   return next&&isolatedSolidEdit3D(scene,next,id)?next:null
+}
+
+/** Independent regular prism dimensions retain placement, topology and constraint. */
+export const resizeRegularPrism3D = resizeRegularSolid3D
+
+export function resizeRegularSolid3D(source:GeometryScene3D,id:string,dimension:'radius'|'height',value:number){
+  if(!['radius','height'].includes(dimension)||!Number.isFinite(value)||value<=0||value>1e12)return null
+  const solid=source.solids.find(s=>s.id===id)
+  if(!solid||solid.mode!=='parametric'||(solid.kind!=='prism'&&solid.kind!=='pyramid')||!('constraint'in solid.parameters)||solid.parameters.constraint!=='regular'||!('radius'in solid.parameters))return null
+  if(solid.parameters[dimension]===value)return source
+  return editSolid3D(source,{...solid,parameters:{...solid.parameters,[dimension]:value}})
 }
 
 /** Native sphere radius editing preserves its world-space center and frame. */

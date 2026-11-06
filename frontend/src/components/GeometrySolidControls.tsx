@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import type { GeometryParametricSolid3D, GeometryScene3D, Vec3 } from './geometry3dContract'
-import { addBasePolygon3D, createSolid3D, defaultSolid3D, editSolid3D, solidAngles3D, solidFrame3D } from './geometry3dSolidAuthoring'
+import { addBasePolygon3D, createSolid3D, defaultSolid3D, defaultRegularPrism3D, defaultRegularPyramid3D, defaultRegularFrustum3D, editSolid3D, solidAngles3D, solidFrame3D } from './geometry3dSolidAuthoring'
 import { SOLID_TOOLS_3D, solidTopology3D, pyramidApexParameters3D, type SolidKind3D } from './geometry3dSolids'
 
-export default function GeometrySolidControls({scene,selected,creating,disabled,onCommit,onClose}:{scene:GeometryScene3D;selected:GeometryParametricSolid3D|null;creating:SolidKind3D|null;disabled:boolean;onCommit:(scene:GeometryScene3D,id:string)=>void;onClose:()=>void}){
+export default function GeometrySolidControls({scene,selected,creating,disabled,onCommit,onClose}:{scene:GeometryScene3D;selected:GeometryParametricSolid3D|null;creating:SolidKind3D|'regular_prism'|'regular_pyramid'|'regular_frustum'|null;disabled:boolean;onCommit:(scene:GeometryScene3D,id:string)=>void;onClose:()=>void}){
   const [definition,setDefinition]=useState<GeometryParametricSolid3D|null>(null),[numbers,setNumbers]=useState<Record<string,string>>({}),[mode,setMode]=useState('template'),[baseId,setBaseId]=useState(''),[polygon,setPolygon]=useState<string[]>([]),[pointId,setPointId]=useState(''),[error,setError]=useState('')
   useEffect(()=>{
-    const d=selected??(creating?defaultSolid3D(creating):null);setDefinition(d);setError('');setPolygon([])
+    const d=selected??(creating?creating==='regular_prism'?defaultRegularPrism3D():creating==='regular_pyramid'?defaultRegularPyramid3D():creating==='regular_frustum'?defaultRegularFrustum3D():defaultSolid3D(creating):null);setDefinition(d);setError('');setPolygon([])
     if(!d)return
     const p=d.parameters,values:Record<string,string>={}
     for(const [k,v] of Object.entries(p))if(typeof v==='number')values[k]=String(v)
@@ -21,7 +21,10 @@ export default function GeometrySolidControls({scene,selected,creating,disabled,
   },[selected,creating,scene])
   if(!definition)return null
   const kind=definition.kind,polygonal=kind==='prism'||kind==='pyramid'
-  const field=(name:string,label:string)=><label key={name}>{label}<input type="number" disabled={!!selected&&name==='sides'} aria-label={`Cisim ${name}`} value={numbers[name]??''} onChange={e=>setNumbers(n=>({...n,[name]:e.target.value}))}/></label>
+  const frustum=kind==='truncated_pyramid'
+  const regular=frustum||(kind==='prism'||kind==='pyramid')&&'constraint'in definition.parameters&&definition.parameters.constraint==='regular'
+  const regularCreation=regular&&!selected
+  const field=(name:string,label:string)=><label key={name}>{label}<input type="number" min={name==='sides'?3:undefined} max={name==='sides'?128:undefined} step={name==='sides'?1:'any'} disabled={!!selected&&name==='sides'} aria-label={`Cisim ${name}`} value={numbers[name]??''} onChange={e=>setNumbers(n=>({...n,[name]:e.target.value}))}/></label>
   const apply=()=>{
     try{
       const n=(key:string)=>{const raw=numbers[key];if(!raw?.trim())throw Error('Boş koordinat');const v=Number(raw);if(!Number.isFinite(v)||Math.abs(v)>1e12)throw Error('Etibarsız ədəd');return v}
@@ -31,7 +34,11 @@ export default function GeometrySolidControls({scene,selected,creating,disabled,
       let candidate=scene
       if(kind==='cube')d.parameters={side:n('side')}
       else if(kind==='cuboid')d.parameters={width:n('width'),depth:n('depth'),height:n('height')}
-      else{
+      else if(frustum){
+        d.parameters={sides:n('sides'),bottom_radius:regularCreation?2:n('bottom_radius'),top_radius:regularCreation?1:n('top_radius'),height:regularCreation?2:n('height')}
+      }else if(regular){
+        d.parameters={sides:n('sides'),radius:regularCreation?2:n('radius'),height:regularCreation?2:n('height'),constraint:'regular'}
+      }else{
         let faceId=baseId
         if(mode==='existing'&&!faceId){const result=addBasePolygon3D(scene,polygon);if(!result)throw Error('Qapalı, planar və kəsişməyən parça dövrəsi tələb olunur');candidate=result.scene;faceId=result.id}
         const face=candidate.faces.find(f=>f.id===faceId)
@@ -52,21 +59,22 @@ export default function GeometrySolidControls({scene,selected,creating,disabled,
       onCommit(result.scene,result.id);setError('')
     }catch(e){setError(`${e instanceof Error?e.message:'Etibarsız dəyişiklik'}. Səhnə dəyişdirilmədi.`)}
   }
-  return <fieldset disabled={disabled} className="geometry-3d-solid-properties"><legend>{SOLID_TOOLS_3D.find(s=>s.kind===kind)?.label} — {selected?'parametrik redaktə':'yaratma'}</legend>
+  return <fieldset disabled={disabled} className="geometry-3d-solid-properties"><legend>{frustum?'D\u00fczg\u00fcn n-bucaql\u0131 k\u0259sik piramida':regular?(kind==='pyramid'?'D\u00fczg\u00fcn n-bucaql\u0131 piramida':'D\u00fczg\u00fcn n-bucaql\u0131 prizma'):SOLID_TOOLS_3D.find(s=>s.kind===kind)?.label} — {selected?'parametrik redaktə':'yaratma'}</legend>
     {kind==='cube'&&field('side','Kənar uzunluğu')}
     {kind==='cuboid'&&<>{field('width','Uzunluq')}{field('depth','En')}{field('height','Hündürlük')}</>}
-    {polygonal&&<><label>Əsas rejimi<select aria-label="Cisim əsas rejimi" disabled={!!selected} value={mode} onChange={e=>setMode(e.target.value)}><option value="template">Poliqon şablonu</option><option value="existing">Mövcud qapalı poliqon</option>{mode==='polygon'&&<option value="polygon">Müstəqil poliqon</option>}</select></label>
+    {regular&&<>{field('sides','n')}{!regularCreation&&<>{frustum?<>{field('bottom_radius','R1')}{field('top_radius','R2')}</>:field('radius','Radius')}{field('height','H\u00fcnd\u00fcrl\u00fck')}</>}</>}
+    {polygonal&&!regular&&<><label>Əsas rejimi<select aria-label="Cisim əsas rejimi" disabled={!!selected} value={mode} onChange={e=>setMode(e.target.value)}><option value="template">Poliqon şablonu</option><option value="existing">Mövcud qapalı poliqon</option>{mode==='polygon'&&<option value="polygon">Müstəqil poliqon</option>}</select></label>
       {mode==='polygon'?field('sides','Tərəf sayı'):mode==='template'?<>{field('sides','Tərəf sayı')}{field('radius','Radius')}</>:<><label>Əsas poliqon<select aria-label="Cisim əsas poliqon" disabled={!!selected} value={baseId} onChange={e=>setBaseId(e.target.value)}><option value="">Parça dövrəsini seç</option>{scene.faces.map(f=><option key={f.id} value={f.id}>{f.id} ({f.boundary.length})</option>)}</select></label>
         {!baseId&&<><label>Poliqon nöqtəsi<select aria-label="Cisim poliqon nöqtəsi" value={pointId} onChange={e=>setPointId(e.target.value)}><option value="">Nöqtə seç</option>{scene.points.map(p=><option key={p.id} value={p.id}>{p.label??p.id}</option>)}</select></label><button type="button" onClick={()=>{if(pointId&&!polygon.includes(pointId))setPolygon(p=>[...p,pointId])}}>Əsasa nöqtə əlavə et</button><button type="button" onClick={()=>setPolygon([])}>Əsası təmizlə</button><p>Qapalı parça dövrəsi: {polygon.join(' → ')}</p></>}
       </>}{field('height',kind==='pyramid'?'İşarəli hündürlük':'Hündürlük')}
       {kind==='prism'?<><p>Ekstruziya istiqaməti əsasın lokal bazisində vahid vektordur; Z sıfır ola bilməz.</p>{[0,1,2].map(i=>field(`direction${i}`,`İstiqamət ${['X','Y','Z'][i]}`))}</>:<><p>Apex əsasın vertex mərkəzinə nəzərən lokal X/Y ofseti və işarəli hündürlüklə müəyyən edilir. Mənfi hündürlük apex-i əsasın əks tərəfinə yerləşdirir.</p>{field('apex0','Apex X ofseti')}{field('apex1','Apex Y ofseti')}</>}
     </>}
-    <p>{mode==='existing'&&polygonal?'Mənbə poliqona nəzərən mövqe və dünya oxları ətrafında fırlanma':'Mövqe və fırlanma (dərəcə)'}</p>
-    {[0,1,2].map(i=>field(`origin${i}`,`Mövqe ${['X','Y','Z'][i]}`))}{[0,1,2].map(i=>field(`angle${i}`,`Fırlanma ${['X','Y','Z'][i]}`))}
+    {!regularCreation&&<><p>{mode==='existing'&&polygonal?'Mənbə poliqona nəzərən mövqe və dünya oxları ətrafında fırlanma':'Mövqe və fırlanma (dərəcə)'}</p>
+    {[0,1,2].map(i=>field(`origin${i}`,`Mövqe ${['X','Y','Z'][i]}`))}{[0,1,2].map(i=>field(`angle${i}`,`Fırlanma ${['X','Y','Z'][i]}`))}</>}
     <button type="button" onClick={apply}>{selected?'Cismə tətbiq et':'Cisim yarat'}</button><button type="button" onClick={onClose}>Cisim panelini bağla</button>
     {selected&&kind==='pyramid'&&'apex_offset'in selected.parameters&&<><p>Apex-in dünya koordinatları (mövcud digər forma dəyişikliklərindən ayrıca tətbiq edilir)</p>{[0,1,2].map(i=>field(`worldApex${i}`,`Apex ${['X','Y','Z'][i]}`))}<button type="button" onClick={()=>{try{const pos=[0,1,2].map(i=>{const raw=numbers[`worldApex${i}`];if(!raw?.trim())throw Error('Boş koordinat');return Number(raw)}) as Vec3;const d={...selected,parameters:pyramidApexParameters3D(scene,selected,pos)} as GeometryParametricSolid3D;const next=editSolid3D(scene,d);if(!next)throw Error('Etibarsız apex');onCommit(next,d.id)}catch{setError('Apex etibarsızdır; səhnə dəyişdirilmədi.')}}}>Apex mövqeyini tətbiq et</button></>}
     {selected&&polygonal&&<p>M4 parametr redaktəsi tərəf sayını və source əsasın kimliyini dəyişmir.</p>}
-    <button type="button" disabled title="Tam semantik freeform çevrilməsi M4-də əlçatan deyil.">Sərbəst redaktəyə keç</button>
+    {!regular&&<><button type="button" disabled title="Tam semantik freeform çevrilməsi M4-də əlçatan deyil.">Sərbəst redaktəyə keç</button></>}
     {error&&<p role="alert">{error}</p>}
   </fieldset>
 }

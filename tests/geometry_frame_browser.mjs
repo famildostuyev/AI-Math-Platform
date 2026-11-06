@@ -1,3 +1,12 @@
+import {runPlaneAuthoringAcceptance} from './geometry_plane_authoring_browser.mjs'
+import {runSphereSurfaceAcceptance} from './geometry_sphere_surface_browser.mjs'
+import {runDihedralAcceptance} from './geometry_dihedral_browser.mjs'
+import {runTruncatedConeAcceptance} from './geometry_truncated_cone_browser.mjs'
+import {runMenuSwitchAcceptance} from './geometry_menu_switch_browser.mjs'
+import {runRegularFrustumAcceptance} from './geometry_regular_frustum_browser.mjs'
+import {runRegularPyramidAcceptance} from './geometry_regular_pyramid_browser.mjs'
+import { runPrismVisibilityAcceptance } from './geometry_prism_visibility_browser.mjs'
+import { runRegularPrismAcceptance } from './geometry_regular_prism_browser.mjs'
 import {runCylinderAuthoringAcceptance} from './geometry_cylinder_authoring_browser.mjs'
 import {runFacePointsAcceptance} from './geometry_face_points_browser.mjs'
 import {runCylinderRenderAcceptance} from './geometry_cylinder_render_browser.mjs'
@@ -164,7 +173,9 @@ window.realRevision=()=>window.fetch('/api/v1/question-editor/revisions/'+${JSON
 const server = await createServer({ root: path.join(root, 'frontend'), ...(realContext?{define:{'import.meta.env.VITE_API_BASE_URL':'""'}}:{}), server: { host: '127.0.0.1', port: 0, ...(realContext?{proxy:{'/api':{target:realContext.backend,changeOrigin:true}}}:{}) }, plugins: [{
   name: 'geometry-frame-fixture', enforce: 'pre',
   transform(code,id) {
-    if((realContext||process.argv.includes('--cylinder-authoring')||process.argv.includes('--face-points')||process.argv.includes('--edge-points')||process.argv.includes('--solid-scale')||process.argv.includes('--solid-rotation')||process.argv.includes('--solid-translation'))&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).rotationScene=structuredClone(value);(globalThis as any).solidGestureState={selected:state.selected,dragging:state.dragging,message:state.message}; return <div className="geometry-3d-editor"')
+    if(process.argv.includes('--menu-switch')&&id.endsWith('/UniversalEditorRibbon.tsx'))return code.replace('  const closeMenu = () => {',"  ;(globalThis as any).menuSwitchState={context,menuContext,activeMenu,dimension:geometryTarget?.dimension,commandsId:geometryTarget?.commands.id};((globalThis as any).menuSwitchLog??=[]).push((globalThis as any).menuSwitchState); const closeMenu = () => {")
+    if((process.argv.includes('--plane-authoring')||process.argv.includes('--sphere-surface')||process.argv.includes('--dihedral')||process.argv.includes('--truncated-cone')||process.argv.includes('--prism-visibility')||process.argv.includes('--regular-pyramid')||process.argv.includes('--regular-frustum'))&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).prismVisibilityScene=structuredClone(state.draft??value); return <div className="geometry-3d-editor"')
+    if((realContext||process.argv.includes('--plane-authoring')||process.argv.includes('--sphere-surface')||process.argv.includes('--cylinder-authoring')||process.argv.includes('--face-points')||process.argv.includes('--edge-points')||process.argv.includes('--solid-scale')||process.argv.includes('--solid-rotation')||process.argv.includes('--solid-translation'))&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).rotationScene=structuredClone(value);(globalThis as any).solidGestureState={selected:state.selected,dragging:state.dragging,message:state.message}; return <div className="geometry-3d-editor"')
     if(process.argv.includes('--edge-visibility')&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).visibilityScene=structuredClone(value);(globalThis as any).visibilityNavigate=navigate; return <div className="geometry-3d-editor"')
     if(process.argv.includes('--edge-visibility')&&id.endsWith('/GeometrySceneViewport.tsx'))return code.replace('renderer!.render(world,view);','renderer!.render(world,view);(globalThis as any).visibilityDraw={camera:structuredClone(current),lines:group!.children.filter(o=>o.type==="Line").map(o=>({id:o.userData.semanticId,hidden:(o as THREE.Line<THREE.BufferGeometry,THREE.LineDashedMaterial>).material.isLineDashedMaterial===true}))};')
     if(process.argv.includes('--base-alignment')&&id.endsWith('/GeometrySceneEditor.tsx'))return code.replace('return <div className="geometry-3d-editor"',';(globalThis as any).baseAlignmentScene=structuredClone(value); return <div className="geometry-3d-editor"')
@@ -189,7 +200,7 @@ const server = await createServer({ root: path.join(root, 'frontend'), ...(realC
   }) },
 }] })
 await server.listen()
-const browser = spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', ['--headless=new', ...(realContext||process.argv.includes('--cylinder-authoring')||process.argv.includes('--cylinder-render')||process.argv.includes('--face-points')||process.argv.includes('--edge-points')||process.argv.includes('--solid-scale')||process.argv.includes('--solid-translation')||process.argv.includes('--solid-rotation')||process.argv.includes('--edge-visibility')||process.argv.includes('--pyramid-consumption')||process.argv.includes('--base-alignment')||process.argv.includes('--scene-pyramid')||process.argv.includes('--planar')||process.argv.includes('--base-vertex')||process.argv.includes('--apex-apply')||process.argv.includes('--apex-height')||process.argv.includes('--apex-drag')||process.argv.includes('--menu-placement')||process.argv.includes('--context-picking')||process.argv.includes('--camera-sync')||process.argv.includes('--scene-3d-m2')||process.argv.includes('--scene-3d-m3')||process.argv.includes('--scene-3d-m4')||process.argv.includes('--unified-menu')||process.argv.includes('--frame-controls')||process.argv.includes('--frame-context')||process.argv.includes('--geometry-properties') ? ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] : ['--disable-gpu']), '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' })
+const browser = spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', ['--headless=new', ...(realContext||process.argv.includes('--plane-authoring')||process.argv.includes('--sphere-surface')||process.argv.includes('--cylinder-authoring')||process.argv.includes('--cylinder-render')||process.argv.includes('--face-points')||process.argv.includes('--edge-points')||process.argv.includes('--solid-scale')||process.argv.includes('--solid-translation')||process.argv.includes('--solid-rotation')||process.argv.includes('--edge-visibility')||process.argv.includes('--pyramid-consumption')||process.argv.includes('--base-alignment')||process.argv.includes('--scene-pyramid')||process.argv.includes('--planar')||process.argv.includes('--base-vertex')||process.argv.includes('--apex-apply')||process.argv.includes('--apex-height')||process.argv.includes('--apex-drag')||process.argv.includes('--menu-placement')||process.argv.includes('--context-picking')||process.argv.includes('--camera-sync')||process.argv.includes('--scene-3d-m2')||process.argv.includes('--scene-3d-m3')||process.argv.includes('--scene-3d-m4')||process.argv.includes('--truncated-cone')||process.argv.includes('--regular-frustum')||process.argv.includes('--regular-pyramid')||process.argv.includes('--regular-prism')||process.argv.includes('--menu-switch')||process.argv.includes('--unified-menu')||process.argv.includes('--frame-controls')||process.argv.includes('--frame-context')||process.argv.includes('--geometry-properties') ? ['--use-angle=swiftshader','--enable-unsafe-swiftshader'] : ['--disable-gpu']), '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' })
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 let socket
 try {
@@ -262,6 +273,8 @@ try {
     if(process.argv.includes('--cylinder-authoring'))await runCylinderAuthoringAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag});else await runM5RealAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--cylinder-authoring')) {
     await runCylinderAuthoringAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--prism-visibility')) {
+    await runPrismVisibilityAcceptance({evaluate,until,send,delay})
   } else if (process.argv.includes('--cylinder-render')) {
     await runCylinderRenderAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--face-points')) {
@@ -304,6 +317,22 @@ try {
     await runGeometryFrameContextAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
   } else if (process.argv.includes('--frame-controls')) {
     await runGeometryFrameControlsAcceptance({evaluate,until,textButton,click,box,pointer,delay,send,drag})
+  } else if (process.argv.includes('--plane-authoring')) {
+    await runPlaneAuthoringAcceptance({evaluate,until,textButton,click,send})
+  } else if (process.argv.includes('--sphere-surface')) {
+    await runSphereSurfaceAcceptance({evaluate,until,textButton,click,send})
+  } else if (process.argv.includes('--dihedral')) {
+    await runDihedralAcceptance({evaluate,until,textButton,click,send})
+  } else if (process.argv.includes('--truncated-cone')) {
+    await runTruncatedConeAcceptance({evaluate,until,textButton,click,send})
+  } else if (process.argv.includes('--regular-frustum')) {
+    await runRegularFrustumAcceptance({evaluate,until,textButton,click,send})
+  } else if (process.argv.includes('--regular-pyramid')) {
+    await runRegularPyramidAcceptance({evaluate,until,textButton,click,send})
+  } else if (process.argv.includes('--regular-prism')) {
+    await runRegularPrismAcceptance({evaluate,until,textButton,click,send})
+  } else if (process.argv.includes('--menu-switch')) {
+    await runMenuSwitchAcceptance({evaluate,until,textButton,click,send,delay})
   } else if (process.argv.includes('--unified-menu')) {
     await runUnifiedGeometryMenuAcceptance({evaluate,until,textButton,click,box,pointer,delay,send})
   } else if (process.argv.includes('--scene-3d-m4')) {

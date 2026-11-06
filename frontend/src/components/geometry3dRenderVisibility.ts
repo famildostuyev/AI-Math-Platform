@@ -93,7 +93,7 @@ export function analyticLineIntervals3D(line:ProjectedLine3D,projection:Projecti
     const u=projection.camera.projection==='perspective'?t*line.a[2]/((1-t)*line.b[2]+t*line.a[2]):t
     let world:Vec3
     if(line.arc&&frame){
-      const angle=line.arc.from+(line.arc.to-line.arc.from)*u,r=line.arc.solid.parameters.radius
+      const angle=line.arc.from+(line.arc.to-line.arc.from)*u,r=line.arc.solid.kind==='frustum'?line.arc.solid.parameters.bottom_radius+(line.arc.solid.parameters.top_radius-line.arc.solid.parameters.bottom_radius)*line.arc.z/line.arc.solid.parameters.height:line.arc.solid.parameters.radius
       world=frame.toWorld([r*Math.cos(angle),r*Math.sin(angle),line.arc.z])
     }else world=projection.world(line.viewA!.map((v,i)=>v+(line.viewB![i]-v)*u) as Vec3)
     return pointHiddenByAnalytic3D(world,projection.camera,solids)

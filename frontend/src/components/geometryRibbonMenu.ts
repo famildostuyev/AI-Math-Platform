@@ -3,7 +3,7 @@ import type { GeometryTool3D } from './geometry3dAuthoring'
 import type { SolidKind3D } from './geometry3dSolids'
 
 export type GeometryRibbonAction = GeometryTool | 'delete'
-export type GeometryRibbonAction3D = GeometryTool3D | SolidKind3D | 'delete'
+export type GeometryRibbonAction3D = GeometryTool3D | SolidKind3D | 'regular_prism' | 'regular_pyramid' | 'regular_frustum' | 'delete'
 export type GeometryRibbonItem = { label: string; label3D?:string; action?: GeometryRibbonAction; action3D?:GeometryRibbonAction3D; title?: string }
 export type GeometryRibbonGroup = { label: string; items: GeometryRibbonItem[] }
 export type GeometryRibbonControl = GeometryRibbonItem & { create?: boolean; groups?: GeometryRibbonGroup[] }
@@ -33,13 +33,13 @@ export const GEOMETRY_RIBBON: GeometryRibbonControl[] = [
     { label: 'Qövs', items: [{ label: 'Qövs', action: 'arc' }, ...group('', ['Mərkəz + başlanğıc + son nöqtə', '3 nöqtə ilə']).items] },
     { label: '', items: [{ label: 'Sektor', action: 'sector' }] }, group('Əyri', ['Sərbəst əyri']),
   ] },
-  { label: 'Konstruksiya', groups: [{ label: 'Konstruksiya', items: [{ label: 'Orta nöqtə', action: 'midpoint' }, { label: 'Paralel', action: 'parallel' }, { label: 'Perpendikulyar', action: 'perpendicular' }, { label: 'Kəsişmə', action: 'intersection' }, { label: 'Tənbölən', action: 'angle_bisector' }, { label: 'Hündürlük', action: 'altitude' }, { label: 'Median', action: 'median' }] }] },
+  { label: 'Konstruksiya', groups: [{label:'3D',items:[{label:'Paralel',action3D:'parallel'},{label:'Perpendikulyar',action3D:'perpendicular'},{label:'Hündürlük',action3D:'altitude'}]},{ label: '2D', items: [{ label: 'Orta nöqtə', action: 'midpoint' }, { label: 'Paralel', action: 'parallel' }, { label: 'Perpendikulyar', action: 'perpendicular' }, { label: 'Kəsişmə', action: 'intersection' }, { label: 'Tənbölən', action: 'angle_bisector' }, { label: 'Hündürlük', action: 'altitude' }, { label: 'Median', action: 'median' }] }] },
   { label: 'Ölçü', groups: [group('Ölçü', ['Uzunluq', 'Məsafə', 'Bucaq', 'Perimetr', 'Sahə'])] },
   { label: '3D', groups: ([
-    {label:'Müstəvi və bucaqlar',items:[{label:'Müstəvi',action3D:'plane'},{label:'Kamera',action3D:'camera'},{label:'İkiüzlü bucaq'}]},
-    {label:'Prizmalar',items:[{label:'Kub',action3D:'cube'},{label:'Düzbucaqlı paralelepiped',action3D:'cuboid'},{label:'Prizma',action3D:'prism'},{label:'Düzgün n-bucaqlı prizma'}]},
-    {label:'Piramidalar',items:[{label:'Piramida',action3D:'pyramid'},{label:'Düzgün n-bucaqlı piramida'},{label:'Düzgün n-bucaqlı kəsik piramida'}]},
-    {label:'Fırlanma cisimləri',items:[{label:'Silindr',action3D:'cylinder'},{label:'Konus',action3D:'cone'},{label:'Kürə',action3D:'sphere'},...group('', ['Kəsik konus','Sfera']).items]},
+    {label:'Müstəvi və bucaqlar',items:[{label:'Müstəvi',action3D:'plane'},{label:'Kamera',action3D:'camera'},{label:'İkiüzlü bucaq',action3D:'dihedral'}]},
+    {label:'Prizmalar',items:[{label:'Kub',action3D:'cube'},{label:'Düzbucaqlı paralelepiped',action3D:'cuboid'},{label:'Prizma',action3D:'prism'},{label:'Düzgün n-bucaqlı prizma',action3D:'regular_prism'}]},
+    {label:'Piramidalar',items:[{label:'Piramida',action3D:'pyramid'},{label:'Düzgün n-bucaqlı piramida',action3D:'regular_pyramid'},{label:'Düzgün n-bucaqlı kəsik piramida',action3D:'regular_frustum'}]},
+    {label:'Fırlanma cisimləri',items:[{label:'Silindr',action3D:'cylinder'},{label:'Konus',action3D:'cone'},{label:'Kürə',action3D:'sphere'},{label:'K\u0259sik konus',action3D:'frustum'},{label:'Sfera',action3D:'sphere_surface'}]},
     group('Digər', ['Sərbəst çoxüzlü']),
   ] satisfies GeometryRibbonGroup[]).map(section => ({ ...section, items: section.items.map(item => item.label.includes('n-bucaqlı') ? { ...item, title: GEOMETRY_BASE_SIDES_TITLE } : item) })) },
   { label: 'Mətn', action: 'text' },

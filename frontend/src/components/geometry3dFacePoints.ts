@@ -56,7 +56,7 @@ export function createPointOnFace3D(source:GeometryScene3D,faceId:string,uv:Vec2
     const basis=faceBasis3D(face.boundary.map(id=>scene.points.find(p=>p.id===id)!.position))
     if(!insideFace3D(uv,basis.polygon))return null
     const existing=scene.constructions.find(c=>c.kind==='point_on_face'&&c.face_id===faceId&&Math.hypot(c.uv[0]-uv[0],c.uv[1]-uv[1])<=1e-9)
-    if(existing)return {scene,id:existing.output_point_id,reused:true}
+    if(existing&&existing.kind==='point_on_face')return {scene,id:existing.output_point_id,reused:true}
     const next=transactGeometryScene3D(scene,d=>{
       d.points.push({id,position:basis.world(uv),label:null})
       d.constructions.push({id:`${id}_attachment`,kind:'point_on_face',face_id:faceId,uv:[...uv],output_point_id:id})

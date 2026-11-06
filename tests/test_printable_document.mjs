@@ -33,6 +33,130 @@ function snapshot(blocks) {
   }])
 }
 const render = (data, instanceId = 'test') => renderToStaticMarkup(React.createElement(PrintableDocument, { snapshot: data, instanceId }))
+
+test('guided perpendicular planes print clipped intersections and retain linked display settings',()=>{
+ const plane=component('geometry3dPlaneAuthoring'),constructed=component('geometry3dConstructedPlaneAuthoring'),Controls=component('GeometryPlaneControls').default,Viewport=component('GeometrySceneViewport').default,guided=component('geometry3dGuidedPlane')
+ let scene=plane.createPlaneAt3D(model.emptyGeometryScene3D(),[0,0,0],'XY','alpha').scene
+ scene=model.transactGeometryScene3D(scene,s=>s.points.push({id:'A',position:[0,0,1],label:'A'},{id:'B',position:[1,0,2],label:'B'}))
+ scene=constructed.createGuidedPerpendicularPlane3D(scene,{kind:'plane',id:'alpha'},{kind:'points',a:'A',b:'B'},'beta').scene;assert.ok(scene)
+ const selected=scene.planes.find(p=>p.id==='beta'),controls=renderToStaticMarkup(React.createElement(Controls,{scene,selected,disabled:false,onCommit:()=>{}}))
+ assert.ok(controls.includes('Kəsişmə xəttini göstər'));assert.ok(controls.includes('Aşağı hissəni istinad müstəvisində kəs'));assert.ok(!controls.includes('İstiqaməti redaktə et'))
+ for(const mode of ['orthographic','perspective']){
+  const camera={...scene.print_camera,projection:mode,position:[7,-8,9]},data=snapshot([geometryBlock({...scene,print_camera:camera})]),before=JSON.stringify(data),html=render(data)
+  assert.equal(prepare(data,'guided').exportable,true);assert.match(html,/data-render-curve="plane_intersection"/);assert.ok(!html.includes('data-id="beta_origin"'));assert.equal(JSON.stringify(data),before)
+  const editor=renderToStaticMarkup(React.createElement(Viewport,{scene,camera,interactive:true,guidedIntersectionPreview:guided.guidedIntersectionSegments3D(scene,{kind:'plane',id:'alpha'},{kind:'points',a:'A',b:'B'})}));assert.match(editor,/data-guided-plane-intersection-preview/);assert.ok(!html.includes('data-guided-plane-intersection-preview'))
+ }
+ const hidden=model.transactGeometryScene3D(scene,s=>{const d=s.planes.find(p=>p.id==='beta').display;d.intersection_visibility='hidden';d.lower_portion='upper'});assert.ok(hidden);assert.ok(!render(snapshot([geometryBlock(hidden)])).includes('data-render-curve="plane_intersection"'))
+})
+
+test('perpendicular-plane orientation controls and editor-only handle stay out of saved print',()=>{
+ const plane=component('geometry3dPlaneAuthoring'),constructed=component('geometry3dConstructedPlaneAuthoring'),display=component('geometry3dPlaneDisplay'),Controls=component('GeometryPlaneControls').default,Viewport=component('GeometrySceneViewport').default
+ let scene=plane.createPlaneAt3D(model.emptyGeometryScene3D(),[0,0,0],'XY','alpha').scene
+ scene=model.transactGeometryScene3D(scene,s=>s.points.push({id:'P',position:[0,0,2],label:'P',visibility:'hidden'}))
+ scene=constructed.createPerpendicularPlaneThroughPoint3D(scene,'P',{kind:'plane',id:'alpha'},.6,'beta').scene;assert.ok(scene)
+ const selected=scene.planes.find(p=>p.id==='beta'),controls=renderToStaticMarkup(React.createElement(Controls,{scene,selected,disabled:false,onCommit:()=>{},onEditOrientation:()=>{}}))
+ assert.ok(controls.includes('İstiqaməti redaktə et'));assert.ok(controls.includes('perpendikulyar'));assert.ok(controls.includes('Kəsişmə xəttini göstər'));assert.match(controls,/checked/)
+ const f=display.planeDisplay3D(selected,scene),contour=[...f.contour,f.contour[0]],handle=[f.o,projection.add(f.o,projection.scale(f.x,2))]
+ for(const mode of ['orthographic','perspective']){
+  const camera={...scene.print_camera,projection:mode,position:[7,-8,9]},editor=renderToStaticMarkup(React.createElement(Viewport,{scene,camera,interactive:true,constructionPreview:contour,constructionPreviewPlane:true,orientationHandlePreview:handle,orientationHandleContour:component('geometry3dConstructedPlane').perpendicularPlaneDisplay3D(scene,'P',{kind:'plane',id:'alpha'},.6).contour,intersectionLinePreview:component('geometry3dConstructedPlane').perpendicularPlaneDisplay3D(scene,'P',{kind:'plane',id:'alpha'},.6).segments}))
+  assert.match(editor,/data-plane-orientation-handle/);assert.match(editor,/data-plane-intersection-preview/);assert.match(editor,/<clipPath/);assert.match(editor,/clip-path="url\(#/)
+  const value={...scene,print_camera:camera},data=snapshot([geometryBlock(value)]),before=JSON.stringify(data),html=render(data)
+  assert.match(html,/data-render-curve="plane_intersection"/);const hidden=model.transactGeometryScene3D(value,s=>s.planes.find(p=>p.id==='beta').display.intersection_visibility='hidden');assert.ok(!render(snapshot([geometryBlock(hidden)])).includes('data-render-curve="plane_intersection"'));assert.equal(prepare(data,'perpendicular-plane').exportable,true);assert.match(html,/data-id="beta"/);assert.ok(!html.includes('data-id="beta_origin"'));assert.ok(!html.includes('data-id="P"'));assert.ok(!html.includes('data-plane-orientation-handle'));assert.equal(JSON.stringify(data),before)
+ }
+})
+
+test('stored intersection modes reach saved-camera printed surfaces without changing snapshots',()=>{
+ const plane=component('geometry3dPlaneAuthoring'),constructed=component('geometry3dConstructedPlaneAuthoring')
+ let scene=plane.createPlaneAt3D(model.emptyGeometryScene3D(),[0,0,0],'XY','alpha').scene
+ scene=model.transactGeometryScene3D(scene,s=>s.points.push({id:'P',position:[0,0,-8],label:null}))
+ scene=constructed.createPerpendicularPlaneThroughPoint3D(scene,'P',{kind:'plane',id:'alpha'},.6,'beta').scene
+ for(const intersectionMode of ['cross','first','opposite'])for(const mode of ['orthographic','perspective']){
+  const value=model.transactGeometryScene3D(scene,s=>{s.planes.find(q=>q.id==='beta').display.intersection_mode=intersectionMode;s.print_camera={...s.print_camera,projection:mode,position:[12,-16,14],vertical_span:40,fov_degrees:100}})
+  const data=snapshot([geometryBlock(value)]),before=JSON.stringify(data),html=render(data)
+  assert.equal((html.match(/<polygon data-id="beta"/g)??[]).length,intersectionMode==='cross'?2:1)
+  assert.match(html,/data-render-curve="plane_intersection"/);assert.equal(prepare(data,'modes').exportable,true);assert.equal(JSON.stringify(data),before)
+ }
+})
+
+test('hidden source point stays recoverable in the editor selector and disappears from print',()=>{
+ const plane=component('geometry3dPlaneAuthoring'),constructed=component('geometry3dConstructedPlaneAuthoring'),Editor=component('GeometrySceneEditor').default
+ let scene=plane.createPlaneAt3D(model.emptyGeometryScene3D(),[0,0,0],'XY','alpha').scene
+ scene=model.transactGeometryScene3D(scene,s=>s.points.push({id:'P',position:[0,0,2],label:'Source α'}))
+ scene=constructed.createParallelPlaneThroughPoint3D(scene,'P',{kind:'plane',id:'alpha'},'beta').scene
+ scene=model.setGeometryPointVisibility3D(scene,'P','hidden');assert.ok(scene)
+ // Render the real selector; only its browser-only portal host is stubbed for SSR.
+ const dom=requireFrontend('react-dom'),portal=dom.createPortal,previousDocument=globalThis.document
+ let editor
+ try{dom.createPortal=children=>children;globalThis.document={body:{}};editor=renderToStaticMarkup(React.createElement(Editor,{value:scene,onChange:()=>{},targetId:'frame-1',disabled:false}))}
+ finally{dom.createPortal=portal;if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
+ assert.match(editor,/<option value="P">/);assert.ok(editor.includes('Source α'))
+ for(const projectionType of ['orthographic','perspective']){
+  scene.print_camera={...scene.print_camera,projection:projectionType}
+  const data=snapshot([geometryBlock(scene)]),before=JSON.stringify(data),html=render(data)
+  assert.equal(prepare(data,'hidden-point').exportable,true);assert.ok(!html.includes('data-id="P"'));assert.ok(!html.includes('Source α'));assert.match(html,/data-id="beta"/);assert.equal(JSON.stringify(data),before)
+ }
+ const shown=model.setGeometryPointVisibility3D(scene,'P','visible'),html=render(snapshot([geometryBlock(shown)]));assert.match(html,/data-id="P"/);assert.ok(html.includes('Source α'))
+})
+
+test('constructed parallel planes use ordinary print patches without internal points',()=>{
+ const plane=component('geometry3dPlaneAuthoring'),constructed=component('geometry3dConstructedPlaneAuthoring')
+ let source=plane.createPlaneAt3D(model.emptyGeometryScene3D(),[0,0,0],'XY','alpha').scene
+ source=model.transactGeometryScene3D(source,s=>s.points.push({id:'P',position:[0,0,2],label:'P'}))
+ const created=constructed.createParallelPlaneThroughPoint3D(source,'P',{kind:'plane',id:'alpha'},'beta');assert.ok(created.scene)
+ for(const shape of ['rectangle','parallelogram','cloud'])for(const mode of ['orthographic','perspective']){
+  const next=plane.setPlaneShape3D(created.scene,'beta',shape,.4);next.print_camera={...next.print_camera,projection:mode}
+  const data=snapshot([geometryBlock(next)]),before=JSON.stringify(data),html=render(data)
+  assert.equal(prepare(data,'constructed-plane').exportable,true);assert.match(html,/data-id="beta"/);assert.ok(!html.includes('data-id="beta_origin"'));assert.ok(!html.includes('data-id="beta_x"'));assert.ok(!html.includes('data-id="beta_y"'));assert.equal(JSON.stringify(data),before)
+ }
+})
+
+test('plane-parallel line/ray/segment print with hidden semantic helpers',()=>{
+ const plane=component('geometry3dPlaneAuthoring'),parallel=component('geometry3dParallelAuthoring')
+ let scene=plane.createPlaneAt3D(model.emptyGeometryScene3D(),[0,0,0],'XY','plane').scene
+ scene=model.transactGeometryScene3D(scene,s=>s.points.push({id:'P',position:[0,0,2],label:'P'}))
+ scene=parallel.createPlaneParallel3D(scene,'P',{kind:'plane',id:'plane',angle_radians:.6},'C').scene
+ for(const output_kind of ['line','ray','segment'])for(const mode of ['orthographic','perspective']){
+  const next=parallel.editParallel3D(scene,'C',{output_kind,length:2.5,direction:'reverse'});next.print_camera={...next.print_camera,projection:mode}
+  const data=snapshot([geometryBlock(next)]),before=JSON.stringify(data),html=render(data)
+  assert.equal(prepare(data,'plane-parallel').exportable,true);assert.match(html,/data-id="C_object"/);assert.ok(!html.includes('data-id="C_end"'));assert.equal(JSON.stringify(data),before)
+ }
+})
+
+test('plane perpendicular and semantic pyramid altitude print from immutable canonical scenes',()=>{
+  const planeAuthor=component('geometry3dPlaneAuthoring'),perp=component('geometry3dPlanePerpendicularAuthoring')
+  let scene=planeAuthor.createPlaneAt3D(model.emptyGeometryScene3D(),[0,0,0],'XY','plane').scene
+  scene=model.transactGeometryScene3D(scene,s=>s.points.push({id:'P',position:[5,0,2],label:'P'}))
+  scene=perp.createPlanePerpendicular3D(scene,'P',{kind:'plane',id:'plane'},'perp').scene
+  const spec=author.defaultRegularPyramid3D('pyramid')
+  let pyramid=author.createSolid3D(model.emptyGeometryScene3D(),spec).scene
+  pyramid=perp.createPyramidAltitude3D(pyramid,'pyramid_v_3','pyramid_f_0','altitude').scene
+  for(const source of [scene,pyramid])for(const mode of ['orthographic','perspective']){
+    source.print_camera={...source.print_camera,projection:mode,position:[8,-9,7],target:[0,0,0]}
+    const data=snapshot([geometryBlock(source)]),before=JSON.stringify(data),plan=prepare(data,'plane-altitude'),html=render(data,'plane-altitude')
+    assert.equal(plan.exportable,true,JSON.stringify(plan.issues));assert.match(html,/data-render-curve="right_angle"/);assert.ok(!html.includes('>H<'));assert.equal(JSON.stringify(data),before)
+    if(source.constructions[0].kind==='pyramid_altitude'){assert.match(html,/data-construction="altitude"/);assert.match(html,/stroke-width="1.8"/);assert.match(html,/opacity="0.85"/)}
+  }
+})
+test('semantic parallel line/ray/segment print with hidden helpers and preserved snapshots',()=>{
+ const parallel=component('geometry3dParallelAuthoring'),Controls=component('GeometryParallelControls').default
+ let source=model.transactGeometryScene3D(model.emptyGeometryScene3D(),s=>{s.points.push({id:'A',position:[-2,0,0],label:'A'},{id:'B',position:[2,0,0],label:'B'},{id:'P',position:[0,2,0],label:'P'});s.linear_objects.push({id:'AB',kind:'ray',a:'A',b:'B'})})
+ source=parallel.createParallel3D(source,'P',{kind:'linear',id:'AB'},'C').scene
+ for(const output_kind of ['line','ray','segment']){
+  const scene=parallel.editParallel3D(source,'C',{output_kind,direction:'reverse',length:3}),data=snapshot([geometryBlock(scene)]),before=JSON.stringify(data),html=render(data)
+  assert.match(html,/data-id="C_object"/);assert.doesNotMatch(html,/data-id="C_end"/);assert.equal(JSON.stringify(data),before)
+  const controls=renderToStaticMarkup(React.createElement(Controls,{scene,selected:'C_object',disabled:false,onCommit:()=>{}}))
+  assert.match(controls,/Parallel output type/);assert.equal(controls.includes('Parallel direction'),output_kind!=='line');assert.equal(controls.includes('Parallel segment length'),output_kind==='segment')
+ }
+})
+test('semantic 3D perpendicular feet, right-angle markers and exterior extensions print canonically',()=>{
+ const perpendicular=component('geometry3dPerpendicularAuthoring')
+ let scene=model.transactGeometryScene3D(model.emptyGeometryScene3D(),s=>{s.points.push({id:'A',position:[0,0,0],label:'A'},{id:'B',position:[1,0,0],label:'B'},{id:'P',position:[2,2,0],label:'P'});s.linear_objects.push({id:'AB',kind:'segment',a:'A',b:'B'})})
+ scene=perpendicular.createPerpendicular3D(scene,'P',{kind:'linear',id:'AB'},'C').scene
+ assert.ok(scene);const data=snapshot([geometryBlock(scene)]),before=JSON.stringify(data),html=render(data)
+ assert.match(html,/construction_extension/);assert.match(html,/right_angle/);assert.doesNotMatch(html,/>H<\/text>/);assert.match(html,/<circle[^>]*data-id="C_H"/);assert.equal(JSON.stringify(data),before)
+ const shown=perpendicular.editPerpendicularDisplay3D(scene,'C',{label_visibility:'visible'})
+ assert.match(render(snapshot([geometryBlock(shown)])),/>H<\/text>/)
+})
 test('canonical paragraphs, all formatting, hard breaks and lists render statically', () => {
   const marks = [{ type: 'bold' }, { type: 'italic' }, { type: 'underline' }, { type: 'font_family', value: 'times-new-roman' },
     { type: 'font_size', value: 18 }, { type: 'foreground_color', value: '#123456' }, { type: 'background_color', value: '#abcdef' }]

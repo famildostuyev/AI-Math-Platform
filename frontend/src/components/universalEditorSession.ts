@@ -13,7 +13,7 @@ export type GeometryRibbonCommands = {
   canDelete: boolean
   run: (action: GeometryRibbonAction) => void
 }
-export type Geometry3DRibbonCommands = { id:string;tool:GeometryTool3D;disabled:boolean;canDelete:boolean;run:(action:GeometryTool3D|SolidKind3D|'delete')=>void }
+export type Geometry3DRibbonCommands = { id:string;tool:GeometryTool3D;disabled:boolean;canDelete:boolean;run:(action:GeometryTool3D|SolidKind3D|'regular_prism'|'regular_pyramid'|'regular_frustum'|'delete')=>void }
 import { useUniversalEditorHistory, type EditorHistoryProvider } from './universalEditorHistory'
 import type { StructuredContinuousTextCommands, StructuredContinuousTextActiveState, StructuredTextFontSize } from './structuredContinuousTextEditorModel'
 import { fieldTraceState, traceContext } from './universalContextTrace'

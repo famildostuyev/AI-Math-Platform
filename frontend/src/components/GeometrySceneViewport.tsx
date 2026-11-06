@@ -1,12 +1,16 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { GeometryCamera3D, GeometryScene3D, Vec3 } from './geometry3dContract'
 import { normalizeGeometryEditingCamera3D } from './geometry3d'
-import { createProjection3D, geometrySceneSVG3D, scenePrimitives3D, displayPrimitives3D, projectScene3D, projectedEdgeStrokes3D, sub, unit, cross, dot } from './geometry3dProjection'
+import { createProjection3D, geometrySceneSVG3D, scenePrimitives3D, displayPrimitives3D, projectScene3D, styledBoundaryStrokes3D, explicitBoundaryStroke3D, planeBoundaryIntervalShown3D, planeOutlineStyles3D, sub, unit, cross, dot } from './geometry3dProjection'
+import {planeStrokeWebGL3D,planeBoundaryVisibilityWebGL3D} from './geometry3dPlaneStrokeWebGL'
+import type {PlaneStrokeLine3D} from './geometry3dPlaneStrokeWebGL'
 import './GeometrySceneViewport.css'
 import type { Pointer3D, PointerPhase3D } from './geometry3dAuthoring'
-import { pickGeometry3D } from './geometry3dAuthoring'
+import { pickGeometry3D,dihedralEditTarget3D,planeResizeTarget3D } from './geometry3dAuthoring'
+import {planeDisplay3D} from './geometry3dPlaneDisplay'
+import {dihedralDisplay3D} from './geometry3dDihedral'
 import { GeometryFrameMenuContext } from './GeometryEditorPanels'
 import { projectedSolidBounds3D } from './geometry3dSolidBounds'
 
@@ -18,15 +22,27 @@ function disposeGroup(group: THREE.Group) {
   })
   group.clear()
 }
-function populate(group: THREE.Group, source: GeometryScene3D, camera: GeometryCamera3D, width: number, height: number, highlighted: Set<string>) {
+export function populateGeometrySceneViewport3D(group: THREE.Group, source: GeometryScene3D, camera: GeometryCamera3D, width: number, height: number, highlighted: Set<string>) {
   disposeGroup(group)
   const adapter=scenePrimitives3D(source), display=displayPrimitives3D(adapter.primitives), projection=createProjection3D(camera,width,height)
+  const projected=projectScene3D(source,camera,width,height,true),outlineStyles=planeOutlineStyles3D(projected.faces)
+  const planeById=new Map(source.planes.map(p=>[p.id,p]))
+  const visibility=planeBoundaryVisibilityWebGL3D(projected,display.aliases,planeById)
+  for(const batch of visibility.batches){
+    const selected=!batch.outline&&batch.aliases.some(id=>highlighted.has(id))
+    const object=planeStrokeWebGL3D(batch.lines,batch.style,projection,width,height,{outline:batch.outline,aliases:batch.aliases,planeVisibility:true,color:selected?0xf97316:batch.style.color})
+    if(object)group.add(object)
+  }
   const geometry = (vertices: Vec3[]) => new THREE.BufferGeometry().setFromPoints(vertices.map(v=>new THREE.Vector3(...v)))
-  for(const stroke of projectedEdgeStrokes3D(projectScene3D(source,camera,width,height,true),camera.projection)){
+  for(const stroke of styledBoundaryStrokes3D(projected,camera.projection)){
+    if(!planeBoundaryIntervalShown3D(stroke.hidden,stroke.planeBoundaries,planeById))continue
+    if(visibility.replaced.has(stroke.id)&&stroke.planeBoundaries?.some(o=>o.representation==='segment'))continue
     if(!stroke.viewA||!stroke.viewB)continue
     const vertices=[stroke.viewA,stroke.viewB].map(projection.world),pixelLength=Math.hypot(stroke.b[0]-stroke.a[0],stroke.b[1]-stroke.a[1])
     if(pixelLength<=1e-6)continue
     const color=highlighted.has(stroke.id)||display.aliases.get(stroke.id)?.some(id=>highlighted.has(id))?0xf97316:0x334155,perPixel=Math.hypot(...sub(vertices[1],vertices[0]))/pixelLength
+    const style=explicitBoundaryStroke3D(stroke.planeBoundaries)
+    if(style){const object=planeStrokeWebGL3D(stroke,style,projection,width,height,{color:color===0xf97316?color:style.color,aliases:display.aliases.get(stroke.id)});if(object)group.add(object);continue}
     const material=stroke.hidden?new THREE.LineDashedMaterial({color,dashSize:4*perPixel,gapSize:3*perPixel,transparent:true,opacity:.45,depthTest:false}):new THREE.LineBasicMaterial({color,transparent:true,depthTest:false})
     const line=new THREE.Line(geometry(vertices),material);if(stroke.hidden)line.computeLineDistances()
     line.userData.semanticId=stroke.id;line.renderOrder=stroke.hidden?2:3;group.add(line)
@@ -34,7 +50,7 @@ function populate(group: THREE.Group, source: GeometryScene3D, camera: GeometryC
   for (const p of display.primitives) {
     const color=highlighted.has(p.id)||display.aliases.get(p.id)?.some(id=>highlighted.has(id))?0xf97316:0x334155
     let object: THREE.Object3D | null = null
-    if(p.kind==='point') object=new THREE.Points(geometry([p.position]),new THREE.PointsMaterial({color:highlighted.has(p.id)?0xf97316:0x2563eb,size:highlighted.has(p.id)?10:6,sizeAttenuation:false}))
+    if(p.kind==='point') {if(p.markerVisible)object=new THREE.Points(geometry([p.position]),new THREE.PointsMaterial({color:highlighted.has(p.id)?0xf97316:0x2563eb,size:highlighted.has(p.id)?10:6,sizeAttenuation:false}))}
     else if('a' in p) {
       const clipped=projection.line(p.a,p.b,p.kind)
       if(clipped) {
@@ -45,25 +61,37 @@ function populate(group: THREE.Group, source: GeometryScene3D, camera: GeometryC
         }
       }
     } else {
-      const vertices=p.kind==='plane' ? projection.planePatch(p.vertices) : p.vertices
+      const vertices=p.kind==='plane' ? p.displayPatch??projection.planePatch(p.vertices,p.halfPlane) : p.vertices
       if(vertices.length>=3) {
         const x=unit(sub(vertices[1],vertices[0])), n=unit(cross(x,sub(vertices[2],vertices[0]))), y=cross(n,x)
         const contour=vertices.map(v=>{ const d=sub(v,vertices[0]); return new THREE.Vector2(dot(d,x),dot(d,y)) })
         const triangles=THREE.ShapeUtils.triangulateShape(contour,[])
         const meshGeometry=geometry(vertices); meshGeometry.setIndex(triangles.flat()); meshGeometry.computeVertexNormals()
         object=new THREE.Mesh(meshGeometry,new THREE.MeshBasicMaterial({color:highlighted.has(p.id)?0xf97316:0xcbd5e1,side:THREE.DoubleSide,transparent:true,opacity:p.kind==='plane'?.15:.35,depthWrite:false}))
-        if(p.outline!==false){const outline=new THREE.LineLoop(geometry(vertices),new THREE.LineBasicMaterial({color:0x94a3b8})); outline.userData.semanticId=p.id; group.add(outline)}
+        if(p.outline!==false&&!visibility.replaced.has(p.id)){
+          const face=projected.faces.find(f=>f.kind==='plane'&&f.id===p.id),style=face&&outlineStyles.get(face)
+          if(style&&face?.viewVertices){
+            let offset=0;const lines:PlaneStrokeLine3D[]=[]
+            for(let i=0;i<face.vertices.length;i++){
+              const j=(i+1)%face.vertices.length,a=face.vertices[i],b=face.vertices[j]
+              lines.push({id:p.id,kind:'segment',a,b,viewA:face.viewVertices[i],viewB:face.viewVertices[j],dashOffset:offset,planeBoundaries:face.planeBoundaries})
+              offset+=Math.hypot(b[0]-a[0],b[1]-a[1])
+            }
+            const object=planeStrokeWebGL3D(lines,style,projection,width,height,{outline:true,aliases:display.aliases.get(p.id)})
+            if(object)group.add(object)
+          }else if(style!==null&&!explicitBoundaryStroke3D(p.planeBoundaries)){const outline=new THREE.LineLoop(geometry(vertices),new THREE.LineBasicMaterial({color:0x94a3b8})); outline.userData.semanticId=p.id; group.add(outline)}
+        }
       }
     }
     if(object) { object.userData.semanticId=p.id; group.add(object) }
   }
 }
 
-export default function GeometrySceneViewport({ scene, camera, cameraOrigin, interactive=false, onNavigate, onInteraction, onContextSelect, highlightedIds=[], interactionTool='camera', constructionPreview=[], selectedSolidId }: {
+export default function GeometrySceneViewport({ scene, camera, cameraOrigin, interactive=false, onNavigate, onInteraction, onContextSelect, highlightedIds=[], interactionTool='camera', constructionPreview=[], constructionPreviewPolygons=[], constructionPreviewPlane=false, orientationHandlePreview=[], orientationHandleContour=[], intersectionLinePreview=[], guidedIntersectionPreview=[], selectedSolidId }: {
   scene: GeometryScene3D; camera: GeometryCamera3D; cameraOrigin?: symbol; interactive?: boolean; onNavigate?: (camera: GeometryCamera3D, origin: symbol)=>void
   onInteraction?: (phase:PointerPhase3D,pointer:Pointer3D)=>boolean; highlightedIds?:string[]; interactionTool?:string
   onContextSelect?: (id:string|null)=>void
-  constructionPreview?:Vec3[]
+  constructionPreview?:Vec3[];constructionPreviewPolygons?:Vec3[][];constructionPreviewPlane?:boolean;orientationHandlePreview?:Vec3[];orientationHandleContour?:Vec3[];intersectionLinePreview?:[Vec3,Vec3][];guidedIntersectionPreview?:[Vec3,Vec3][]
   selectedSolidId?:string
 }) {
   const host=useRef<HTMLDivElement>(null), callback=useRef(onNavigate), cameraRef=useRef(camera)
@@ -77,19 +105,36 @@ export default function GeometrySceneViewport({ scene, camera, cameraOrigin, int
   const [size,setSize]=useState({width:520,height:300}), [failure,setFailure]=useState(false)
   const failureRef=useRef(failure);failureRef.current=failure
   const adapter=useMemo(()=>scenePrimitives3D(scene),[scene])
-  const sharedDisplay=adapter.analyticSolids.length>0
+  const sharedDisplay=adapter.analyticSolids.length>0||(scene.dihedrals??[]).length>0||scene.constructions.some(c=>c.kind==='perpendicular_foot'||c.kind==='pyramid_altitude')
   const sharedDisplayRef=useRef(sharedDisplay);sharedDisplayRef.current=sharedDisplay
   const solidBounds=useMemo(()=>interactive&&selectedSolidId?projectedSolidBounds3D(scene,camera,size.width,size.height,selectedSolidId):null,[scene,camera,size,interactive,selectedSolidId])
+  const dihedralGrips=useMemo(()=>{
+    const d=scene.dihedrals?.find(d=>d.id===selectedSolidId);if(!d||interactionTool!=='select')return []
+    const view=createProjection3D(camera,size.width,size.height)
+    return dihedralDisplay3D(d).handles.filter(h=>view.visible(h.position)).map(h=>({...h,screen:view.screen(view.view(h.position))}))
+  },[scene,camera,size,selectedSolidId,interactionTool])
+  const planeGrips=useMemo(()=>{
+    if(scene.constructions.some(c=>c.kind==='constructed_plane'&&c.relation==='perpendicular'&&c.output_plane_id===selectedSolidId))return []
+    const plane=scene.planes.find(p=>p.id===selectedSolidId),display=plane&&planeDisplay3D(plane,scene);if(!display||interactionTool!=='select')return []
+    const view=createProjection3D(camera,size.width,size.height)
+    return display.grips.filter(g=>view.visible(g.position)).map(g=>({...g,screen:view.screen(view.view(g.position))}))
+  },[scene,camera,size,selectedSolidId,interactionTool])
   const svg=useMemo(()=>{try{return geometrySceneSVG3D(scene,size.width,size.height)}catch{return ''}},[scene,size])
   const screenSVG=useMemo(()=>{if(interactive)return '';try{return geometrySceneSVG3D({...scene,print_camera:camera},size.width,size.height)}catch{return ''}},[scene,camera,size,interactive])
   const previewPoints=useMemo(()=>{
     try{const projection=createProjection3D(camera,size.width,size.height);return constructionPreview.every(p=>projection.visible(p))?constructionPreview.map(p=>projection.screen(projection.view(p))):[]}catch{return []}
   },[constructionPreview,camera,size])
+  const previewPolygons=useMemo(()=>{try{const projection=createProjection3D(camera,size.width,size.height);return constructionPreviewPolygons.map(p=>projection.polygon(p).map(projection.screen)).filter(p=>p.length>=3)}catch{return []}},[constructionPreviewPolygons,camera,size])
+  const guidedIntersectionPoints=useMemo(()=>{try{const projection=createProjection3D(camera,size.width,size.height);return guidedIntersectionPreview.flatMap(([a,b])=>{const line=projection.line(a,b,'segment');return line?[line.map(projection.screen)]:[]})}catch{return []}},[guidedIntersectionPreview,camera,size])
+  const intersectionPreviewPoints=useMemo(()=>{try{const projection=createProjection3D(camera,size.width,size.height);return intersectionLinePreview.flatMap(([a,b])=>{const line=projection.line(a,b,'segment');return line?[line.map(projection.screen)]:[]})}catch{return []}},[intersectionLinePreview,camera,size])
+  const orientationHandlePoints=useMemo(()=>{try{const projection=createProjection3D(camera,size.width,size.height);return orientationHandlePreview.every(p=>projection.visible(p))?orientationHandlePreview.map(p=>projection.screen(projection.view(p))):[]}catch{return []}},[orientationHandlePreview,camera,size])
+  const handleContourPoints=useMemo(()=>{try{const projection=createProjection3D(camera,size.width,size.height);return projection.polygon(orientationHandleContour).map(projection.screen).map(p=>p.slice(0,2).join(',')).join(' ')}catch{return ''}},[orientationHandleContour,camera,size])
+  const handleClipId=useId().replace(/:/g,'')
   const labels=useMemo(()=>{
     const output: {id:string;text:string;x:number;y:number}[]=[]
     try {
       const projection=createProjection3D(camera,size.width,size.height)
-      for(const point of adapter.primitives) if(point.kind==='point'&&point.label&&projection.visible(point.position)) {
+      for(const point of adapter.primitives) if(point.kind==='point'&&point.labelVisible&&point.label&&projection.visible(point.position)) {
         const position=projection.screen(projection.view(point.position));output.push({id:point.id,text:point.label,x:position[0]+6,y:position[1]-18})
       }
     } catch { /* Invalid input is handled by the scene/fallback status below. */ }
@@ -161,7 +206,7 @@ export default function GeometrySceneViewport({ scene, camera, cameraOrigin, int
           // never with a delayed React navigation echo.
           if(group!.children.length)disposeGroup(group!)
           if(sharedScreen.current)sharedScreen.current.innerHTML=geometrySceneSVG3D({...sceneRef.current,print_camera:current},width,height,highlighted)
-        }else populate(group!,sceneRef.current,current,width,height,highlighted)
+        }else populateGeometrySceneViewport3D(group!,sceneRef.current,current,width,height,highlighted)
         renderer!.render(world,view);renderer!.domElement.dataset.renderCount=String(Number(renderer!.domElement.dataset.renderCount ?? 0)+1)
       } catch { setFailure(true) } }
       const request=()=>{if(!frame&&!dead)frame=requestAnimationFrame(draw)}
@@ -205,22 +250,34 @@ export default function GeometrySceneViewport({ scene, camera, cameraOrigin, int
   useEffect(()=>{controller.current?.refresh()},[scene,highlightedIds])
   return <div className="geometry-3d-view" data-geometry-version="2" data-render-status={adapter.status}>
     <div ref={host} tabIndex={interactive?0:undefined} className="geometry-3d-viewport" data-display-pipeline={sharedDisplay?'shared-vector':'webgl'} data-interaction-tool={interactionTool} data-webgl-fallback={failure} data-editing-camera={JSON.stringify(camera)}
+      onPointerMove={event=>{if(!interactive||interactionTool!=='select'||!selectedSolidId){event.currentTarget.style.cursor='';return}const r=event.currentTarget.getBoundingClientRect(),hit=dihedralEditTarget3D(scene,camera,{x:event.clientX-r.left,y:event.clientY-r.top,width:r.width,height:r.height},selectedSolidId);event.currentTarget.style.cursor=hit?(hit.kind==='angle'?'grab':'ew-resize'):planeResizeTarget3D(scene,camera,{x:event.clientX-r.left,y:event.clientY-r.top,width:r.width,height:r.height},selectedSolidId)?'nwse-resize':''}}
+      onPointerLeave={event=>{event.currentTarget.style.cursor=''}}
       onPointerDown={event=>{if(interactive)event.stopPropagation()}} onWheel={event=>{if(interactive)event.stopPropagation()}} onContextMenu={event=>{if(interactive)event.preventDefault()}}>
       <div className={`geometry-3d-static geometry-3d-print${interactive&&failure?'':' is-print-only'}`} dangerouslySetInnerHTML={{__html:svg}} />
       {!interactive&&<div className="geometry-3d-static geometry-3d-screen" dangerouslySetInnerHTML={{__html:screenSVG}} />}
+      {interactive&&!failure&&planeGrips.length>0&&<svg className="geometry-3d-solid-bounds" aria-hidden="true" viewBox={`0 0 ${size.width} ${size.height}`}>
+        {planeGrips.map((g,i)=><rect key={i} data-plane-resize="" data-plane-u={g.u} data-plane-v={g.v} x={g.screen[0]-3} y={g.screen[1]-3} width="6" height="6" fill="white" stroke="#64748b" strokeWidth="1"/>)}
+      </svg>}
+      {interactive&&!failure&&dihedralGrips.length>0&&<svg className="geometry-3d-solid-bounds" aria-hidden="true" viewBox={`0 0 ${size.width} ${size.height}`}>
+        {dihedralGrips.map((h,i)=><rect key={i} data-dihedral-resize={h.kind} x={h.screen[0]-3} y={h.screen[1]-3} width="6" height="6" fill="white" stroke="#64748b" strokeWidth="1"/>)}
+      </svg>}
       {interactive&&!failure&&sharedDisplay&&<div ref={sharedScreen} className="geometry-3d-static geometry-3d-screen geometry-3d-shared-screen" />}
       {interactive&&!failure&&!sharedDisplay&&<div className="geometry-3d-labels" aria-hidden="true">{labels.map(label=><span key={label.id} data-label-id={label.id} style={{left:label.x,top:label.y}}>{label.text}</span>)}</div>}
       {interactive&&!failure&&solidBounds&&<svg className="geometry-3d-solid-bounds" data-solid-bounds={selectedSolidId} aria-hidden="true" viewBox={`0 0 ${size.width} ${size.height}`}>
         {solidBounds.lines.map(([a,b],i)=><line key={i} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#0891b2" strokeWidth="1" strokeDasharray="3 3"/>)}
         {solidBounds.handles.map(h=><g key={h.index}>
           <line x1={h.screen[0]} y1={h.screen[1]} x2={h.x} y2={h.y} stroke="#0891b2" strokeWidth="1"/>
-          <rect data-resize-handle={h.index} data-resize-kind={h.kind} x={h.x-(h.kind==='uniform'?4:5)} y={h.y-(h.kind==='uniform'?4:5)} width={h.kind==='uniform'?8:10} height={h.kind==='uniform'?8:10} rx={h.kind==='radius'?5:1} transform={h.kind==='height'?`rotate(45 ${h.x} ${h.y})`:undefined} fill={interactionTool==='select'?'white':'#e0f2fe'} stroke={h.kind==='uniform'?'#0891b2':'#047857'} strokeWidth="2"><title>{h.kind==='radius'?'Radius':h.kind==='height'?'Hündürlük':'Mütənasib ölçü'}</title></rect>
-          {h.kind!=='uniform'&&<text x={h.x} y={h.y+3} textAnchor="middle" fontSize="8" fill="#047857">{h.kind==='radius'?'R':'H'}</text>}
+          <rect data-resize-handle={h.index} data-resize-kind={h.kind} x={h.x-(h.kind==='uniform'?4:5)} y={h.y-(h.kind==='uniform'?4:5)} width={h.kind==='uniform'?8:10} height={h.kind==='uniform'?8:10} rx={h.kind==='radius'||h.kind==='bottom_radius'||h.kind==='top_radius'?5:1} transform={h.kind==='height'?`rotate(45 ${h.x} ${h.y})`:undefined} fill={interactionTool==='select'?'white':'#e0f2fe'} stroke={h.kind==='uniform'?'#0891b2':'#047857'} strokeWidth="2"><title>{h.kind==='bottom_radius'?'R1':h.kind==='top_radius'?'R2':h.kind==='radius'?'Radius':h.kind==='height'?'Hündürlük':'Mütənasib ölçü'}</title></rect>
+          {h.kind!=='uniform'&&<text x={h.x} y={h.y+3} textAnchor="middle" fontSize="8" fill="#047857">{h.kind==='bottom_radius'?'R1':h.kind==='top_radius'?'R2':h.kind==='radius'?'R':'H'}</text>}
         </g>)}
       </svg>}
-      {interactive&&!failure&&previewPoints.length>0&&<svg className="geometry-3d-construction-preview" aria-hidden="true" viewBox={`0 0 ${size.width} ${size.height}`}>
-        <polyline points={previewPoints.map(p=>`${p[0]},${p[1]}`).join(' ')} fill="none" stroke="#f97316" strokeWidth="2" strokeDasharray="5 3"/>
-        {previewPoints.map((p,i)=><circle key={i} cx={p[0]} cy={p[1]} r="5" fill={i===0?'#f97316':'white'} stroke="#f97316"/>)}
+      {interactive&&!failure&&(previewPolygons.length>0||previewPoints.length>0||orientationHandlePoints.length>0||intersectionPreviewPoints.length>0||guidedIntersectionPoints.length>0)&&<svg className="geometry-3d-construction-preview" aria-hidden="true" viewBox={`0 0 ${size.width} ${size.height}`}>
+        {previewPolygons.map((polygon,i)=><polygon key={i} data-perpendicular-plane-surface-preview="" points={polygon.map(p=>`${p[0]},${p[1]}`).join(' ')} fill="#fdba74" fillOpacity="0.2" stroke="#f97316" strokeWidth="2" strokeDasharray="5 3"/>)}
+        <polyline points={previewPoints.map(p=>`${p[0]},${p[1]}`).join(' ')} fill={constructionPreviewPlane?'#fdba74':'none'} fillOpacity={constructionPreviewPlane?0.2:1} stroke="#f97316" strokeWidth="2" strokeDasharray="5 3"/>
+        {orientationHandlePoints.length===0&&previewPoints.map((p,i)=><circle key={i} cx={p[0]} cy={p[1]} r="5" fill={i===0?'#f97316':'white'} stroke="#f97316"/>)}
+        {guidedIntersectionPoints.map((line,i)=><line key={i} data-guided-plane-intersection-preview="" x1={line[0][0]} y1={line[0][1]} x2={line[1][0]} y2={line[1][1]} stroke="#c2410c" strokeWidth="2"/>)}
+        {intersectionPreviewPoints.map((line,i)=><line key={i} data-plane-intersection-preview="" x1={line[0][0]} y1={line[0][1]} x2={line[1][0]} y2={line[1][1]} stroke="#c2410c" strokeWidth="2"/>)}
+        {orientationHandlePoints.length===2&&<g><defs><clipPath id={handleClipId}><polygon points={handleContourPoints}/></clipPath></defs><g clipPath={orientationHandleContour.length?`url(#${handleClipId})`:undefined}><line x1={orientationHandlePoints[0][0]} y1={orientationHandlePoints[0][1]} x2={orientationHandlePoints[1][0]} y2={orientationHandlePoints[1][1]} stroke="#c2410c" strokeWidth="2"/><circle data-plane-orientation-handle="" cx={orientationHandlePoints[1][0]} cy={orientationHandlePoints[1][1]} r="7" fill="white" stroke="#c2410c" strokeWidth="2"/></g></g>}
       </svg>}
     </div>
     {adapter.status==='invalid' && <p role="alert">Səhnənin hesablanması etibarsızdır.</p>}

@@ -5,13 +5,15 @@ import './GeometryEditorPanels.css'
 
 export const GeometryFrameMenuContext=createContext<{host:HTMLElement|null;selected:boolean;closeMenu?:()=>void;selectAt:RefObject<((event:MouseEvent)=>void)|null>;captureAt:RefObject<((event:MouseEvent)=>()=>void)|null>}|null>(null)
 /** Presentation hosts only: the editor retains every field, callback and transient state. */
-export default function GeometryEditorPanels({menu,properties,status,openRef,autoOpenKey,targetId}:{menu:ReactNode;properties:ReactNode;status:ReactNode;openRef?:RefObject<()=>void>;autoOpenKey?:string|null;targetId?:string}){
+export default function GeometryEditorPanels({menu,properties,status,openRef,closeRef,autoOpenKey,targetId}:{menu:ReactNode;properties:ReactNode;status:ReactNode;openRef?:RefObject<()=>void>;closeRef?:RefObject<()=>void>;autoOpenKey?:string|null;targetId?:string}){
   const session=useContext(UniversalEditorSessionContext),frame=useContext(GeometryFrameMenuContext),frameHost=frame?.host??null,menuRef=useRef<HTMLDetailsElement>(null)
   const [localProperties,setLocalProperties]=useState(false)
   const panelRef=useRef<HTMLDialogElement>(null),returnFocus=useRef<HTMLElement|null>(null)
   const openProperties=()=>{returnFocus.current=document.activeElement instanceof HTMLElement?document.activeElement:null;if(panelRef.current?.open)queueMicrotask(()=>panelRef.current?.querySelector<HTMLElement>('header button')?.focus({preventScroll:true}));setLocalProperties(true);if(menuRef.current)menuRef.current.open=false}
   const closeProperties=()=>{setLocalProperties(false);const previous=returnFocus.current;if(previous?.isConnected&&previous!==document.body&&previous.getClientRects().length&&!previous.closest('.geometry-frame-context-menu'))previous.focus({preventScroll:true});else if(targetId)document.querySelector<HTMLElement>(`[data-frame-id="${CSS.escape(targetId)}"]`)?.focus({preventScroll:true});if(targetId)session?.activateGeometry(targetId)}
   const openCallback=useRef(openProperties);openCallback.current=openProperties
+  const closeCallback=useRef(closeProperties);closeCallback.current=closeProperties
+  useEffect(()=>{if(closeRef)closeRef.current=()=>closeCallback.current()},[closeRef])
   useEffect(()=>{if(openRef)openRef.current=()=>openCallback.current()},[openRef])
   useEffect(()=>{if(autoOpenKey)openCallback.current()},[autoOpenKey])
   useEffect(()=>{
