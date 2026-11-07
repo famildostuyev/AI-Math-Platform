@@ -93,6 +93,7 @@ export function planeStrokeWebGL3D(input:PlaneStrokeLine3D|readonly PlaneStrokeL
   object.userData.semanticId=line.id
   object.userData.selectionAliases=[...(options.aliases??[])]
   object.userData.planeBoundaries=line.planeBoundaries
+  object.userData.intersectionOwners=line.intersectionOwners
   object.userData.planeStroke=stroke
   object.userData.strokeRuns=runs
   if(options.planeVisibility){object.userData.planeBoundaryVisibility=line.hidden?'hidden':'visible';object.userData.strokePattern=[...pattern]}

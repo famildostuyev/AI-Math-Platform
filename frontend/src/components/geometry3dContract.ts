@@ -24,7 +24,8 @@ export type GeometryPlaneIntersectionMode3D = 'cross'|'first'|'opposite'
  * Omission preserves existing renderer defaults; no stroke is synthesized.
  */
 export type GeometryPlaneStroke3D = {color:string;width:number;style:'solid'|'dashed'|'dotted'}
-export type GeometryPlane3D = { display?:{width:number;height:number;stroke?:GeometryPlaneStroke3D;show_hidden_edges?:boolean;intersection_mode?:GeometryPlaneIntersectionMode3D;lower_portion?:'both'|'upper';intersection_visibility?:'visible'|'hidden';shape?:'rectangle'|'parallelogram'|'cloud';skew?:number}; kind?:'half_plane'; id: Geometry3DId; point_ids: [Geometry3DId, Geometry3DId, Geometry3DId] }
+export type GeometryPlaneFill3D = {color:string;opacity:number}
+export type GeometryPlane3D = { display?:{width:number;height:number;fill?:GeometryPlaneFill3D;stroke?:GeometryPlaneStroke3D;intersection_stroke?:GeometryPlaneStroke3D;show_hidden_edges?:boolean;intersection_mode?:GeometryPlaneIntersectionMode3D;lower_portion?:'both'|'upper';intersection_visibility?:'visible'|'hidden';shape?:'rectangle'|'parallelogram'|'cloud';skew?:number}; kind?:'half_plane'; id: Geometry3DId; point_ids: [Geometry3DId, Geometry3DId, Geometry3DId] }
 export type GeometryEdge3D = { id: Geometry3DId; start: Geometry3DId; end: Geometry3DId }
 export type GeometryFace3D = { id: Geometry3DId; boundary: Geometry3DId[] }
 export type GeometrySurface3D = { id: Geometry3DId; kind: 'sphere' | 'cylinder' | 'cone' | 'frustum'; solid_id: Geometry3DId; slot: Geometry3DId }

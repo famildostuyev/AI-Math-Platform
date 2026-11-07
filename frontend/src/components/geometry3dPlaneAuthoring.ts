@@ -1,8 +1,42 @@
 import {guidedPlaneDisplaySize3D} from './geometry3dGuidedPlane'
 import {constructionOutputPointIds3D} from './geometry3dConstructedPlane'
-import type {GeometryScene3D,Vec3} from './geometry3dContract'
+import type {GeometryScene3D,GeometryPlaneStroke3D,GeometryPlaneFill3D,Vec3} from './geometry3dContract'
+import {resolvePlaneFill3D} from './geometry3dPlaneFill'
+import {resolvePlaneBoundaryStroke3D,resolvePlaneIntersectionStroke3D} from './geometry3dPlaneStroke'
+import {planeOwnsIntersectionGuide3D} from './geometry3dPlaneIntersectionStroke'
 import {transactGeometryScene3D} from './geometry3dModel'
 import {add,sub,scale,unit,cross,dot} from './geometry3dProjection'
+
+export function setPlaneIntersectionStroke3D(source:GeometryScene3D,id:string,stroke:GeometryPlaneStroke3D){
+ const plane=source.planes.find(p=>p.id===id&&p.display)
+ if(!plane||!planeOwnsIntersectionGuide3D(source,id))return null
+ const current=resolvePlaneIntersectionStroke3D(plane),next={...stroke,color:typeof stroke.color==='string'?stroke.color.toUpperCase():stroke.color}
+ if(Object.keys(next).length===3&&next.color===current.color&&next.width===current.width&&next.style===current.style)return source
+ return transactGeometryScene3D(source,s=>{s.planes.find(p=>p.id===id)!.display!.intersection_stroke=next})
+}
+
+/** Properties reflects the native viewport. Absent defaults remain absent until changed. */
+export function setPlaneFill3D(source:GeometryScene3D,id:string,fill:GeometryPlaneFill3D){
+ const plane=source.planes.find(p=>p.id===id&&p.display);if(!plane)return null
+ const current=resolvePlaneFill3D(plane,'webgl'),next={...fill,color:typeof fill.color==='string'?fill.color.toUpperCase():fill.color}
+ if(Object.keys(next).length===2&&next.color===current.color&&next.opacity===current.opacity)return source
+ return transactGeometryScene3D(source,s=>{s.planes.find(p=>p.id===id)!.display!.fill=next})
+}
+
+/** Match the existing boundary representation without materializing legacy defaults. */
+export function planeStrokeSetting3D(scene:GeometryScene3D,id:string){
+ const plane=scene.planes.find(p=>p.id===id&&p.display);if(!plane)return null
+ const segment=scene.constructions.some(c=>c.kind==='constructed_plane'&&c.relation==='perpendicular'&&c.output_plane_id===id)
+  ||scene.dihedrals.some(d=>d.features.some(f=>f.entity_id===id&&f.slot.startsWith('half_')))
+ return resolvePlaneBoundaryStroke3D(plane,segment?'segment':'outline')
+}
+/** One immutable candidate per change; normalization enforces the shared contract. */
+export function setPlaneStroke3D(source:GeometryScene3D,id:string,stroke:GeometryPlaneStroke3D){
+ const current=planeStrokeSetting3D(source,id);if(!current)return null
+ const next={...stroke,color:typeof stroke.color==='string'?stroke.color.toUpperCase():stroke.color}
+ if(Object.keys(next).length===3&&next.color===current.color&&next.width===current.width&&next.style===current.style)return source
+ return transactGeometryScene3D(source,s=>{s.planes.find(p=>p.id===id)!.display!.stroke=next})
+}
 
 /** The three points define an infinite plane; display sizes do not bound its semantics. */
 export function createPlaneAt3D(source:GeometryScene3D,origin:Vec3,working:'XY'|'XZ'|'YZ',id=`plane_${crypto.randomUUID().replace(/-/g,'')}`){

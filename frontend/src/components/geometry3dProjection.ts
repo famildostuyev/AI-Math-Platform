@@ -12,11 +12,14 @@ import { analyticLineIntervals3D, faceDepth3D, faceOcclusionMasks3D, pointHidden
 import { evaluateAnalyticSurface3D } from './geometry3dAnalytic'
 import { faceFrame3D } from './geometry3dFaces'
 import {resolvePlaneBoundaryStroke3D,type ResolvedPlaneStroke3D,type PlaneBoundaryRepresentation3D} from './geometry3dPlaneStroke'
+import {resolvePlaneIntersectionStroke3D} from './geometry3dPlaneStroke'
+import {mergeIntersectionOwners3D,explicitIntersectionStroke3D,type PlaneIntersectionStrokeOwner3D} from './geometry3dPlaneIntersectionStroke'
 import {resolvePointVisibility3D} from './geometry3dPointVisibility'
+import {resolvePlaneFill3D} from './geometry3dPlaneFill'
 
 /** Runtime boundary provenance only; contains no transient highlight state. */
 export type PlaneBoundaryStrokeOwner3D = Readonly<{ownerId:string;representation:PlaneBoundaryRepresentation3D;stroke:ResolvedPlaneStroke3D}>
-type PlaneBoundaryMetadata3D = {planeBoundaries?:readonly PlaneBoundaryStrokeOwner3D[]}
+type PlaneBoundaryMetadata3D = {planeBoundaries?:readonly PlaneBoundaryStrokeOwner3D[];intersectionOwners?:readonly PlaneIntersectionStrokeOwner3D[]}
 function mergePlaneBoundaries3D(a:PlaneBoundaryMetadata3D['planeBoundaries'],b:PlaneBoundaryMetadata3D['planeBoundaries']){
   if(!a?.length)return b
   if(!b?.length)return a
@@ -43,6 +46,7 @@ export function scenePrimitives3D(source: GeometryScene3D) {
   if (result.status !== 'ok') return { status: result.status, primitives: [] as Primitive3D[], analyticSolids:[] as RenderAnalyticSolid3D[], annotations:[] as {id:string;position:Vec3;content:string;offset:[number,number]}[] }
   const scene = result.scene, points = new Map(scene.points.map(p => [p.id, p.position]))
   const boundary=(id:string,representation:PlaneBoundaryRepresentation3D)=>Object.freeze([Object.freeze({ownerId:id,representation,stroke:resolvePlaneBoundaryStroke3D(scene.planes.find(p=>p.id===id)!,representation)})])
+  const intersection=(id:string)=>Object.freeze([Object.freeze({ownerId:id,stroke:resolvePlaneIntersectionStroke3D(scene.planes.find(p=>p.id===id)!)})])
   const analyticSolids=scene.solids.filter((s):s is RenderAnalyticSolid3D=>s.mode==='parametric'&&(s.kind==='cylinder'||s.kind==='cone'||s.kind==='sphere'||s.kind==='frustum'))
   const p = (id: string) => points.get(id)!
   const internalPoints=new Set((scene.dihedrals??[]).flatMap(d=>d.features.filter(f=>/^v_[0-3]$/.test(f.slot)).map(f=>f.entity_id)))
@@ -67,9 +71,9 @@ export function scenePrimitives3D(source: GeometryScene3D) {
     const {segments,polygons}=perpendicularPlaneSurface3D(scene,c.through.id,c.reference,c.orientation.angle_radians,undefined,output?.display?.intersection_mode??'cross')
     const surface=primitives.find(p=>p.kind==='plane'&&p.id===c.output_plane_id)
     if(surface?.kind==='plane'){surface.displayPatches=polygons;surface.planeBoundaries=boundary(c.output_plane_id,'segment')}
-    if(output?.display?.intersection_visibility!=='hidden')for(const [a,b] of segments)primitives.push({id:c.output_plane_id,kind:'segment',a,b,role:'plane_intersection'})
+    if(output?.display?.intersection_visibility!=='hidden')for(const [a,b] of segments)primitives.push({id:c.output_plane_id,kind:'segment',a,b,role:'plane_intersection',intersectionOwners:intersection(c.output_plane_id)})
   }
-  for(const c of scene.constructions)if(c.kind==='perpendicular_plane_on_line'&&scene.planes.find(p=>p.id===c.output_plane_id)?.display?.intersection_visibility!=='hidden')for(const [a,b] of guidedIntersectionSegments3D(scene,c.reference,c.guide))primitives.push({id:c.output_plane_id,kind:'segment',a,b,role:'plane_intersection'})
+  for(const c of scene.constructions)if(c.kind==='perpendicular_plane_on_line'&&scene.planes.find(p=>p.id===c.output_plane_id)?.display?.intersection_visibility!=='hidden')for(const [a,b] of guidedIntersectionSegments3D(scene,c.reference,c.guide))primitives.push({id:c.output_plane_id,kind:'segment',a,b,role:'plane_intersection',intersectionOwners:intersection(c.output_plane_id)})
   for(const primitive of primitives)if(primitive.kind==='plane'){
     const size=scene.planes.find(f=>f.id===primitive.id)?.display
     if(size)primitive.displayPatch=planeDisplay3D(scene.planes.find(f=>f.id===primitive.id)!,scene)!.contour
@@ -126,8 +130,9 @@ export function displayPrimitives3D(primitives:Primitive3D[]){
     const k=key(p.a,p.b),id=representatives.get(k)??p.id
     representatives.set(k,id);aliases.set(id,[...(aliases.get(id)??[]),p.id])
     const existing=segmentOutputs.get(k)??[],previous=existing.reduce<PlaneBoundaryMetadata3D['planeBoundaries']>((owners,edge)=>mergePlaneBoundaries3D(owners,edge.planeBoundaries),undefined),merged=mergePlaneBoundaries3D(previous,p.planeBoundaries)
-    for(const edge of existing)if(merged)edge.planeBoundaries=merged
-    if(id===p.id){const copy={...p,...(merged?{planeBoundaries:merged}:{})};output.push(copy);existing.push(copy);segmentOutputs.set(k,existing)}
+    const intersectionOwners=existing.reduce<PlaneBoundaryMetadata3D['intersectionOwners']>((owners,edge)=>mergeIntersectionOwners3D(owners,edge.intersectionOwners),p.intersectionOwners)
+    for(const edge of existing){if(merged)edge.planeBoundaries=merged;if(intersectionOwners)edge.intersectionOwners=intersectionOwners}
+    if(id===p.id&&!(existing.length&&intersectionOwners?.length)){const copy={...p,...(merged?{planeBoundaries:merged}:{}),...(intersectionOwners?{intersectionOwners}:{})};output.push(copy);existing.push(copy);segmentOutputs.set(k,existing)}
   }else output.push(p.kind==='face'?{...p,outline:false}:p)
   // Faces without explicit semantic boundary segments still need an outline.
   for(const p of primitives)if(p.kind==='face')for(let i=0;i<p.vertices.length;i++){
@@ -210,7 +215,7 @@ export function projectScene3D(source: GeometryScene3D, camera: GeometryCamera3D
   const points: ProjectedPoint3D[] = [], lines: ProjectedLine3D[] = [], faces: ProjectedFace3D[] = []
   for (const primitive of display?displayPrimitives3D(adapter.primitives).primitives:adapter.primitives) {
     if (primitive.kind==='point') { if (projection.visible(primitive.position)) points.push({ ...primitive, position: projection.screen(projection.view(primitive.position)) }); }
-    else if ('a' in primitive) { const clipped=projection.line(primitive.a,primitive.b,primitive.kind); if(clipped) lines.push({ id:primitive.id, kind:primitive.kind, ...(primitive.role?{role:primitive.role}:{}), ...(primitive.planeBoundaries?{planeBoundaries:primitive.planeBoundaries}:{}), a:projection.screen(clipped[0]), b:projection.screen(clipped[1]), viewA:clipped[0],viewB:clipped[1],arrow: primitive.kind==='vector'&&projection.visible(primitive.b) }); }
+    else if ('a' in primitive) { const clipped=projection.line(primitive.a,primitive.b,primitive.kind); if(clipped) lines.push({ id:primitive.id, kind:primitive.kind, ...(primitive.role?{role:primitive.role}:{}), ...(primitive.intersectionOwners?{intersectionOwners:primitive.intersectionOwners}:{}), ...(primitive.planeBoundaries?{planeBoundaries:primitive.planeBoundaries}:{}), a:projection.screen(clipped[0]), b:projection.screen(clipped[1]), viewA:clipped[0],viewB:clipped[1],arrow: primitive.kind==='vector'&&projection.visible(primitive.b) }); }
     else {
       // Drawing expansion has already selected one polygon for each primitive.
       const patches=primitive.kind==='plane'?(!display&&primitive.displayPatches!==undefined?primitive.displayPatches:[primitive.displayPatch??projection.planePatch(primitive.vertices,primitive.halfPlane)]):[primitive.vertices]
@@ -371,7 +376,7 @@ export function projectedEdgeStrokes3D(projected:ReturnType<typeof projectScene3
  * Translucent finite surfaces still obscure boundaries diagrammatically.
  */
 export function projectedPlaneBoundaryStrokes3D(projected:ReturnType<typeof projectScene3D>,mode:GeometryCamera3D['projection'],aliases:ReadonlyMap<string,readonly string[]>=new Map(),options:{planeOcclusion?:boolean}={}){
-  const lines:ProjectedLine3D[]=projected.lines.filter(l=>l.planeBoundaries?.some(o=>o.representation==='segment')).map(l=>({...l,dashOffset:l.dashOffset??0}))
+  const lines:ProjectedLine3D[]=projected.lines.filter(l=>l.planeBoundaries?.some(o=>o.representation==='segment')&&!explicitIntersectionStroke3D(l.intersectionOwners)).map(l=>({...l,dashOffset:l.dashOffset??0}))
   for(const face of projected.faces){
     if(face.kind!=='plane'||face.outline===false||!face.planeBoundaries?.length)continue
     let offset=0
@@ -428,7 +433,7 @@ export function planeOutlineStyles3D(faces:readonly ProjectedFace3D[]){
 }
 /** Explicit patterns retain screen-space phase through visibility splits. */
 export function styledBoundaryStrokes3D(projected:ReturnType<typeof projectScene3D>,mode:GeometryCamera3D['projection']){
-  const lines=projected.lines.map(line=>explicitBoundaryStroke3D(line.planeBoundaries)?{...line,dashOffset:line.dashOffset??0}:line)
+  const lines=projected.lines.map(line=>explicitIntersectionStroke3D(line.intersectionOwners)||explicitBoundaryStroke3D(line.planeBoundaries)?{...line,dashOffset:line.dashOffset??0}:line)
   return projectedEdgeStrokes3D({...projected,lines},mode)
 }
 export function geometrySceneSVG3D(source: GeometryScene3D, width=520, height=300,highlighted:ReadonlySet<string>=new Set()): string {
@@ -477,23 +482,25 @@ export function geometrySceneSVG3D(source: GeometryScene3D, width=520, height=30
   sorted.forEach((face,i)=>{
     const masks=projected.analyticSolids.length?faceOcclusionMasks3D(face,projected.faces,source.print_camera.projection):[],id=`${prefix}_${i}`
     if(masks.length)defs.push(`<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="${number(width)}" height="${number(height)}" style="mask-type:luminance"><rect width="100%" height="100%" fill="white"/>${masks.map(v=>`<polygon points="${v.map(xy).join(' ')}" fill="black"/>`).join('')}</mask>`)
-    const color=highlighted.has(face.id)?'#f97316':face.analytic?(face.region==='lateral'?'#e2e8f0':'#f1f5f9'):'#e2e8f0'
+    const plane=face.kind==='plane'?planeById.get(face.id):undefined,fill=plane?resolvePlaneFill3D(plane,'svg'):null
+    const baseColor=fill?(plane!.display?.fill?fill.color:fill.color.toLowerCase()):face.analytic?(face.region==='lateral'?'#e2e8f0':'#f1f5f9'):'#e2e8f0'
+    const color=highlighted.has(face.id)?'#f97316':baseColor
     const boundaryStyle=outlineStyles.get(face)
-    parts.push(`<polygon data-id="${escape(face.id)}"${face.analytic?` data-render-surface="${face.region}"`:''} points="${face.vertices.map(xy).join(' ')}" fill="${color}" fill-opacity="${face.analytic?'1':'0.35'}" stroke="${face.analytic?color:face.outline===false||boundaryStyle===null||replaced.has(face.id)?'none':boundaryStyle?.color??'#94a3b8'}"${face.analytic?' stroke-width="0.3" stroke-linejoin="round"':boundaryStyle?svgPlaneStrokeAttributes3D(boundaryStyle):''}${masks.length?` mask="url(#${id})"`:''}/>`)
+    parts.push(`<polygon data-id="${escape(face.id)}"${face.analytic?` data-render-surface="${face.region}"`:''} points="${face.vertices.map(xy).join(' ')}" fill="${color}" fill-opacity="${fill?String(fill.opacity):face.analytic?'1':'0.35'}" stroke="${face.analytic?color:face.outline===false||boundaryStyle===null||replaced.has(face.id)?'none':boundaryStyle?.color??'#94a3b8'}"${face.analytic?' stroke-width="0.3" stroke-linejoin="round"':boundaryStyle?svgPlaneStrokeAttributes3D(boundaryStyle):''}${masks.length?` mask="url(#${id})"`:''}/>`)
     const owners=outlineOwners.get(face)
     if(owners)for(const line of classified.filter(l=>l.id===face.id&&l.planeBoundaries?.some(o=>o.representation==='outline')))parts.push(boundaryPath(line,owners,true))
   })
   const emitted=new Set<string>()
   const svgStrokes=styledBoundaryStrokes3D(projected,source.print_camera.projection).flatMap(line=>{
-    if(!replaced.has(line.id)||!line.planeBoundaries?.some(o=>o.representation==='segment'))return [line]
+    if(explicitIntersectionStroke3D(line.intersectionOwners)||!replaced.has(line.id)||!line.planeBoundaries?.some(o=>o.representation==='segment'))return [line]
     if(emitted.has(line.id))return []
     emitted.add(line.id);return classified.filter(l=>l.id===line.id&&l.planeBoundaries?.some(o=>o.representation==='segment'))
   }).sort((a,b)=>Number(b.hidden)-Number(a.hidden))
   for(const line of svgStrokes) {
-    if(!planeBoundaryIntervalShown3D(line.hidden,line.planeBoundaries,planeById))continue
+    if(!explicitIntersectionStroke3D(line.intersectionOwners)&&!planeBoundaryIntervalShown3D(line.hidden,line.planeBoundaries,planeById))continue
     if('selectionAliases' in line){parts.push(boundaryPath(line as (typeof classified)[number]));continue}
-    const boundaryStyle=explicitBoundaryStroke3D(line.planeBoundaries)
-    parts.push(`<path data-id="${escape(line.id)}"${line.construction?' data-construction="altitude" stroke-width="1.8"':''}${line.role?` data-render-curve="${line.role}"`:''} d="M${xy(line.a)} L${xy(line.b)}" fill="none" stroke="${highlighted.has(line.id)?'#f97316':boundaryStyle?.color??(line.construction?'#0f766e':'#334155')}"${boundaryStyle?svgPlaneStrokeAttributes3D(boundaryStyle,line.hidden,line.dashOffset):(line.role==='construction_extension'?' stroke-dasharray="2 2" data-construction-extension="true"':'')+(line.hidden&&line.role!=='construction_extension'?` stroke-dasharray="4 3"${line.dashOffset!==undefined?` stroke-dashoffset="${number(-line.dashOffset)}"`:''} opacity="${line.construction?'0.85':'0.45'}"`:'')}/>`)
+    const boundaryStyle=explicitIntersectionStroke3D(line.intersectionOwners)??explicitBoundaryStroke3D(line.planeBoundaries)
+    parts.push(`<path data-id="${escape(line.id)}"${explicitIntersectionStroke3D(line.intersectionOwners)?` data-selection-aliases="${escape(JSON.stringify([...new Set([line.id,...(aliases.get(line.id)??[]),...(line.intersectionOwners??[]).map(o=>o.ownerId)])].sort()))}"`:''}${line.construction?' data-construction="altitude" stroke-width="1.8"':''}${line.role?` data-render-curve="${line.role}"`:''} d="M${xy(line.a)} L${xy(line.b)}" fill="none" stroke="${(highlighted.has(line.id)||line.intersectionOwners?.some(o=>highlighted.has(o.ownerId)))?'#f97316':boundaryStyle?.color??(line.construction?'#0f766e':'#334155')}"${boundaryStyle?svgPlaneStrokeAttributes3D(boundaryStyle,line.hidden,line.dashOffset):(line.role==='construction_extension'?' stroke-dasharray="2 2" data-construction-extension="true"':'')+(line.hidden&&line.role!=='construction_extension'?` stroke-dasharray="4 3"${line.dashOffset!==undefined?` stroke-dashoffset="${number(-line.dashOffset)}"`:''} opacity="${line.construction?'0.85':'0.45'}"`:'')}/>`)
   }
   for(const line of projected.lines){
     if(line.arrow&&!(projected.analyticSolids.length&&pointHiddenByAnalytic3D(projected.projection.world(line.viewB!),source.print_camera,projected.analyticSolids))) { const dx=line.b[0]-line.a[0], dy=line.b[1]-line.a[1], len=Math.hypot(dx,dy); if(len>1e-8) { const x=dx/len,y=dy/len; parts.push(`<path d="M${xy([line.b[0]-8*x+4*y,line.b[1]-8*y-4*x,0])} L${xy(line.b)} L${xy([line.b[0]-8*x-4*y,line.b[1]-8*y+4*x,0])}" fill="none" stroke="#334155"/>`) } }

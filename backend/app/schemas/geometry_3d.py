@@ -30,11 +30,13 @@ def _shape(value, spec, depth=1):
             if type(value) is not bool:
                 raise ValueError("Expected strict boolean")
             return value
-        if spec in ("number", "positive", "side_count", "stroke_width"):
+        if spec in ("number", "positive", "side_count", "stroke_width", "opacity"):
             if type(value) not in (int, float) or abs(value) > 1e12 or not math.isfinite(value):
                 raise ValueError("3D numbers must be finite, strict and within 1e12")
             if spec == "positive" and value <= 0:
                 raise ValueError("Expected positive number")
+            if spec == 'opacity' and not 0 <= value <= 1:
+                raise ValueError('Plane opacity must be within 0–1')
             if spec == "stroke_width" and not CONTRACT['stroke_width_range'][0] <= value <= CONTRACT['stroke_width_range'][1]:
                 raise ValueError("Stroke width must be within 0.25–8 logical display units")
             if spec == "side_count" and (int(value) != value or not 3 <= value <= 128):
@@ -445,6 +447,7 @@ def _type(spec, name):
                 _models[spec] = _type(CONTRACT["definitions"][spec], "Geometry3D_" + spec)
             return _models[spec]
         if spec == 'stroke_color': return Annotated[str, Field(pattern=r'^#[0-9A-F]{6}$', min_length=7, max_length=7)]
+        if spec == 'opacity': return Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
         if spec == 'stroke_width': return Annotated[float, Field(ge=CONTRACT['stroke_width_range'][0], le=CONTRACT['stroke_width_range'][1], allow_inf_nan=False)]
         return {"id": str, "text": str, "number": float, "positive": float, "side_count": int, "boolean": bool}[spec]
     if "anyOf" in spec:

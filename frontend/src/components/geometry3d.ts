@@ -20,9 +20,10 @@ function shape(value: unknown, spec: Spec, depth = 1): unknown {
   if (typeof spec === 'string') {
     if (contract.definitions[spec]) return shape(value, contract.definitions[spec], depth)
     if (spec === 'boolean') { if (typeof value !== 'boolean') fail(); return value }
-    if (['number', 'positive', 'side_count', 'stroke_width'].includes(spec)) {
+    if (['number', 'positive', 'side_count', 'stroke_width', 'opacity'].includes(spec)) {
       if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > 1e12) fail()
       if (spec === 'positive' && value <= 0) fail()
+      if (spec === 'opacity' && (value < 0 || value > 1)) fail()
       if (spec === 'stroke_width' && (value < contract.stroke_width_range[0] || value > contract.stroke_width_range[1])) fail()
       if (spec === 'side_count' && (!Number.isInteger(value) || value < 3 || value > 128)) fail()
       return value === 0 ? 0 : value

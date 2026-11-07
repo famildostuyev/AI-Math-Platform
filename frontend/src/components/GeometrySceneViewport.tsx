@@ -5,6 +5,8 @@ import type { GeometryCamera3D, GeometryScene3D, Vec3 } from './geometry3dContra
 import { normalizeGeometryEditingCamera3D } from './geometry3d'
 import { createProjection3D, geometrySceneSVG3D, scenePrimitives3D, displayPrimitives3D, projectScene3D, styledBoundaryStrokes3D, explicitBoundaryStroke3D, planeBoundaryIntervalShown3D, planeOutlineStyles3D, sub, unit, cross, dot } from './geometry3dProjection'
 import {planeStrokeWebGL3D,planeBoundaryVisibilityWebGL3D} from './geometry3dPlaneStrokeWebGL'
+import {explicitIntersectionStroke3D} from './geometry3dPlaneIntersectionStroke'
+import {resolvePlaneFill3D} from './geometry3dPlaneFill'
 import type {PlaneStrokeLine3D} from './geometry3dPlaneStrokeWebGL'
 import './GeometrySceneViewport.css'
 import type { Pointer3D, PointerPhase3D } from './geometry3dAuthoring'
@@ -35,17 +37,20 @@ export function populateGeometrySceneViewport3D(group: THREE.Group, source: Geom
   }
   const geometry = (vertices: Vec3[]) => new THREE.BufferGeometry().setFromPoints(vertices.map(v=>new THREE.Vector3(...v)))
   for(const stroke of styledBoundaryStrokes3D(projected,camera.projection)){
-    if(!planeBoundaryIntervalShown3D(stroke.hidden,stroke.planeBoundaries,planeById))continue
-    if(visibility.replaced.has(stroke.id)&&stroke.planeBoundaries?.some(o=>o.representation==='segment'))continue
+    const intersectionStyle=explicitIntersectionStroke3D(stroke.intersectionOwners)
+    if(!intersectionStyle&&!planeBoundaryIntervalShown3D(stroke.hidden,stroke.planeBoundaries,planeById))continue
+    if(!intersectionStyle&&visibility.replaced.has(stroke.id)&&stroke.planeBoundaries?.some(o=>o.representation==='segment'))continue
     if(!stroke.viewA||!stroke.viewB)continue
     const vertices=[stroke.viewA,stroke.viewB].map(projection.world),pixelLength=Math.hypot(stroke.b[0]-stroke.a[0],stroke.b[1]-stroke.a[1])
     if(pixelLength<=1e-6)continue
-    const color=highlighted.has(stroke.id)||display.aliases.get(stroke.id)?.some(id=>highlighted.has(id))?0xf97316:0x334155,perPixel=Math.hypot(...sub(vertices[1],vertices[0]))/pixelLength
-    const style=explicitBoundaryStroke3D(stroke.planeBoundaries)
+    const color=highlighted.has(stroke.id)||display.aliases.get(stroke.id)?.some(id=>highlighted.has(id))||stroke.intersectionOwners?.some(o=>highlighted.has(o.ownerId))?0xf97316:0x334155,perPixel=Math.hypot(...sub(vertices[1],vertices[0]))/pixelLength
+    const style=intersectionStyle??explicitBoundaryStroke3D(stroke.planeBoundaries)
     if(style){const object=planeStrokeWebGL3D(stroke,style,projection,width,height,{color:color===0xf97316?color:style.color,aliases:display.aliases.get(stroke.id)});if(object)group.add(object);continue}
     const material=stroke.hidden?new THREE.LineDashedMaterial({color,dashSize:4*perPixel,gapSize:3*perPixel,transparent:true,opacity:.45,depthTest:false}):new THREE.LineBasicMaterial({color,transparent:true,depthTest:false})
     const line=new THREE.Line(geometry(vertices),material);if(stroke.hidden)line.computeLineDistances()
-    line.userData.semanticId=stroke.id;line.renderOrder=stroke.hidden?2:3;group.add(line)
+    line.userData.semanticId=stroke.id
+    if(stroke.intersectionOwners){line.userData.intersectionOwners=stroke.intersectionOwners;line.userData.selectionAliases=[...(display.aliases.get(stroke.id)??[])]}
+    line.renderOrder=stroke.hidden?2:3;group.add(line)
   }
   for (const p of display.primitives) {
     const color=highlighted.has(p.id)||display.aliases.get(p.id)?.some(id=>highlighted.has(id))?0xf97316:0x334155
@@ -67,7 +72,8 @@ export function populateGeometrySceneViewport3D(group: THREE.Group, source: Geom
         const contour=vertices.map(v=>{ const d=sub(v,vertices[0]); return new THREE.Vector2(dot(d,x),dot(d,y)) })
         const triangles=THREE.ShapeUtils.triangulateShape(contour,[])
         const meshGeometry=geometry(vertices); meshGeometry.setIndex(triangles.flat()); meshGeometry.computeVertexNormals()
-        object=new THREE.Mesh(meshGeometry,new THREE.MeshBasicMaterial({color:highlighted.has(p.id)?0xf97316:0xcbd5e1,side:THREE.DoubleSide,transparent:true,opacity:p.kind==='plane'?.15:.35,depthWrite:false}))
+        const fill=p.kind==='plane'?resolvePlaneFill3D(planeById.get(p.id)!,'webgl'):null
+        object=new THREE.Mesh(meshGeometry,new THREE.MeshBasicMaterial({color:highlighted.has(p.id)?0xf97316:fill?.color??0xcbd5e1,side:THREE.DoubleSide,transparent:true,opacity:fill?.opacity??.35,depthWrite:false}))
         if(p.outline!==false&&!visibility.replaced.has(p.id)){
           const face=projected.faces.find(f=>f.kind==='plane'&&f.id===p.id),style=face&&outlineStyles.get(face)
           if(style&&face?.viewVertices){

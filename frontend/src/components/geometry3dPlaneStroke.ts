@@ -44,7 +44,14 @@ function validStroke(stroke:GeometryPlaneStroke3D|undefined):stroke is GeometryP
  * no aliases to input metadata. Absence never writes defaults into the record.
  */
 export function resolvePlaneBoundaryStroke3D(plane:GeometryPlane3D,representation:PlaneBoundaryRepresentation3D='outline'):ResolvedPlaneStroke3D{
-  const stored=plane.display?.stroke,valid=validStroke(stored)
+  return resolveStroke3D(plane.display?.stroke,representation)
+}
+/** Same units/patterns, separate persistent channel from the boundary. */
+export function resolvePlaneIntersectionStroke3D(plane:GeometryPlane3D):ResolvedPlaneStroke3D{
+  return resolveStroke3D(plane.display?.intersection_stroke,'segment')
+}
+function resolveStroke3D(stored:GeometryPlaneStroke3D|undefined,representation:PlaneBoundaryRepresentation3D):ResolvedPlaneStroke3D{
+  const valid=validStroke(stored)
   const color=valid?stored.color:LEGACY_COLORS[representation]
   const width=valid?stored.width:LEGACY_WIDTH,style=valid?stored.style:'solid'
   const base=PATTERNS[style]
